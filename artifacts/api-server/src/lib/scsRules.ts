@@ -1,3 +1,5 @@
+import { threadFromPartNumber, type ThreadSpec } from "./fastenerSpecs";
+
 export interface MaterialRule {
   name: string;
   category: "steel" | "aluminum" | "stainless" | "copper" | "brass";
@@ -203,6 +205,7 @@ export interface SpecInput {
   holePattern?: string | null;
   powderCoat?: boolean | null;
   powderCoatColor?: string | null;
+  assemblyRefs?: Array<{ mcmasterPartNumber: string; quantity: number }> | null;
 }
 
 export interface ValidationResult {
@@ -586,6 +589,72 @@ export function validateSpec(spec: SpecInput): ValidationResult {
       label: "Features fit inside perimeter",
       status: "na",
       message: "Dimensions not specified.",
+    });
+  }
+
+  // Rule: mounting holes must match the clearance size for the fastener in
+  // assemblyRefs. If the user adds a 1/4-20 cap screw the mounting_hole must
+  // be 0.266", not 0.25" (nominal) or 0.125" (half-size).
+  const mountingHoles = safeParseHoles(spec.holePattern);
+  const fasteners = Array.isArray(spec.assemblyRefs) ? spec.assemblyRefs : [];
+  const fastenerThreads = fasteners
+    .map((f) => threadFromPartNumber(f.mcmasterPartNumber))
+    .filter((t): t is ThreadSpec => t != null);
+
+  if (fastenerThreads.length > 0 && mountingHoles) {
+    // Use the largest thread (assume bigger wins when multiple fasteners disagree).
+    const primary = fastenerThreads.reduce((a, b) =>
+      a.clearanceIn >= b.clearanceIn ? a : b,
+    );
+    const clearance = primary.clearanceIn;
+    const diff = Math.abs(mountingHoles.diameter - clearance);
+    if (diff <= 0.005) {
+      rules.push({
+        id: "fastener-clearance",
+        label: "Mounting holes match fastener thread",
+        status: "pass",
+        message: `Ø${mountingHoles.diameter.toFixed(3)}\" is the correct clearance hole for ${primary.label}.`,
+      });
+    } else if (mountingHoles.diameter < primary.nominalIn) {
+      rules.push({
+        id: "fastener-clearance",
+        label: "Mounting holes too small for fastener",
+        status: "fail",
+        message: `Ø${mountingHoles.diameter.toFixed(3)}\" is smaller than the ${primary.label} nominal diameter (${primary.nominalIn.toFixed(3)}\"). Use Ø${clearance.toFixed(3)}\" clearance instead.`,
+        suggestion: {
+          holePattern: JSON.stringify({
+            count: mountingHoles.count,
+            diameter: clearance,
+            pattern: mountingHoles.pattern,
+          }),
+        },
+      });
+      snapped.holePattern = JSON.stringify({
+        count: mountingHoles.count,
+        diameter: clearance,
+        pattern: mountingHoles.pattern,
+      });
+    } else {
+      rules.push({
+        id: "fastener-clearance",
+        label: "Mounting holes sized for different fastener",
+        status: "warn",
+        message: `Ø${mountingHoles.diameter.toFixed(3)}\" doesn't match ${primary.label} clearance (Ø${clearance.toFixed(3)}\"). Holes will be sloppy or the screw won't fit cleanly.`,
+        suggestion: {
+          holePattern: JSON.stringify({
+            count: mountingHoles.count,
+            diameter: clearance,
+            pattern: mountingHoles.pattern,
+          }),
+        },
+      });
+    }
+  } else if (fasteners.length > 0 && fastenerThreads.length === 0) {
+    rules.push({
+      id: "fastener-clearance",
+      label: "Assembly parts attached",
+      status: "pass",
+      message: `${fasteners.length} assembly part${fasteners.length === 1 ? "" : "s"} attached (no threaded fasteners to match to mounting holes).`,
     });
   }
 

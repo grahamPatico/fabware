@@ -1,5 +1,4 @@
-import { anthropic } from "@workspace/integrations-anthropic-ai";
-import type Anthropic from "@anthropic-ai/sdk";
+import { anthropic, type Anthropic } from "@workspace/integrations-anthropic-ai";
 import type { Message, PartSpec } from "@workspace/db";
 import { generateSvgPreview, type FlatPreviewSpec } from "./dxfGenerator";
 import { buildFeatureGraph } from "./featureGraph";
@@ -223,6 +222,7 @@ function validateForLlm(rawDsl: unknown): {
     holePattern: legacy.holePattern,
     powderCoat: legacy.powderCoat,
     powderCoatColor: legacy.powderCoatColor,
+    assemblyRefs: legacy.assemblyRefs ?? [],
   });
   return { parsed: dsl, validation };
 }

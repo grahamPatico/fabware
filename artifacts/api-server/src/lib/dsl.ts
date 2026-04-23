@@ -115,6 +115,7 @@ export interface LegacyPartShape {
   holePattern?: string | null;
   powderCoat?: boolean | null;
   powderCoatColor?: string | null;
+  assemblyRefs?: Array<{ mcmasterPartNumber: string; quantity: number }> | null;
 }
 
 export function dslToLegacy(dsl: PartDsl): LegacyPartShape {
@@ -134,6 +135,10 @@ export function dslToLegacy(dsl: PartDsl): LegacyPartShape {
       : null,
     powderCoat: !!dsl.finish,
     powderCoatColor: dsl.finish?.color ?? null,
+    assemblyRefs: (dsl.assemblyRefs ?? []).map((r) => ({
+      mcmasterPartNumber: r.mcmasterPartNumber,
+      quantity: r.quantity,
+    })),
   };
 }
 
