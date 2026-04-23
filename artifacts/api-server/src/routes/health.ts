@@ -8,6 +8,22 @@ router.get("/healthz", (_req, res) => {
   res.json(data);
 });
 
+// Echo what Express sees so we can debug URL rewriting in serverless.
+router.get("/echo", (req, res) => {
+  res.json({
+    url: req.url,
+    originalUrl: req.originalUrl,
+    baseUrl: req.baseUrl,
+    path: req.path,
+    method: req.method,
+    params: req.params,
+    query: req.query,
+  });
+});
+router.get("/echo/*any", (req, res) => {
+  res.json({ url: req.url, originalUrl: req.originalUrl, baseUrl: req.baseUrl, path: req.path });
+});
+
 // Diagnostic: lists every registered route so we can see what the deployed
 // bundle actually mounted. Remove once the serverless wiring is stable.
 router.get("/routes", (req, res) => {
