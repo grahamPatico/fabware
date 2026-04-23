@@ -11,6 +11,11 @@ export const config = {
   maxDuration: 60,
 };
 
+// Express apps are callable as (req, res, next) — but @types/express declares
+// the Application type without a call signature, so we widen to the runtime
+// shape.
+type ExpressCallable = (req: IncomingMessage, res: ServerResponse) => void;
+
 export default function handler(req: IncomingMessage, res: ServerResponse) {
-  return app(req, res);
+  (app as unknown as ExpressCallable)(req, res);
 }
