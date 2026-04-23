@@ -13,14 +13,31 @@ router.get("/healthz", (_req, res) => {
 router.get("/routes", (req, res) => {
   const app = req.app as unknown as Record<string, unknown>;
   const stack = (app.router as { stack?: Array<Record<string, unknown>> } | undefined)?.stack ?? [];
-  const layers = stack.map((l) => ({
-    name: l.name,
-    regexp: String(l.regexp ?? ""),
-    hasRoute: !!l.route,
-    routePath: (l.route as { path?: string } | undefined)?.path,
-    handleStackSize: ((l.handle as { stack?: unknown[] } | undefined)?.stack ?? []).length,
-  }));
-  res.json({ topLevelCount: stack.length, layers });
+  const result: Array<{ mount: string; routes: string[] }> = [];
+  for (const l of stack) {
+    const handle = l.handle as { stack?: Array<Record<string, unknown>> } | undefined;
+    if (!handle?.stack) continue;
+    const routes: string[] = [];
+    for (const sub of handle.stack) {
+      const subHandle = sub.handle as { stack?: Array<Record<string, unknown>> } | undefined;
+      if (sub.route) {
+        const r = sub.route as { path: string; stack?: Array<{ method?: string }> };
+        const methods = (r.stack ?? []).map((s) => s.method?.toUpperCase() ?? "?").join(",");
+        routes.push(`${methods} ${r.path}`);
+      } else if (subHandle?.stack) {
+        // Nested sub-router
+        for (const leaf of subHandle.stack) {
+          if (leaf.route) {
+            const r = leaf.route as { path: string; stack?: Array<{ method?: string }> };
+            const methods = (r.stack ?? []).map((s) => s.method?.toUpperCase() ?? "?").join(",");
+            routes.push(`${methods} ${r.path}`);
+          }
+        }
+      }
+    }
+    result.push({ mount: String(l.regexp ?? l.name), routes });
+  }
+  res.json(result);
 });
 
 export default router;
