@@ -11,7 +11,7 @@ import {
 } from "@workspace/api-zod";
 import { generateDxf, generateSvgPreview, type FlatPreviewSpec } from "../lib/dxfGenerator";
 import { validateSpec, applySnap } from "../lib/scsRules";
-import { PartDslSchema, legacyToDsl } from "../lib/dsl";
+import { PartDslSchema, legacyToDsl, type PartDsl } from "../lib/dsl";
 import { buildFeatureGraph } from "../lib/featureGraph";
 
 function withGraph(spec: FlatPreviewSpec & { dslJson?: string | null }): FlatPreviewSpec {
@@ -171,7 +171,14 @@ router.get("/projects/:id/validation", async (req, res): Promise<void> => {
     res.json({ rules: [], hasFailures: false, snappedSpec: {} });
     return;
   }
-  const result = validateSpec(spec);
+  // The legacy DB columns don't carry assemblyRefs — those live in the DSL
+  // JSON. Parse them out so the fastener-clearance rule runs on page load.
+  let assemblyRefs: PartDsl["assemblyRefs"] = [];
+  if (spec.dslJson) {
+    const parsed = PartDslSchema.safeParse(JSON.parse(spec.dslJson));
+    if (parsed.success) assemblyRefs = parsed.data.assemblyRefs ?? [];
+  }
+  const result = validateSpec({ ...spec, assemblyRefs: assemblyRefs ?? [] });
   res.json(result);
 });
 
