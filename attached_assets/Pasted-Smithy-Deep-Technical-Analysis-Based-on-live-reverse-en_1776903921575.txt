@@ -1,0 +1,104 @@
+Smithy — Deep Technical Analysis
+Based on live reverse-engineering of the full generation pipeline and inspection of the metadata.json feature graph.
+
+1. The Parametric DSL (the LLM's actual output format)
+The LLM doesn't emit CAD geometry — it emits textual parameter assignments. My test returned this verbatim in the API's parameters field:
+
+plate_size     = 50 * MM
+thickness      = 3.175 * MM
+hole_diameter  = 5 * MM
+hole_inset     = 5 * MM
+What this tells us:
+
+It's Python-shaped, with a MM unit constant. This is the signature of CadQuery or build123d — both are Python B-rep CAD libraries built on OpenCascade (OCCT).
+The parameters string is likely only the variables block. The real generator script — the one containing Workplane().rect().extrude().faces().workplane().hole() calls that reference these variables — is template/LLM-generated and lives server-side. Exposing just variables to the UI is a deliberate abstraction: users edit values, never code.
+Unit-as-multiplier pattern (50 * MM) is idiomatic CadQuery, not build123d (which prefers Length(50, "mm")). So my strong guess is CadQuery + OCCT.
+Variable names are semantically meaningful (hole_inset, material_thickness) — the LLM is prompted to pick names that match downstream analyzers and UI labels, not just x1, x2.
+2. Manufacturing-aware prompt engineering
+My input said "3 mm thick." The output was 3.175 * MM — exactly 1/8", a standard US sheet-metal gauge. This is not accidental; it's in the system prompt. The prompt almost certainly includes:
+
+A table of supported sheet thicknesses (SendCutSend's catalog maps cleanly onto this).
+A rule to snap user-given thicknesses to the nearest real stock.
+Unit handling (user can say mm or inches, output is always canonical).
+This is the kind of domain tuning that makes the difference between "AI draws something" and "AI draws something you can actually manufacture."
+
+3. The CAD kernel: evidence it's OCCT
+STEP output (ISO 10303-21) → STEP is the native export of OCCT's data-exchange module.
+STL output alongside STEP → same pipeline, different exporter.
+The metadata.json feature graph (discussed next) distinguishes sharp / hole / bend edges — that taxonomy maps to OCCT topological types (TopoDS_Edge) plus a semantic classifier on top.
+So the backend is almost certainly: Python runner → CadQuery → OCCT → (STEP, STL, traversed feature graph).
+
+4. The feature graph (metadata.json) — the secret sauce
+This is the part that elevates Smithy from "AI CAD demo" to "manufacturable output." Top-level shape for my simple plate:
+
+{
+  "edges":            [...24 entries...],
+  "faces":            [...10 entries...],
+  "bbox":             { "min": [...], "max": [...], "dimensions": {...} },
+  "planar_distances": [...],
+  "unit":             "mm"
+}
+Three things matter:
+
+(a) Semantic edge classification. Edge type is not just line/curve — it's "sharp", "hole", or "bend". The "bend" type confirms sheet-metal awareness is built in. This is what a downstream pricer (SendCutSend) reads to count bend operations, hole piercings, and cut length.
+
+{ "type": "sharp", "points": [[0,0,0],[0,0,3.175]], "angle": 90, "length": 3.175,
+  "matched_parameters": [
+    { "name": "thickness",          "match_type": "length" },
+    { "name": "material_thickness", "match_type": "length" }
+  ] }
+(b) matched_parameters = geometry → DSL variable traceability. Every edge, face, and bbox dimension is back-linked to the DSL variable that drove it. This lets the UI say "this edge is thickness" when you click it, and lets an edit like "double the thickness" update only the thickness assignment without perturbing anything else. It's also how you'd build a bidirectional editor (drag a face → update the variable → regenerate).
+
+(c) Faces reference STL triangle ranges. Each face has start_triangle / end_triangle indices. The Three.js viewer uses these to highlight a face when you hover a parameter — without needing a separate mesh-per-face export.
+
+Bbox dimensions also carry matched_parameters: z.value = 3.181 matched to thickness via match_type: "bbox_z". That's the server inferring relationships numerically, not just structurally — useful when the DSL has derived expressions the LLM didn't explicitly name.
+
+5. Revision system
+The API returns revisionNumber, totalRevisions, canUndo, canRedo. S3 keys are /{partId}/revisions/{n}/model.{stl,step,json}. Every edit = new revision = new S3 write, never overwriting prior state. This is also how the "history scrubber" at the bottom of the app works (the undo/redo arrows I saw in the viewer).
+
+The revision model implies edits are full regenerations, not diffs. The edit prompt ("make the holes bigger") likely includes the previous DSL as context and asks the LLM to return a new full DSL. That's cheaper and more reliable than diff-based editing for short parameter lists.
+
+6. The multimodal path
+The Part object includes initialImageUrl. Image-in works by passing the user's attached image as a content block to Claude Sonnet 4 in the same call that generates the DSL. No separate vision pipeline. This is exactly what Anthropic's API is designed for (image + text → structured output).
+
+Likely system-prompt framing: "If an image is provided, infer dimensions from any visible rulers/scale marks, or ask for a stated dimension; otherwise estimate proportions and parameterize."
+
+7. Current vs. planned architecture (the MCP pivot)
+Today (single-shot code-gen):
+
+prompt (+ image)
+   ↓
+Claude Sonnet 4 (one call)
+   ↓
+DSL text
+   ↓
+CadQuery runner
+   ↓ (may fail silently, produce invalid geometry)
+STEP / STL / metadata
+Post-MCP (agent loop, per Austin's post):
+
+prompt (+ image)
+   ↓
+Claude Sonnet 4 agent
+   ↓ tool: execute_cad(dsl)  ←──┐
+   ↓ tool: analyze_geometry()    │  retry until acceptable
+   ↓ tool: check_manufacturability() ─┘
+   ↓
+finalized STEP / STL / metadata
+The MCP server exposes the CAD kernel + the feature graph analyzer as tools. The model invokes them, reads results, fixes errors (self-intersections, impossible bend reliefs, holes outside stock), and retries. The feature graph I described is already the right shape to be the analyze_geometry tool's return value.
+
+Provider-swappability is the second MCP benefit: the same tool server works with Claude, GPT, Gemini, or a local model. One config change instead of a rewrite.
+
+8. Infrastructure & frontend
+Frontend: Vite + React + Three.js SPA, ~892 KB bundle. No LLM SDK in the bundle — provider logic is server-only, which is why "change one line to upgrade models" works.
+Backend API: api.smithy.new. REST: POST /parts, GET /parts/{id}/status (poll), GET /parts/{id} (metadata + presigned URLs). No WebSocket or SSE observed today — consistent with one-shot generation. Expect this to change with MCP (streaming tool calls).
+Storage: S3 (smithy-new-parts, us-east-2) with presigned GETs, revision-scoped paths. Presigned for 1 hour.
+Auth model on smithy.new beta: The partId in the URL is the capability — anyone with the URL can view/download. No per-user scoping observed. Fine for free beta, will need per-tenant scoping before paid/enterprise.
+Observability on SendCutSend's embed: New Relic Browser agent on the parent frame; inside the Smithy iframe no third-party observability was visible to the parent (cross-origin isolation).
+9. Where this model will struggle
+Inherent limits of "LLM emits CadQuery variables":
+
+Topology the DSL doesn't cover. The variable list is short and primitive (plate, hole, inset, thickness). Any part the underlying template script can't express won't generate, no matter how well you describe it. Expanding the DSL vocabulary is where most of the product work is.
+No constraint solver. CadQuery is procedural, not constraint-based. If two parameters imply a contradiction (hole bigger than plate), you get a failed build or degenerate geometry. The MCP loop is the fix here.
+Precision drift. My bbox showed 50.006 x 50.006 x 3.181 instead of exact 50/50/3.175 — the 3 µm epsilons are from STL tessellation, not the STEP. Fine for visualization, worth being aware of if you ever pipe the metadata (not the STEP) into a pricer.
+One part at a time. No assemblies, no multi-body operations in the observed schema.

@@ -1,0 +1,90 @@
+Technical Analysis: How Smithy Simulates This Part
+Part: Hexagonal_Washer_with_Snowman_Pattern — started as "A 15mm ID washer with a hexagonal perimeter," evolved through 3 revisions to add a ring of 50 tiny snowman-shaped cutouts around the perimeter.
+
+This part is much richer than a plate, so it exposes how the pipeline scales.
+
+1. The DSL that drove it
+Revision-3 parameters returned by the API:
+
+thickness             = 1.8796 * MM   # ≈ 0.074" — 14 ga. sheet snap
+inner_diameter        = 15 * MM
+inner_radius          = 7.5 * MM      # derived
+hex_flat_to_flat      = 30 * MM
+hex_outer_radius      = 17.3205 * MM  # = 15 / cos(30°) — exact hex math
+snowman_count         = 50 * MM       # ⚠ bug: unit applied to a count
+snowman_base_radius   = 0.3 * MM
+snowman_middle_radius = 0.28 * MM
+snowman_head_radius   = 0.18 * MM
+pattern_radius        = 12 * MM
+Three new behaviors visible here that weren't in the simple plate:
+
+The LLM is doing trigonometry. hex_outer_radius = 17.3205 is precisely 15 / cos(30°). That's either the model computing it in-prompt or a post-generation constant-folding pass. Either way, the kernel gets concrete numbers, not symbolic expressions — which means the LLM carries the burden of all derived geometry.
+Manufacturing normalization hit a real gauge. 1.8796 mm = 0.074" is bang-on 14-gauge steel. The prompt for this user didn't specify thickness, so the LLM synthesized one from a catalog baked into its system prompt.
+Honest bug: unit applied to a count. snowman_count = 50 * MM is semantically wrong (count is dimensionless). The kernel evidently coerces it (int(50 * MM / MM) or similar), but this is a telltale sign that the LLM doesn't track dimensional types — it applies * MM pattern-match style. An MCP-loop with an analyze_parameters() tool would catch this.
+2. What the kernel actually did
+The shape in the viewport has:
+
+Element	Count
+Edges	927
+└── sharp	18 (the hex wireframe: 6 top + 6 bottom + 6 vertical)
+└── hole	606
+└── bend	303
+Faces	311
+└── planar	top + bottom + 6 hex sides
+└── cylindrical	inner 15 mm bore + 150 snowman sub-bores (50 snowmen × 3 lobes)
+This tells you the generator pipeline almost certainly did something like:
+
+plate = (cq.Workplane("XY")
+           .polygon(6, hex_flat_to_flat)          # hex perimeter
+           .extrude(thickness))
+
+plate = plate.faces(">Z").workplane()             # back to top face
+plate = plate.circle(inner_radius).cutThruAll()   # 15 mm ID hole
+
+for i in range(int(snowman_count)):
+    angle = 2*pi*i / snowman_count
+    cx, cy = pattern_radius*cos(angle), pattern_radius*sin(angle)
+    # stack three circles radially along `angle`
+    plate = plate.moveTo(...).circle(base_r).cutThruAll()
+    plate = plate.moveTo(...).circle(middle_r).cutThruAll()
+    plate = plate.moveTo(...).circle(head_r).cutThruAll()
+150 small cylindrical cuts → 300 circular edges on top + 300 on bottom + 150 side surfaces. That matches the 606 hole edges and 303 bend edges almost exactly (there's a bit of slack from the inner bore and OCCT edge merging).
+
+Key insight on how it scales: no loop, no progress bar, no incremental streaming. One DSL, one kernel call, one output set. A part with 311 faces takes the same API shape as a part with 10.
+
+3. Edge classification is running after the kernel
+OCCT itself knows TopoDS_Edge types (line, circle, b-spline), but not "hole" vs "bend" — those are domain labels. So after CadQuery produces the B-rep, a classifier pass runs:
+
+sharp — linear edges on the outer profile (convex perimeter).
+hole — closed circular edges that bound a cylindrical through-cut (detected by: edge is a circle + adjacent face is a cylindrical inner surface + it's part of a closed loop on the top/bottom plane).
+bend — curved edges between cylindrical and planar faces. On a true sheet-metal part these would be real forming bends; here they're just the side-walls of each snowman cutout being classified as "bend" because that's how the classifier tags curved edges adjacent to a thickness-direction face. This is a labeling imprecision. For a real manufacturing pipeline (SendCutSend style) you'd want to distinguish "bend operation" from "cylindrical wall of a pierce." The current schema conflates them.
+That distinction matters: a downstream pricer counting bend edges on this part would wildly over-estimate forming operations.
+
+4. Simulation ≠ physics — it's geometry realization + classification
+Be careful with the word "simulate." Nothing here is FEA, stress, or thermal. The "simulation" is:
+
+Language → DSL (Claude Sonnet 4, one call).
+DSL → B-rep (CadQuery over OCCT).
+B-rep → (STL, STEP, feature graph) — tessellation for the viewer, exchange format for export, traversal for the metadata JSON.
+Feature graph → parameter-tagging (matched_parameters: numeric fingerprinting of every edge/face/bbox dim against the named parameters so the UI can highlight "this edge is thickness").
+The metadata.json for this part has 927 edges each doing this back-lookup. That's a linear scan per parameter at generation time; it's why totalRevisions goes up slowly and why regenerations aren't instant even on small parts.
+
+5. How revision 1 → 3 actually happened
+The API exposes canUndo / canRedo and totalRevisions. The part went washer → hex washer with pattern → snowman pattern across three revisions. Each revision:
+
+Full new DSL generated by Claude (not a diff).
+Full new CadQuery run.
+Full new STL + STEP + metadata written to /revisions/N/ in S3.
+Old revisions kept — that's how the undo arrows work.
+Editing prompts ("add 50 snowmen around the perimeter") reuse prior DSL as LLM context. The model sees the last revision's parameters block plus the change request and emits a new full block. Cheap for short parameter lists, starts to get brittle once the DSL is large — another reason the MCP-loop overhaul Austin described matters.
+
+6. UI inference from the DSL
+The left panel groups parameters into thickness, pattern radius, and collapsible Inner / Hex / Snowman sections. That grouping is derived automatically from the parameter names: anything with prefix inner_* goes under Inner, hex_* under Hex, snowman_* under Snowman. Unprefixed parameters (thickness, pattern_radius) float to the top.
+
+This is a nice trick: the LLM's naming convention directly drives the UI without any extra annotation. It also means a careless DSL ("x1, x2, x3") would produce a terrible UI — so the system prompt surely rewards grouped, descriptive names.
+
+7. Failure modes this part exposes
+Unit contamination (snowman_count = 50 * MM) — the simulation worked, but any downstream tool reading parameter units literally would break.
+Label leakage (303 cylindrical-sidewall edges called bend) — fine for rendering, wrong for manufacturing cost estimation.
+No parametric validation. If a user sets pattern_radius = 20 on a hex with hex_flat_to_flat = 30, the snowmen would punch out through the perimeter. The current one-shot pipeline has no feedback loop to catch this; you'd see broken geometry only after regeneration. This is exactly what the planned MCP agent loop (execute_cad → analyze_geometry → retry) is designed to fix.
+Precision drift visible. Bbox came back as 34.651 × 30.010 × 1.889 vs. ideal 34.641 × 30.000 × 1.880. A few µm from STL tessellation and OCCT's internal tolerance. Downstream code should trust STEP, not bbox-from-mesh.

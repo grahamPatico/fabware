@@ -1,0 +1,894 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Fabware API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: projects
+    description: Hardware design projects
+  - name: chat
+    description: AI chat for hardware design
+  - name: parts
+    description: Part specifications and DXF generation
+  - name: materials
+    description: Send Cut Send materials and capabilities
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List all projects
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a new project
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectBody"
+      responses:
+        "201":
+          description: Created project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /projects/{id}:
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get a project by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateProject
+      tags: [projects]
+      summary: Update a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectBody"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+    delete:
+      operationId: deleteProject
+      tags: [projects]
+      summary: Delete a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/messages:
+    get:
+      operationId: getProjectMessages
+      tags: [chat]
+      summary: Get chat messages for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+
+  /projects/{id}/chat:
+    post:
+      operationId: sendMessage
+      tags: [chat]
+      summary: Send a message to the AI and get a hardware design response
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageBody"
+      responses:
+        "200":
+          description: AI response with updated part spec
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+
+  /projects/{id}/part:
+    get:
+      operationId: getPartSpec
+      tags: [parts]
+      summary: Get the current part specification for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Part specification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartSpec"
+        "404":
+          description: No part spec yet
+    put:
+      operationId: updatePartSpec
+      tags: [parts]
+      summary: Update the part specification
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePartSpecBody"
+      responses:
+        "200":
+          description: Updated part spec
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartSpec"
+
+  /projects/{id}/validation:
+    get:
+      operationId: getValidation
+      tags: [parts]
+      summary: Get Send Cut Send rule validation status for the current part
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Validation"
+
+  /projects/{id}/apply-suggestion:
+    post:
+      operationId: applySuggestion
+      tags: [parts]
+      summary: Apply all snap-to-valid suggestions to the current part
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated part and validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplySuggestionResponse"
+
+  /projects/{id}/export-dxf:
+    post:
+      operationId: exportDxf
+      tags: [parts]
+      summary: Generate and export DXF file for the current part
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: DXF export result with download URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DxfExport"
+
+  /materials:
+    get:
+      operationId: listMaterials
+      tags: [materials]
+      summary: List available materials from Send Cut Send
+      responses:
+        "200":
+          description: Available materials
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Material"
+
+  /materials/{id}/thicknesses:
+    get:
+      operationId: getMaterialThicknesses
+      tags: [materials]
+      summary: Get available thicknesses for a material
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Available thicknesses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Thickness"
+
+  /capabilities:
+    get:
+      operationId: getCapabilities
+      tags: [materials]
+      summary: Get Send Cut Send manufacturing capabilities summary
+      responses:
+        "200":
+          description: Capabilities
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Capabilities"
+
+  /projects/{id}/revisions:
+    get:
+      operationId: listRevisions
+      tags: [parts]
+      summary: List all design revisions for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Revision history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PartRevision"
+
+  /projects/{id}/revisions/{revisionId}:
+    get:
+      operationId: getRevision
+      tags: [parts]
+      summary: Get a single revision with its rendered preview (no DB write)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: revisionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Revision detail with preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevisionPreview"
+
+  /projects/{id}/revisions/{revisionId}/restore:
+    post:
+      operationId: restoreRevision
+      tags: [parts]
+      summary: Restore a specific revision as the active part spec
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: revisionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated part
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevisionChangeResponse"
+
+  /projects/{id}/revisions/undo:
+    post:
+      operationId: undoRevision
+      tags: [parts]
+      summary: Move to the previous revision
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated part
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevisionChangeResponse"
+
+  /projects/{id}/revisions/redo:
+    post:
+      operationId: redoRevision
+      tags: [parts]
+      summary: Move to the next revision
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated part
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevisionChangeResponse"
+
+  /projects/recent:
+    get:
+      operationId: getRecentProjects
+      tags: [projects]
+      summary: Get recent projects with summary info
+      responses:
+        "200":
+          description: Recent projects with part previews
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectSummary"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [draft, in_progress, ready_to_order, ordered]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - status
+        - createdAt
+        - updatedAt
+
+    CreateProjectBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+      required:
+        - name
+
+    UpdateProjectBody:
+      type: object
+      properties:
+        name:
+          type: ["string", "null"]
+        description:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+          enum: [draft, in_progress, ready_to_order, ordered, null]
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        imageData:
+          type: ["string", "null"]
+          description: Base64-encoded image data (without data URL prefix)
+        imageMediaType:
+          type: ["string", "null"]
+          description: MIME type for imageData, e.g. image/png
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - role
+        - content
+        - createdAt
+
+    SendMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+        imageData:
+          type: ["string", "null"]
+          description: Optional base64-encoded image (no data URL prefix)
+        imageMediaType:
+          type: ["string", "null"]
+          description: MIME type of imageData, e.g. image/png
+      required:
+        - content
+
+    ChatResponse:
+      type: object
+      properties:
+        message:
+          $ref: "#/components/schemas/Message"
+        partSpec:
+          $ref: "#/components/schemas/PartSpec"
+        partUpdated:
+          type: boolean
+        validation:
+          $ref: "#/components/schemas/Validation"
+      required:
+        - message
+        - partUpdated
+
+    RuleResult:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        status:
+          type: string
+          enum: [pass, warn, fail, na]
+        message:
+          type: string
+        suggestion:
+          type: ["object", "null"]
+          additionalProperties: true
+      required:
+        - id
+        - label
+        - status
+        - message
+
+    Validation:
+      type: object
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleResult"
+        hasFailures:
+          type: boolean
+        snappedSpec:
+          type: object
+          additionalProperties: true
+      required:
+        - rules
+        - hasFailures
+        - snappedSpec
+
+    ApplySuggestionResponse:
+      type: object
+      properties:
+        partSpec:
+          $ref: "#/components/schemas/PartSpec"
+        validation:
+          $ref: "#/components/schemas/Validation"
+      required:
+        - partSpec
+        - validation
+
+    PartSpec:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        partType:
+          type: string
+          description: "e.g. bracket, plate, enclosure, channel, angle"
+        material:
+          type: ["string", "null"]
+        thickness:
+          type: ["number", "null"]
+        width:
+          type: ["number", "null"]
+        height:
+          type: ["number", "null"]
+        depth:
+          type: ["number", "null"]
+        bendRadius:
+          type: ["number", "null"]
+        bendAngles:
+          type: ["string", "null"]
+          description: JSON array of bend angles in degrees
+        holePattern:
+          type: ["string", "null"]
+          description: JSON describing hole locations and diameters
+        powderCoat:
+          type: ["boolean", "null"]
+        powderCoatColor:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        svgPreview:
+          type: ["string", "null"]
+          description: SVG string for 2D flat pattern preview
+        sendCutSendUrl:
+          type: ["string", "null"]
+        dslJson:
+          type: ["string", "null"]
+          description: Canonical parametric DSL (JSON-encoded) describing the part
+        featureGraphJson:
+          type: ["string", "null"]
+          description: Generated feature graph (JSON-encoded) used to drive preview and DXF
+        currentRevisionId:
+          type: ["integer", "null"]
+        totalRevisions:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - partType
+        - totalRevisions
+        - updatedAt
+
+    UpdatePartSpecBody:
+      type: object
+      properties:
+        partType:
+          type: ["string", "null"]
+        material:
+          type: ["string", "null"]
+        thickness:
+          type: ["number", "null"]
+        width:
+          type: ["number", "null"]
+        height:
+          type: ["number", "null"]
+        depth:
+          type: ["number", "null"]
+        bendRadius:
+          type: ["number", "null"]
+        bendAngles:
+          type: ["string", "null"]
+        holePattern:
+          type: ["string", "null"]
+        powderCoat:
+          type: ["boolean", "null"]
+        powderCoatColor:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    DxfExport:
+      type: object
+      properties:
+        projectId:
+          type: integer
+        filename:
+          type: string
+        dxfContent:
+          type: string
+          description: DXF file content as a string
+        sendCutSendUploadUrl:
+          type: string
+        instructions:
+          type: array
+          items:
+            type: string
+        estimatedParts:
+          type: integer
+      required:
+        - projectId
+        - filename
+        - dxfContent
+        - sendCutSendUploadUrl
+        - instructions
+        - estimatedParts
+
+    Material:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        category:
+          type: string
+          enum: [steel, aluminum, stainless, copper, brass, other]
+        sendCutSendName:
+          type: string
+        canBend:
+          type: boolean
+        canPowderCoat:
+          type: boolean
+        minThickness:
+          type: number
+        maxThickness:
+          type: number
+        maxSheetWidth:
+          type: number
+        maxSheetHeight:
+          type: number
+        description:
+          type: ["string", "null"]
+      required:
+        - id
+        - name
+        - category
+        - sendCutSendName
+        - canBend
+        - canPowderCoat
+        - minThickness
+        - maxThickness
+        - maxSheetWidth
+        - maxSheetHeight
+
+    Thickness:
+      type: object
+      properties:
+        id:
+          type: integer
+        materialId:
+          type: integer
+        gauge:
+          type: ["string", "null"]
+        inches:
+          type: number
+        mm:
+          type: number
+      required:
+        - id
+        - materialId
+        - inches
+        - mm
+
+    Capabilities:
+      type: object
+      properties:
+        cutting:
+          type: object
+          properties:
+            method:
+              type: string
+            maxWidth:
+              type: number
+            maxHeight:
+              type: number
+            minFeatureSize:
+              type: number
+          required: [method, maxWidth, maxHeight, minFeatureSize]
+        bending:
+          type: object
+          properties:
+            maxLength:
+              type: number
+            minFlange:
+              type: number
+            tolerances:
+              type: string
+          required: [maxLength, minFlange, tolerances]
+        finishing:
+          type: array
+          items:
+            type: string
+        fileFormats:
+          type: array
+          items:
+            type: string
+        uploadUrl:
+          type: string
+        turnaround:
+          type: string
+      required:
+        - cutting
+        - bending
+        - finishing
+        - fileFormats
+        - uploadUrl
+        - turnaround
+
+    PartRevision:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        revisionNumber:
+          type: integer
+        dslJson:
+          type: string
+        rationale:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - projectId
+        - revisionNumber
+        - dslJson
+        - createdAt
+
+    RevisionPreview:
+      type: object
+      properties:
+        revision:
+          $ref: "#/components/schemas/PartRevision"
+        partSpec:
+          $ref: "#/components/schemas/PartSpec"
+        isCurrent:
+          type: boolean
+      required:
+        - revision
+        - partSpec
+        - isCurrent
+
+    RevisionChangeResponse:
+      type: object
+      properties:
+        partSpec:
+          $ref: "#/components/schemas/PartSpec"
+        currentRevisionId:
+          type: ["integer", "null"]
+        canUndo:
+          type: boolean
+        canRedo:
+          type: boolean
+      required:
+        - partSpec
+        - canUndo
+        - canRedo
+
+    ProjectSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        status:
+          type: string
+        partType:
+          type: ["string", "null"]
+        material:
+          type: ["string", "null"]
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - status
+        - updatedAt
