@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "wouter";
 import { Settings2, Database, KeyRound, ArrowLeft, ExternalLink, CheckCircle2, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import ExampleCarousel from "@/components/ExampleCarousel";
 
 interface ServerConfig {
   databaseConfigured: boolean;
@@ -159,6 +160,15 @@ export default function BackendPending({ config }: { config: ServerConfig | null
               </div>
             </div>
           </div>
+        </div>
+
+        {/* What it will build — live carousel so visitors see something real
+            while the backend is still being provisioned. */}
+        <div className="mb-12">
+          <h2 className="font-mono uppercase tracking-wider text-xs text-primary mb-4">
+            Here's what the studio builds
+          </h2>
+          <ExampleCarousel />
         </div>
 
         <div className="flex items-center gap-3">

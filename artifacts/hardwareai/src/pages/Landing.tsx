@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import ExampleCarousel from "@/components/ExampleCarousel";
 
 
 function WaitlistForm({ source = "landing" }: { source?: string }) {
@@ -231,6 +232,22 @@ export default function Landing() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Example gallery */}
+      <section className="border-t border-border/60 bg-background">
+        <div className="max-w-6xl mx-auto px-6 py-16">
+          <div className="max-w-xl mb-8">
+            <h2 className="font-mono uppercase tracking-widest text-xs text-primary mb-3">
+              Example gallery
+            </h2>
+            <p className="text-2xl md:text-3xl font-bold tracking-tight leading-tight">
+              Six parts, six prompts — each with real manufacturability checks and real
+              catalog part numbers.
+            </p>
+          </div>
+          <ExampleCarousel />
         </div>
       </section>
 
