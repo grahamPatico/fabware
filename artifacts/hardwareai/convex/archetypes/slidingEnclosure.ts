@@ -1,6 +1,6 @@
 import { z } from "zod/v4";
 import type { Archetype, ProjectScope, Tier } from "./types";
-import { registerArchetype } from ".";
+import { registerArchetype } from "./registry";
 import type { PartDsl } from "../lib/dsl";
 
 const paramSchema = z.object({

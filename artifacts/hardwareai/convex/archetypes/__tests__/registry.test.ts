@@ -1,11 +1,5 @@
 import { describe, it, expect } from "vitest";
-// Side-effect imports — each module calls registerArchetype on load.
-import "../hingedEnclosure";
-import "../boxWithLid";
-import "../bracketPlusPanel";
-import "../dividedTray";
-import "../shelfWithBrackets";
-import "../slidingEnclosure";
+// Importing from ".." triggers index.ts which side-effect-loads all archetypes.
 import { listArchetypes } from "..";
 
 describe("archetype registry", () => {
