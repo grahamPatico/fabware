@@ -1,14 +1,19 @@
+import React, { Suspense } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Settings2 } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
-import Home from "@/pages/Home";
-import Workspace from "@/pages/Workspace";
-import Export from "@/pages/Export";
 import Landing from "@/pages/Landing";
 import BackendPending from "@/pages/BackendPending";
+
+// The studio is lazy-loaded so landing-page visitors don't download the
+// three.js / workspace chunks. Home → Workspace → Export all end up in
+// their own split bundles.
+const Home = React.lazy(() => import("@/pages/Home"));
+const Workspace = React.lazy(() => import("@/pages/Workspace"));
+const Export = React.lazy(() => import("@/pages/Export"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,6 +46,12 @@ function StudioSplash() {
   );
 }
 
+const studioFallback = <StudioSplash />;
+
+function LazyStudio({ children }: { children: React.ReactNode }) {
+  return <Suspense fallback={studioFallback}>{children}</Suspense>;
+}
+
 // Gate studio routes on backend readiness. If /api/config reports that the
 // database or Anthropic key aren't wired up, render the BackendPending page
 // instead of letting the studio crash on its first API call.
@@ -63,22 +74,24 @@ function Router() {
       <Route path="/" component={Landing} />
       <Route path="/studio">
         <StudioGuard>
-          <Home />
+          <LazyStudio>
+            <Home />
+          </LazyStudio>
         </StudioGuard>
       </Route>
       <Route path="/project/:id">
-        {(params) => (
-          <StudioGuard>
+        <StudioGuard>
+          <LazyStudio>
             <Workspace />
-          </StudioGuard>
-        )}
+          </LazyStudio>
+        </StudioGuard>
       </Route>
       <Route path="/project/:id/export">
-        {(params) => (
-          <StudioGuard>
+        <StudioGuard>
+          <LazyStudio>
             <Export />
-          </StudioGuard>
-        )}
+          </LazyStudio>
+        </StudioGuard>
       </Route>
       <Route component={NotFound} />
     </Switch>

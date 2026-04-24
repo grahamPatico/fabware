@@ -4,3 +4,4 @@ export * from "./partSpecs";
 export * from "./partRevisions";
 export * from "./materials";
 export * from "./assemblyParts";
+export * from "./waitlist";

@@ -17,23 +17,35 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
 
-function WaitlistForm() {
+function WaitlistForm({ source = "landing" }: { source?: string }) {
   const [email, setEmail] = React.useState("");
   const [submitted, setSubmitted] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
   const { toast } = useToast();
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.includes("@")) {
       toast({ title: "Enter a valid email", variant: "destructive" });
       return;
     }
-    // No backend for the waitlist yet — persist to localStorage so the user
-    // sees confirmation, and a follow-up commit will wire this to a real
-    // endpoint + mailing list.
-    const queue = JSON.parse(localStorage.getItem("fabware_waitlist") ?? "[]");
-    queue.push({ email, at: new Date().toISOString() });
-    localStorage.setItem("fabware_waitlist", JSON.stringify(queue));
+    setSubmitting(true);
+    const entry = { email, source, at: new Date().toISOString() };
+    try {
+      const res = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, source }),
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+    } catch {
+      // Server unavailable — stash it locally so it's not lost. The next
+      // page-load with a live backend can sync if we build a flusher later.
+      const queue = JSON.parse(localStorage.getItem("fabware_waitlist") ?? "[]");
+      queue.push(entry);
+      localStorage.setItem("fabware_waitlist", JSON.stringify(queue));
+    }
+    setSubmitting(false);
     setSubmitted(true);
     toast({ title: "You're on the list", description: "We'll email when the beta opens." });
   };
@@ -56,9 +68,13 @@ function WaitlistForm() {
         placeholder="you@shop.com"
         className="font-mono text-sm bg-background border-border focus-visible:ring-primary"
       />
-      <Button type="submit" className="font-mono uppercase tracking-wider text-xs gap-1 shrink-0">
-        Request access
-        <ArrowRight className="w-3.5 h-3.5" />
+      <Button
+        type="submit"
+        disabled={submitting}
+        className="font-mono uppercase tracking-wider text-xs gap-1 shrink-0"
+      >
+        {submitting ? "Submitting…" : "Request access"}
+        {!submitting && <ArrowRight className="w-3.5 h-3.5" />}
       </Button>
     </form>
   );

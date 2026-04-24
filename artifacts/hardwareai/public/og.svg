@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0f18"/>
+      <stop offset="1" stop-color="#121a26"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e55d21"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e55d21" stroke-opacity="0.06" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+
+  <!-- Top-right corner glow -->
+  <circle cx="1100" cy="80" r="220" fill="#e55d21" fill-opacity="0.08"/>
+
+  <!-- Top row: logo + wordmark -->
+  <g transform="translate(80 80)">
+    <rect width="56" height="56" rx="10" fill="url(#accent)"/>
+    <g transform="translate(14 14)" fill="#0a0f18">
+      <!-- Gear icon approximation -->
+      <circle cx="14" cy="14" r="5" fill="none" stroke="#0a0f18" stroke-width="3"/>
+      <path d="M14 0 v6 M14 22 v6 M0 14 h6 M22 14 h6 M4 4 l4 4 M20 20 l4 4 M4 24 l4 -4 M20 8 l4 -4" stroke="#0a0f18" stroke-width="3" stroke-linecap="round"/>
+    </g>
+    <text x="80" y="38" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="32" font-weight="800" fill="#ffffff" letter-spacing="3">FABWARE</text>
+    <g transform="translate(260 16)">
+      <rect width="160" height="26" rx="13" fill="#e55d21" fill-opacity="0.15" stroke="#e55d21" stroke-opacity="0.5"/>
+      <text x="80" y="18" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" font-weight="700" fill="#e55d21" letter-spacing="2">PRIVATE BETA</text>
+    </g>
+  </g>
+
+  <!-- Headline -->
+  <g transform="translate(80 220)">
+    <text font-family="Inter,system-ui,sans-serif" font-size="68" font-weight="800" fill="#ffffff" letter-spacing="-1">
+      <tspan x="0" dy="0">Describe the part.</tspan>
+      <tspan x="0" dy="86" fill="url(#accent)">Get the DXF,</tspan>
+      <tspan x="0" dy="86" fill="url(#accent)">the BOM, the link.</tspan>
+    </text>
+  </g>
+
+  <!-- Bottom row: tag + partner strip -->
+  <g transform="translate(80 520)">
+    <text font-family="Inter,system-ui,sans-serif" font-size="24" font-weight="500" fill="#9ca3af">
+      AI harness for hardware. Powered by SendCutSend + McMaster-Carr.
+    </text>
+  </g>
+
+  <!-- Right-side accent box mimicking a part drawing -->
+  <g transform="translate(820 180)" stroke="#e55d21" stroke-width="2" fill="none" stroke-opacity="0.8">
+    <rect x="0" y="0" width="260" height="200" rx="6"/>
+    <!-- Corner holes -->
+    <circle cx="30" cy="30" r="10"/>
+    <circle cx="230" cy="30" r="10"/>
+    <circle cx="30" cy="170" r="10"/>
+    <circle cx="230" cy="170" r="10"/>
+    <!-- Dashed bend line -->
+    <line x1="0" y1="100" x2="260" y2="100" stroke-dasharray="8,6" stroke-opacity="0.5"/>
+    <!-- Dimension arrow -->
+    <g stroke-opacity="0.4">
+      <line x1="-40" y1="0" x2="-40" y2="200"/>
+      <line x1="-50" y1="0" x2="-30" y2="0"/>
+      <line x1="-50" y1="200" x2="-30" y2="200"/>
+    </g>
+    <text x="-50" y="104" text-anchor="end" font-family="ui-monospace,monospace" font-size="12" fill="#e55d21" stroke="none">3.00"</text>
+  </g>
+
+  <!-- Footer URL -->
+  <text x="1120" y="590" text-anchor="end" font-family="ui-monospace,monospace" font-size="16" font-weight="600" fill="#6b7280" letter-spacing="2">
+    FABWARE-DRAB.VERCEL.APP
+  </text>
+</svg>

@@ -6,6 +6,6 @@
   "framework": null,
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/server" },
-    { "source": "/((?!api/|assets/|favicon\\.svg|robots\\.txt).*)", "destination": "/index.html" }
+    { "source": "/((?!api/|assets/|favicon\\.svg|og\\.svg|robots\\.txt).*)", "destination": "/index.html" }
   ]
 }
