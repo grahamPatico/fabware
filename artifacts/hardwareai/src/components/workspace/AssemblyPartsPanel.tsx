@@ -1,110 +1,44 @@
 import React from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "convex/react";
 import { ExternalLink, Plus, Trash2, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 
-interface AssemblyPart {
-  id: number;
-  projectId: number;
-  mcmasterPartNumber: string;
-  name: string;
-  category: string;
-  quantity: number;
-  notes: string | null;
-  url: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface SuggestMatch {
-  partNumber: string;
-  name: string;
-  category: string;
-  description: string;
-  url: string;
-}
-
-async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`${res.status} ${res.statusText}: ${body}`);
-  }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
-}
-
-export default function AssemblyPartsPanel({ projectId }: { projectId: number }) {
-  const qc = useQueryClient();
-  const queryKey = ["assembly-parts", projectId];
-
-  const { data: parts = [], isLoading } = useQuery({
-    queryKey,
-    queryFn: () => apiJson<AssemblyPart[]>(`/api/projects/${projectId}/assembly-parts`),
-    enabled: !!projectId,
-  });
+export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"projects"> }) {
+  const parts = useQuery(api.assemblyParts.list, projectId ? { projectId } : "skip");
+  const createPart = useMutation(api.assemblyParts.create);
+  const deletePart = useMutation(api.assemblyParts.remove);
 
   const [partNumber, setPartNumber] = React.useState("");
   const [quantity, setQuantity] = React.useState(1);
   const [suggestText, setSuggestText] = React.useState("");
-  const [matches, setMatches] = React.useState<SuggestMatch[]>([]);
+  const [creating, setCreating] = React.useState(false);
 
-  const createPart = useMutation({
-    mutationFn: (body: { mcmasterPartNumber: string; quantity: number }) =>
-      apiJson<AssemblyPart>(`/api/projects/${projectId}/assembly-parts`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey });
+  const matches = useQuery(
+    api.assemblyParts.mcmasterSuggest,
+    suggestText.length >= 2 ? { query: suggestText } : "skip",
+  );
+
+  const isLoading = parts === undefined;
+
+  const onAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!partNumber.trim() || creating) return;
+    setCreating(true);
+    try {
+      await createPart({
+        projectId,
+        mcmasterPartNumber: partNumber.trim(),
+        quantity,
+      });
       setPartNumber("");
       setQuantity(1);
-    },
-  });
-
-  const deletePart = useMutation({
-    mutationFn: (id: number) =>
-      apiJson<{ ok: boolean }>(`/api/projects/${projectId}/assembly-parts/${id}`, {
-        method: "DELETE",
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey }),
-  });
-
-  React.useEffect(() => {
-    if (suggestText.length < 2) {
-      setMatches([]);
-      return;
+    } finally {
+      setCreating(false);
     }
-    const controller = new AbortController();
-    const t = setTimeout(async () => {
-      try {
-        const res = await apiJson<{ matches: SuggestMatch[] }>(
-          `/api/assembly-parts/mcmaster-suggest?q=${encodeURIComponent(suggestText)}`,
-        );
-        setMatches(res.matches);
-      } catch {
-        setMatches([]);
-      }
-    }, 200);
-    return () => {
-      clearTimeout(t);
-      controller.abort();
-    };
-  }, [suggestText]);
-
-  const onAdd = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!partNumber.trim()) return;
-    createPart.mutate({ mcmasterPartNumber: partNumber.trim(), quantity });
   };
 
   return (
@@ -117,11 +51,10 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: number })
           </span>
         </div>
         <Badge variant="outline" className="font-mono text-[10px]">
-          {parts.length} item{parts.length === 1 ? "" : "s"}
+          {(parts ?? []).length} item{(parts ?? []).length === 1 ? "" : "s"}
         </Badge>
       </div>
 
-      {/* Search / suggest */}
       <div className="flex flex-col gap-2">
         <Input
           value={suggestText}
@@ -129,16 +62,15 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: number })
           placeholder="Search (e.g. '1/4-20 cap screw')"
           className="font-mono text-xs bg-background"
         />
-        {matches.length > 0 && (
+        {matches && matches.matches.length > 0 && (
           <div className="border border-border rounded-md divide-y divide-border/50 max-h-40 overflow-y-auto">
-            {matches.map((m) => (
+            {matches.matches.map((m) => (
               <button
                 key={m.partNumber}
                 type="button"
                 onClick={() => {
                   setPartNumber(m.partNumber);
                   setSuggestText("");
-                  setMatches([]);
                 }}
                 className="w-full text-left p-2 hover:bg-muted/50 transition-colors"
               >
@@ -155,7 +87,6 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: number })
         )}
       </div>
 
-      {/* Add form */}
       <form onSubmit={onAdd} className="flex gap-2 items-end">
         <div className="flex-1 flex flex-col gap-1">
           <label className="font-mono text-[10px] uppercase text-muted-foreground">
@@ -182,7 +113,7 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: number })
         <Button
           type="submit"
           size="sm"
-          disabled={createPart.isPending || !partNumber.trim()}
+          disabled={creating || !partNumber.trim()}
           className="font-mono uppercase tracking-wider text-[10px] gap-1"
         >
           <Plus className="w-3 h-3" />
@@ -190,20 +121,16 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: number })
         </Button>
       </form>
 
-      {/* List */}
       <div className="flex flex-col gap-1 min-h-0 overflow-y-auto">
-        {isLoading && (
-          <div className="text-xs text-muted-foreground font-mono">Loading…</div>
-        )}
-        {!isLoading && parts.length === 0 && (
+        {isLoading && <div className="text-xs text-muted-foreground font-mono">Loading…</div>}
+        {!isLoading && (parts ?? []).length === 0 && (
           <div className="text-xs text-muted-foreground font-mono italic py-2">
-            No assembly parts yet. Search above, or ask the chat: "add four 1/4-20 cap screws for
-            the mounting holes."
+            No assembly parts yet. Search above, or ask the chat: "add four 1/4-20 cap screws for the mounting holes."
           </div>
         )}
-        {parts.map((p) => (
+        {(parts ?? []).map((p) => (
           <div
-            key={p.id}
+            key={p._id}
             className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 group"
           >
             <Badge variant="secondary" className="font-mono text-[10px] shrink-0 w-10 justify-center">
@@ -212,7 +139,7 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: number })
             <div className="flex-1 min-w-0">
               <div className="flex items-baseline gap-2">
                 <a
-                  href={p.url}
+                  href={p.mcmasterProductUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="font-mono text-xs text-primary hover:underline flex items-center gap-1 shrink-0"
@@ -231,7 +158,7 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: number })
               type="button"
               size="sm"
               variant="ghost"
-              onClick={() => deletePart.mutate(p.id)}
+              onClick={() => deletePart({ partId: p._id as Id<"assemblyParts"> })}
               className="opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0"
               title="Remove"
             >

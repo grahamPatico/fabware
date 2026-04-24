@@ -1,11 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm --filter @workspace/api-server build && pnpm --filter @workspace/hardwareai build",
+  "buildCommand": "pnpm --filter @workspace/hardwareai build",
   "outputDirectory": "artifacts/hardwareai/dist/public",
   "installCommand": "pnpm install --prefer-offline",
   "framework": null,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/server" },
-    { "source": "/((?!api/|assets/|favicon\\.svg|og\\.svg|robots\\.txt).*)", "destination": "/index.html" }
+    { "source": "/((?!assets/|favicon\\.svg|og\\.svg|robots\\.txt).*)", "destination": "/index.html" }
   ]
 }

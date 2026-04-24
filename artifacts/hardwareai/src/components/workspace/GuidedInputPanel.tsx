@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { useSendMessage, getGetProjectMessagesQueryKey, getGetPartSpecQueryKey, getGetValidationQueryKey } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useAction } from "convex/react";
 import { Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 
 const PART_TYPES = ["bracket", "plate", "enclosure", "angle", "channel", "tab", "gusset"];
 const MATERIALS = [
@@ -15,12 +16,20 @@ const MATERIALS = [
   "Copper",
   "Brass",
 ];
-const THICKNESSES = ["0.048\"", "0.060\"", "0.075\"", "0.090\"", "0.105\"", "0.120\"", "0.135\"", "0.187\""];
+const THICKNESSES = ['0.048"', '0.060"', '0.075"', '0.090"', '0.105"', '0.120"', '0.135"', '0.187"'];
 const COLORS = ["None", "Black", "White", "Red", "Blue", "Green", "Yellow", "Orange", "Gray", "Silver"];
 
-export default function GuidedInputPanel({ projectId, disabled = false }: { projectId: number; disabled?: boolean }) {
-  const qc = useQueryClient();
-  const sendMessage = useSendMessage();
+const LS_MODEL = "fabware.chat.model";
+const LS_EFFORT = "fabware.chat.effort";
+
+export default function GuidedInputPanel({
+  projectId,
+  disabled = false,
+}: {
+  projectId: Id<"projects">;
+  disabled?: boolean;
+}) {
+  const sendMessage = useAction(api.projectChat.send);
   const [partType, setPartType] = useState("bracket");
   const [material, setMaterial] = useState(MATERIALS[0]);
   const [thickness, setThickness] = useState(THICKNESSES[2]);
@@ -30,8 +39,10 @@ export default function GuidedInputPanel({ projectId, disabled = false }: { proj
   const [holeDia, setHoleDia] = useState("0.25");
   const [withBend, setWithBend] = useState(false);
   const [color, setColor] = useState("None");
+  const [pending, setPending] = useState(false);
 
-  const handleApply = () => {
+  const handleApply = async () => {
+    if (disabled || pending) return;
     const parts = [
       `${partType}`,
       `${material}`,
@@ -41,20 +52,17 @@ export default function GuidedInputPanel({ projectId, disabled = false }: { proj
     if (parseInt(holes, 10) > 0) parts.push(`${holes} mounting holes ${holeDia} inch diameter`);
     if (withBend) parts.push("with a 90 degree bend");
     if (color !== "None") parts.push(`powder coat ${color}`);
-
     const content = parts.join(", ");
-    sendMessage.mutate(
-      { id: projectId, data: { content } },
-      {
-        onSuccess: (res) => {
-          qc.invalidateQueries({ queryKey: getGetProjectMessagesQueryKey(projectId) });
-          if (res.partUpdated) {
-            qc.invalidateQueries({ queryKey: getGetPartSpecQueryKey(projectId) });
-            qc.invalidateQueries({ queryKey: getGetValidationQueryKey(projectId) });
-          }
-        },
-      },
-    );
+
+    const model = localStorage.getItem(LS_MODEL) ?? "claude-opus-4-7";
+    const effort = localStorage.getItem(LS_EFFORT) ?? "high";
+
+    setPending(true);
+    try {
+      await sendMessage({ projectId, content, model, effort });
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -65,22 +73,38 @@ export default function GuidedInputPanel({ projectId, disabled = false }: { proj
       <div className="grid grid-cols-2 gap-2 font-mono text-xs">
         <Field label="Part">
           <select value={partType} onChange={(e) => setPartType(e.target.value)} className="select">
-            {PART_TYPES.map((p) => <option key={p} value={p}>{p}</option>)}
+            {PART_TYPES.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
           </select>
         </Field>
         <Field label="Material">
           <select value={material} onChange={(e) => setMaterial(e.target.value)} className="select">
-            {MATERIALS.map((m) => <option key={m} value={m}>{m}</option>)}
+            {MATERIALS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
           </select>
         </Field>
         <Field label="Thickness">
           <select value={thickness} onChange={(e) => setThickness(e.target.value)} className="select">
-            {THICKNESSES.map((t) => <option key={t} value={t}>{t}</option>)}
+            {THICKNESSES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
           </select>
         </Field>
         <Field label="Finish">
           <select value={color} onChange={(e) => setColor(e.target.value)} className="select">
-            {COLORS.map((c) => <option key={c} value={c}>{c}</option>)}
+            {COLORS.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
           </select>
         </Field>
         <Field label="Width (in)">
@@ -96,17 +120,21 @@ export default function GuidedInputPanel({ projectId, disabled = false }: { proj
           <input value={holeDia} onChange={(e) => setHoleDia(e.target.value)} className="select" inputMode="decimal" />
         </Field>
         <label className="col-span-2 flex items-center gap-2 text-muted-foreground">
-          <input type="checkbox" checked={withBend} onChange={(e) => setWithBend(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={withBend}
+            onChange={(e) => setWithBend(e.target.checked)}
+          />
           Add 90° bend
         </label>
       </div>
       <Button
         onClick={handleApply}
-        disabled={sendMessage.isPending}
+        disabled={disabled || pending}
         size="sm"
         className="w-full font-mono text-xs uppercase tracking-wider"
       >
-        {sendMessage.isPending ? <Loader2 className="w-3 h-3 mr-2 animate-spin" /> : <Sparkles className="w-3 h-3 mr-2" />}
+        {pending ? <Loader2 className="w-3 h-3 mr-2 animate-spin" /> : <Sparkles className="w-3 h-3 mr-2" />}
         Build From Spec
       </Button>
       <style>{`

@@ -1,13 +1,5 @@
 import React from "react";
-import {
-  useListRevisions,
-  useRestoreRevision,
-  getListRevisionsQueryKey,
-  getGetPartSpecQueryKey,
-  getGetValidationQueryKey,
-  getGetProjectMessagesQueryKey,
-} from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "convex/react";
 import { History, RotateCcw, Loader2, Check, Eye } from "lucide-react";
 import {
   Sheet,
@@ -17,10 +9,11 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 
-function formatRelative(iso: string): string {
-  const t = new Date(iso).getTime();
-  const diff = Date.now() - t;
+function formatRelative(ms: number): string {
+  const diff = Date.now() - ms;
   const sec = Math.round(diff / 1000);
   if (sec < 60) return `${sec}s ago`;
   const min = Math.round(sec / 60);
@@ -32,12 +25,12 @@ function formatRelative(iso: string): string {
 }
 
 interface Props {
-  projectId: number;
+  projectId: Id<"projects">;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  currentRevisionId: number | null;
-  previewRevisionId: number | null;
-  onPreviewRevision: (id: number | null) => void;
+  currentRevisionId: Id<"partRevisions"> | null;
+  previewRevisionId: Id<"partRevisions"> | null;
+  onPreviewRevision: (id: Id<"partRevisions"> | null) => void;
 }
 
 export default function HistoryPanel({
@@ -48,30 +41,21 @@ export default function HistoryPanel({
   previewRevisionId,
   onPreviewRevision,
 }: Props) {
-  const queryClient = useQueryClient();
-  const { data: revisions = [], isLoading } = useListRevisions(projectId, {
-    query: { enabled: !!projectId && open, queryKey: getListRevisionsQueryKey(projectId) },
-  });
-  const restore = useRestoreRevision();
+  const revisions = useQuery(api.revisions.list, open && projectId ? { projectId } : "skip");
+  const restore = useMutation(api.revisions.restore);
+  const [restoring, setRestoring] = React.useState(false);
 
-  const sorted = [...revisions].sort((a, b) => b.revisionNumber - a.revisionNumber);
+  const isLoading = revisions === undefined;
+  const sorted = revisions ? [...revisions].sort((a, b) => b.revisionNumber - a.revisionNumber) : [];
 
-  const handleRestore = (revisionId: number) => {
-    restore.mutate(
-      { id: projectId, revisionId },
-      {
-        onSuccess: async (data) => {
-          queryClient.setQueryData(getGetPartSpecQueryKey(projectId), data.partSpec);
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: getGetPartSpecQueryKey(projectId) }),
-            queryClient.invalidateQueries({ queryKey: getListRevisionsQueryKey(projectId) }),
-            queryClient.invalidateQueries({ queryKey: getGetValidationQueryKey(projectId) }),
-            queryClient.invalidateQueries({ queryKey: getGetProjectMessagesQueryKey(projectId) }),
-          ]);
-          onPreviewRevision(null);
-        },
-      }
-    );
+  const handleRestore = async (revisionId: Id<"partRevisions">) => {
+    setRestoring(true);
+    try {
+      await restore({ projectId, revisionId });
+      onPreviewRevision(null);
+    } finally {
+      setRestoring(false);
+    }
   };
 
   return (
@@ -147,13 +131,13 @@ export default function HistoryPanel({
                           size="sm"
                           variant="outline"
                           className="h-7 font-mono text-[10px] uppercase tracking-widest"
-                          disabled={restore.isPending}
+                          disabled={restoring}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleRestore(rev.id);
                           }}
                         >
-                          {restore.isPending ? (
+                          {restoring ? (
                             <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                           ) : (
                             <RotateCcw className="w-3 h-3 mr-1" />

@@ -48,3 +48,12 @@ Thumbs.db
 .cache/
 .local/
 .vercel
+
+# Env & secrets
+.env
+.env.local
+.env.*.local
+
+# Convex
+convex/_generated/
+**/convex/_generated/

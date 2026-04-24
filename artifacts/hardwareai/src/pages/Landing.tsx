@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import ExampleCarousel from "@/components/ExampleCarousel";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 
 
 function WaitlistForm({ source = "landing" }: { source?: string }) {
@@ -23,6 +25,7 @@ function WaitlistForm({ source = "landing" }: { source?: string }) {
   const [submitted, setSubmitted] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const { toast } = useToast();
+  const join = useMutation(api.waitlist.join);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,15 +36,8 @@ function WaitlistForm({ source = "landing" }: { source?: string }) {
     setSubmitting(true);
     const entry = { email, source, at: new Date().toISOString() };
     try {
-      const res = await fetch("/api/waitlist", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, source }),
-      });
-      if (!res.ok) throw new Error(`${res.status}`);
+      await join({ email, source, userAgent: navigator.userAgent });
     } catch {
-      // Server unavailable — stash it locally so it's not lost. The next
-      // page-load with a live backend can sync if we build a flusher later.
       const queue = JSON.parse(localStorage.getItem("fabware_waitlist") ?? "[]");
       queue.push(entry);
       localStorage.setItem("fabware_waitlist", JSON.stringify(queue));

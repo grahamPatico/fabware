@@ -1,19 +1,6 @@
 import React, { lazy, Suspense, useState } from "react";
 import { useLocation } from "wouter";
-import {
-  useGetPartSpec,
-  useExportDxf,
-  useListRevisions,
-  useUndoRevision,
-  useRedoRevision,
-  useGetRevision,
-  getGetPartSpecQueryKey,
-  getListRevisionsQueryKey,
-  getGetValidationQueryKey,
-  getGetProjectMessagesQueryKey,
-  getGetRevisionQueryKey,
-} from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "convex/react";
 import {
   Download,
   AlertCircle,
@@ -27,6 +14,8 @@ import {
   Box,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 
 const FoldedPreview = lazy(() => import("./FoldedPreview"));
 
@@ -41,8 +30,8 @@ function safeJsonArray(s: string | null | undefined): number[] {
 }
 
 interface Props {
-  projectId: number;
-  previewRevisionId?: number | null;
+  projectId: Id<"projects">;
+  previewRevisionId?: Id<"partRevisions"> | null;
   onClearPreview?: () => void;
   onOpenHistory?: () => void;
 }
@@ -54,47 +43,34 @@ export default function CanvasPanel({
   onOpenHistory,
 }: Props) {
   const [, setLocation] = useLocation();
-  const queryClient = useQueryClient();
 
-  const { data: activeSpec, isLoading: isLoadingSpec } = useGetPartSpec(projectId, {
-    query: { enabled: !!projectId, queryKey: getGetPartSpecQueryKey(projectId) },
-  });
-  const { data: revisions = [] } = useListRevisions(projectId, {
-    query: { enabled: !!projectId, queryKey: getListRevisionsQueryKey(projectId) },
-  });
-  const { data: previewData, isLoading: isLoadingPreview } = useGetRevision(
-    projectId,
-    previewRevisionId ?? 0,
-    {
-      query: {
-        enabled: !!projectId && previewRevisionId != null,
-        queryKey: getGetRevisionQueryKey(projectId, previewRevisionId ?? 0),
-      },
-    }
+  const activeSpec = useQuery(
+    api.partSpecs.getForProject,
+    projectId ? { projectId } : "skip",
+  );
+  const revisions = useQuery(api.revisions.list, projectId ? { projectId } : "skip");
+  const previewData = useQuery(
+    api.revisions.get,
+    projectId && previewRevisionId ? { projectId, revisionId: previewRevisionId } : "skip",
   );
 
-  const exportDxf = useExportDxf();
-  const undoMut = useUndoRevision();
-  const redoMut = useRedoRevision();
+  const exportDxf = useMutation(api.exportDxf.run);
+  const undoMut = useMutation(api.revisions.undo);
+  const redoMut = useMutation(api.revisions.redo);
+  const [exporting, setExporting] = useState(false);
 
+  const isLoadingSpec = activeSpec === undefined;
+  const isLoadingPreview = previewData === undefined;
   const isPreviewing = previewRevisionId != null;
   const partSpec = isPreviewing ? previewData?.partSpec ?? null : activeSpec ?? null;
-  const previewRev = isPreviewing
-    ? revisions.find((r) => r.id === previewRevisionId)
-    : null;
+  const revs = revisions ?? [];
+  const previewRev = isPreviewing ? revs.find((r) => r.id === previewRevisionId) : null;
 
   const currentIdx = activeSpec?.currentRevisionId
-    ? revisions.findIndex((r) => r.id === activeSpec.currentRevisionId)
-    : revisions.length - 1;
+    ? revs.findIndex((r) => r.id === activeSpec.currentRevisionId)
+    : revs.length - 1;
   const canUndo = currentIdx > 0;
-  const canRedo = currentIdx >= 0 && currentIdx < revisions.length - 1;
-
-  const invalidateAll = () => {
-    queryClient.invalidateQueries({ queryKey: getGetPartSpecQueryKey(projectId) });
-    queryClient.invalidateQueries({ queryKey: getListRevisionsQueryKey(projectId) });
-    queryClient.invalidateQueries({ queryKey: getGetValidationQueryKey(projectId) });
-    queryClient.invalidateQueries({ queryKey: getGetProjectMessagesQueryKey(projectId) });
-  };
+  const canRedo = currentIdx >= 0 && currentIdx < revs.length - 1;
 
   const [view, setView] = useState<"flat" | "folded">("flat");
 
@@ -102,12 +78,15 @@ export default function CanvasPanel({
   const hasBend = bendAnglesArr.length > 0;
   const canFold = hasBend && !!partSpec?.svgPreview && !!partSpec?.width && !!partSpec?.height;
 
-  const handleExport = () => {
-    if (!activeSpec?.id) return;
-    exportDxf.mutate(
-      { id: projectId },
-      { onSuccess: () => setLocation(`/project/${projectId}/export`) }
-    );
+  const handleExport = async () => {
+    if (!activeSpec?._id) return;
+    setExporting(true);
+    try {
+      await exportDxf({ projectId });
+      setLocation(`/project/${projectId}/export`);
+    } finally {
+      setExporting(false);
+    }
   };
 
   const showLoader = isPreviewing ? isLoadingPreview : isLoadingSpec;
@@ -137,14 +116,14 @@ export default function CanvasPanel({
       )}
 
       <div className={`absolute right-4 z-10 flex gap-2 items-center ${isPreviewing ? 'top-14' : 'top-4'}`}>
-        {revisions.length > 0 && (
+        {revs.length > 0 && (
           <div className="flex items-center gap-1 bg-card/90 backdrop-blur border border-border rounded shadow-lg shadow-black/50 px-2 py-1 mr-2">
             <Button
               size="icon"
               variant="ghost"
               className="h-7 w-7"
-              disabled={!canUndo || undoMut.isPending || isPreviewing}
-              onClick={() => undoMut.mutate({ id: projectId }, { onSuccess: invalidateAll })}
+              disabled={!canUndo || isPreviewing}
+              onClick={() => undoMut({ projectId })}
               title="Previous revision"
             >
               <Undo2 className="w-3.5 h-3.5" />
@@ -155,14 +134,14 @@ export default function CanvasPanel({
               className="text-[10px] font-mono text-muted-foreground hover:text-primary uppercase tracking-widest flex items-center gap-1 px-1 transition-colors"
               title="Open revision history"
             >
-              <History className="w-3 h-3" /> REV {Math.max(currentIdx + 1, 1)}/{revisions.length}
+              <History className="w-3 h-3" /> REV {Math.max(currentIdx + 1, 1)}/{revs.length}
             </button>
             <Button
               size="icon"
               variant="ghost"
               className="h-7 w-7"
-              disabled={!canRedo || redoMut.isPending || isPreviewing}
-              onClick={() => redoMut.mutate({ id: projectId }, { onSuccess: invalidateAll })}
+              disabled={!canRedo || isPreviewing}
+              onClick={() => redoMut({ projectId })}
               title="Next revision"
             >
               <Redo2 className="w-3.5 h-3.5" />
@@ -197,10 +176,10 @@ export default function CanvasPanel({
         )}
         <Button
           onClick={handleExport}
-          disabled={!activeSpec || exportDxf.isPending || isPreviewing || (!activeSpec.svgPreview && !activeSpec.material)}
+          disabled={!activeSpec || exporting || isPreviewing || (!activeSpec.svgPreview && !activeSpec.material)}
           className="font-mono uppercase tracking-wider text-xs shadow-lg shadow-black/50"
         >
-          {exportDxf.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+          {exporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
           Export DXF + Order
         </Button>
       </div>

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useParams, Link } from "wouter";
+import { useQuery } from "convex/react";
 import { Settings2, ArrowLeft, History } from "lucide-react";
 import ChatPanel from "@/components/workspace/ChatPanel";
 import CanvasPanel from "@/components/workspace/CanvasPanel";
@@ -8,30 +9,33 @@ import RulesStatusStrip from "@/components/workspace/RulesStatusStrip";
 import HistoryPanel from "@/components/workspace/HistoryPanel";
 import AssemblyPartsPanel from "@/components/workspace/AssemblyPartsPanel";
 import { Button } from "@/components/ui/button";
-import {
-  useGetPartSpec,
-  getGetPartSpecQueryKey,
-} from "@workspace/api-client-react";
+import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 
 export default function Workspace() {
   const params = useParams();
-  const projectId = params.id ? parseInt(params.id, 10) : 0;
+  const projectId = (params.id as Id<"projects"> | undefined) ?? null;
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [previewRevisionId, setPreviewRevisionId] = useState<number | null>(null);
+  const [previewRevisionId, setPreviewRevisionId] = useState<Id<"partRevisions"> | null>(null);
 
-  const { data: partSpec } = useGetPartSpec(projectId, {
-    query: { enabled: !!projectId, queryKey: getGetPartSpecQueryKey(projectId) },
-  });
+  const partSpec = useQuery(
+    api.partSpecs.getForProject,
+    projectId ? { projectId } : "skip",
+  );
 
   if (!projectId) return <div>Invalid Project ID</div>;
 
   const isPreviewing = previewRevisionId != null;
+  const shortId = projectId.slice(-4).toUpperCase();
 
   return (
     <div className="h-screen w-full flex flex-col bg-background overflow-hidden">
       <header className="h-14 border-b border-border bg-card px-4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
-          <Link href="/" className="text-muted-foreground hover:text-primary transition-colors flex items-center justify-center p-1 rounded-md hover:bg-muted">
+          <Link
+            href="/studio"
+            className="text-muted-foreground hover:text-primary transition-colors flex items-center justify-center p-1 rounded-md hover:bg-muted"
+          >
             <ArrowLeft className="w-4 h-4" />
           </Link>
           <div className="w-px h-6 bg-border" />
@@ -40,7 +44,7 @@ export default function Workspace() {
             <span className="font-mono uppercase tracking-wider text-xs font-bold">Studio</span>
           </div>
           <div className="w-px h-6 bg-border" />
-          <span className="font-mono text-sm text-muted-foreground">PRJ-{String(projectId).padStart(4, '0')}</span>
+          <span className="font-mono text-sm text-muted-foreground">PRJ-{shortId}</span>
         </div>
         <Button
           variant="outline"

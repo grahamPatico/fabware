@@ -1,42 +1,60 @@
-import React, { useState, useRef, useEffect } from "react";
-import {
-  useGetProjectMessages,
-  useSendMessage,
-  getGetProjectMessagesQueryKey,
-  getGetPartSpecQueryKey,
-  getGetValidationQueryKey,
-  getListRevisionsQueryKey,
-} from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Send, Terminal, Loader2, ImagePlus, X } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { useQuery, useAction } from "convex/react";
+import { Send, Terminal, Loader2, ImagePlus, X, Cpu, Gauge } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
 
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 
+const MODELS = [
+  { id: "claude-opus-4-7", label: "Opus 4.7 (smartest)" },
+  { id: "claude-sonnet-4-6", label: "Sonnet 4.6 (balanced)" },
+  { id: "claude-haiku-4-5", label: "Haiku 4.5 (fastest)" },
+];
+const EFFORTS = [
+  { id: "low", label: "Low" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+  { id: "xhigh", label: "X-High (Opus 4.7)" },
+  { id: "max", label: "Max (Opus only)" },
+];
+const LS_MODEL = "fabware.chat.model";
+const LS_EFFORT = "fabware.chat.effort";
+
 interface ChatPanelProps {
-  projectId: number;
+  projectId: Id<"projects">;
   disabled?: boolean;
 }
 
 export default function ChatPanel({ projectId, disabled = false }: ChatPanelProps) {
-  const queryClient = useQueryClient();
-  const { data: messages = [], isLoading } = useGetProjectMessages(projectId, {
-    query: { enabled: !!projectId, queryKey: getGetProjectMessagesQueryKey(projectId) },
-  });
-  const sendMessage = useSendMessage();
+  const messages = useQuery(api.messages.listForProject, projectId ? { projectId } : "skip");
+  const sendMessage = useAction(api.projectChat.send);
 
   const [input, setInput] = useState("");
   const [pendingImage, setPendingImage] = useState<{ data: string; mediaType: string; preview: string } | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [model, setModel] = useState<string>(() => localStorage.getItem(LS_MODEL) ?? "claude-opus-4-7");
+  const [effort, setEffort] = useState<string>(() => localStorage.getItem(LS_EFFORT) ?? "high");
+
+  useEffect(() => localStorage.setItem(LS_MODEL, model), [model]);
+  useEffect(() => localStorage.setItem(LS_EFFORT, effort), [effort]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, sendMessage.isPending]);
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, sending]);
 
   const handlePickImage = () => fileInputRef.current?.click();
 
@@ -58,36 +76,28 @@ export default function ChatPanel({ projectId, disabled = false }: ChatPanelProp
     e.target.value = "";
   };
 
-  const handleSend = (e?: React.FormEvent) => {
+  const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (disabled) return;
-    if ((!input.trim() && !pendingImage) || sendMessage.isPending) return;
+    if ((!input.trim() && !pendingImage) || sending) return;
 
     const content = input.trim() || (pendingImage ? "Use this reference image to design the part." : "");
     const image = pendingImage;
     setInput("");
     setPendingImage(null);
-
-    sendMessage.mutate(
-      {
-        id: projectId,
-        data: {
-          content,
-          imageData: image?.data ?? null,
-          imageMediaType: image?.mediaType ?? null,
-        },
-      },
-      {
-        onSuccess: (res) => {
-          queryClient.invalidateQueries({ queryKey: getGetProjectMessagesQueryKey(projectId) });
-          if (res.partUpdated) {
-            queryClient.invalidateQueries({ queryKey: getGetPartSpecQueryKey(projectId) });
-            queryClient.invalidateQueries({ queryKey: getGetValidationQueryKey(projectId) });
-            queryClient.invalidateQueries({ queryKey: getListRevisionsQueryKey(projectId) });
-          }
-        },
-      }
-    );
+    setSending(true);
+    try {
+      await sendMessage({
+        projectId,
+        content,
+        imageData: image?.data,
+        imageMediaType: image?.mediaType,
+        model,
+        effort,
+      });
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -97,12 +107,44 @@ export default function ChatPanel({ projectId, disabled = false }: ChatPanelProp
     }
   };
 
+  const isLoading = messages === undefined;
+
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-border bg-card shrink-0">
-        <h2 className="font-mono text-xs uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+      <div className="p-3 border-b border-border bg-card shrink-0 flex items-center gap-2 flex-wrap">
+        <h2 className="font-mono text-xs uppercase tracking-widest text-muted-foreground flex items-center gap-2 mr-auto">
           <Terminal className="w-3 h-3" /> Command Input
         </h2>
+        <div className="flex items-center gap-1">
+          <Cpu className="w-3 h-3 text-muted-foreground" />
+          <Select value={model} onValueChange={setModel}>
+            <SelectTrigger className="h-7 text-[11px] font-mono w-[170px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MODELS.map((m) => (
+                <SelectItem key={m.id} value={m.id} className="text-[11px] font-mono">
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-1">
+          <Gauge className="w-3 h-3 text-muted-foreground" />
+          <Select value={effort} onValueChange={setEffort}>
+            <SelectTrigger className="h-7 text-[11px] font-mono w-[130px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {EFFORTS.map((e) => (
+                <SelectItem key={e.id} value={e.id} className="text-[11px] font-mono">
+                  {e.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6" ref={scrollRef}>
@@ -119,15 +161,18 @@ export default function ChatPanel({ projectId, disabled = false }: ChatPanelProp
           </div>
         ) : (
           messages.map((msg, idx) => (
-            <div key={msg.id || idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+            <div
+              key={msg._id ?? idx}
+              className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
+            >
               <span className="text-[10px] font-mono text-muted-foreground uppercase mb-1 px-1">
-                {msg.role === 'user' ? 'User' : 'System'}
+                {msg.role === "user" ? "User" : msg.model ? msg.model.replace("claude-", "") : "System"}
               </span>
               <div
                 className={`max-w-[85%] rounded p-3 font-mono text-sm whitespace-pre-wrap ${
-                  msg.role === 'user'
-                    ? 'bg-primary/10 border border-primary/20 text-primary-foreground'
-                    : 'bg-card border border-border text-foreground'
+                  msg.role === "user"
+                    ? "bg-primary/10 border border-primary/20 text-primary-foreground"
+                    : "bg-card border border-border text-foreground"
                 }`}
               >
                 {msg.imageData && msg.imageMediaType && (
@@ -143,7 +188,7 @@ export default function ChatPanel({ projectId, disabled = false }: ChatPanelProp
           ))
         )}
 
-        {sendMessage.isPending && (
+        {sending && (
           <div className="flex flex-col items-start">
             <span className="text-[10px] font-mono text-muted-foreground uppercase mb-1 px-1">System</span>
             <div className="bg-card border border-border rounded p-3 font-mono text-sm flex items-center gap-3 text-muted-foreground">
@@ -164,13 +209,7 @@ export default function ChatPanel({ projectId, disabled = false }: ChatPanelProp
           <div className="flex items-center gap-3 bg-background border border-border rounded p-2">
             <img src={pendingImage.preview} alt="staged" className="w-12 h-12 object-cover rounded" />
             <span className="text-xs font-mono text-muted-foreground flex-1">Reference image attached</span>
-            <Button
-              size="icon"
-              variant="ghost"
-              type="button"
-              className="h-6 w-6"
-              onClick={() => setPendingImage(null)}
-            >
+            <Button size="icon" variant="ghost" type="button" className="h-6 w-6" onClick={() => setPendingImage(null)}>
               <X className="w-3 h-3" />
             </Button>
           </div>
@@ -200,7 +239,7 @@ export default function ChatPanel({ projectId, disabled = false }: ChatPanelProp
           <Button
             size="icon"
             type="submit"
-            disabled={disabled || (!input.trim() && !pendingImage) || sendMessage.isPending}
+            disabled={disabled || (!input.trim() && !pendingImage) || sending}
             className="absolute bottom-2 right-2 h-8 w-8"
           >
             <Send className="w-4 h-4" />

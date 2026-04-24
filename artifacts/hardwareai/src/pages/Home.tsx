@@ -1,44 +1,59 @@
 import React from "react";
-import { useListProjects, useCreateProject } from "@workspace/api-client-react";
+import { useQuery, useMutation } from "convex/react";
 import { Link, useLocation } from "wouter";
 import { Plus, Hammer, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { api } from "../../convex/_generated/api";
 
 export default function Home() {
   const [, setLocation] = useLocation();
-  const { data: projects = [], isLoading } = useListProjects();
-  const createProject = useCreateProject();
+  const projects = useQuery(api.projects.list);
+  const createProject = useMutation(api.projects.create);
 
   const [newProjectName, setNewProjectName] = React.useState("");
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const [creating, setCreating] = React.useState(false);
 
-  const handleCreateProject = (e: React.FormEvent) => {
+  const isLoading = projects === undefined;
+
+  const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProjectName.trim()) return;
-
-    createProject.mutate(
-      { data: { name: newProjectName, description: "" } },
-      {
-        onSuccess: (project) => {
-          setIsDialogOpen(false);
-          setLocation(`/project/${project.id}`);
-        },
-      }
-    );
+    if (!newProjectName.trim() || creating) return;
+    setCreating(true);
+    try {
+      const project = await createProject({ name: newProjectName, description: "" });
+      setIsDialogOpen(false);
+      setNewProjectName("");
+      if (project) setLocation(`/project/${project._id}`);
+    } finally {
+      setCreating(false);
+    }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "draft": return "bg-slate-600 text-slate-100";
-      case "in_progress": return "bg-blue-600 text-blue-100";
-      case "ready_to_order": return "bg-green-600 text-green-100";
-      case "ordered": return "bg-primary text-primary-foreground";
-      default: return "bg-slate-600 text-slate-100";
+      case "draft":
+        return "bg-slate-600 text-slate-100";
+      case "in_progress":
+        return "bg-blue-600 text-blue-100";
+      case "ready_to_order":
+        return "bg-green-600 text-green-100";
+      case "ordered":
+        return "bg-primary text-primary-foreground";
+      default:
+        return "bg-slate-600 text-slate-100";
     }
   };
 
@@ -61,11 +76,15 @@ export default function Home() {
           <DialogContent className="sm:max-w-[425px] bg-card border-border">
             <form onSubmit={handleCreateProject}>
               <DialogHeader>
-                <DialogTitle className="font-mono uppercase tracking-wider text-primary">Initialize New Part</DialogTitle>
+                <DialogTitle className="font-mono uppercase tracking-wider text-primary">
+                  Initialize New Part
+                </DialogTitle>
               </DialogHeader>
               <div className="grid gap-4 py-6">
                 <div className="grid gap-2">
-                  <Label htmlFor="name" className="text-muted-foreground font-mono text-xs uppercase">Part Name / Ref</Label>
+                  <Label htmlFor="name" className="text-muted-foreground font-mono text-xs uppercase">
+                    Part Name / Ref
+                  </Label>
                   <Input
                     id="name"
                     value={newProjectName}
@@ -77,12 +96,12 @@ export default function Home() {
                 </div>
               </div>
               <DialogFooter>
-                <Button 
-                  type="submit" 
-                  disabled={createProject.isPending || !newProjectName.trim()}
+                <Button
+                  type="submit"
+                  disabled={creating || !newProjectName.trim()}
                   className="w-full font-mono uppercase tracking-wider text-xs"
                 >
-                  {createProject.isPending ? "Initializing..." : "Create Workspace"}
+                  {creating ? "Initializing..." : "Create Workspace"}
                 </Button>
               </DialogFooter>
             </form>
@@ -92,7 +111,9 @@ export default function Home() {
 
       <main className="flex-1 p-6 md:p-12 max-w-6xl mx-auto w-full">
         <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-mono uppercase tracking-widest text-muted-foreground">Recent Parts</h2>
+          <h2 className="text-2xl font-mono uppercase tracking-widest text-muted-foreground">
+            Recent Parts
+          </h2>
         </div>
 
         {isLoading ? (
@@ -104,7 +125,9 @@ export default function Home() {
         ) : projects.length === 0 ? (
           <div className="text-center py-20 border border-dashed border-border rounded-lg bg-card/50">
             <Hammer className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-            <h3 className="text-lg font-mono text-muted-foreground uppercase">No parts designed yet</h3>
+            <h3 className="text-lg font-mono text-muted-foreground uppercase">
+              No parts designed yet
+            </h3>
             <p className="text-sm text-muted-foreground/70 mt-2 max-w-sm mx-auto">
               Initialize a new project to start designing hardware using plain text.
             </p>
@@ -112,13 +135,17 @@ export default function Home() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {projects.map((project) => (
-              <Link key={project.id} href={`/project/${project.id}`}>
+              <Link key={project._id} href={`/project/${project._id}`}>
                 <Card className="group cursor-pointer hover:border-primary transition-colors bg-card border-border h-full flex flex-col">
                   <CardHeader className="pb-3">
                     <div className="flex justify-between items-start">
-                      <CardTitle className="font-mono text-lg truncate pr-4">{project.name}</CardTitle>
-                      <Badge className={`${getStatusColor(project.status)} hover:${getStatusColor(project.status)} font-mono text-[10px] uppercase border-none`}>
-                        {project.status.replace(/_/g, ' ')}
+                      <CardTitle className="font-mono text-lg truncate pr-4">
+                        {project.name}
+                      </CardTitle>
+                      <Badge
+                        className={`${getStatusColor(project.status)} hover:${getStatusColor(project.status)} font-mono text-[10px] uppercase border-none`}
+                      >
+                        {project.status.replace(/_/g, " ")}
                       </Badge>
                     </div>
                   </CardHeader>
@@ -132,7 +159,7 @@ export default function Home() {
                     </div>
                   </CardContent>
                   <CardFooter className="pt-3 border-t border-border/50 text-xs text-muted-foreground font-mono justify-between">
-                    <span>ID: {String(project.id).padStart(4, '0')}</span>
+                    <span>ID: {project._id.slice(-4)}</span>
                     <span>{new Date(project.updatedAt).toLocaleDateString()}</span>
                   </CardFooter>
                 </Card>
