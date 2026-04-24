@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 export const list = query({
@@ -118,5 +118,68 @@ export const remove = mutation({
     for (const a of assemblyParts) await ctx.db.delete(a._id);
 
     await ctx.db.delete(projectId);
+  },
+});
+
+export const updateScope = mutation({
+  args: {
+    projectId: v.id("projects"),
+    scope: v.object({
+      tier: v.union(v.literal("jerry-rigged"), v.literal("mvp"), v.literal("commercial")),
+      environment: v.object({
+        location: v.union(v.literal("indoor"), v.literal("outdoor")),
+        waterproof: v.optional(v.boolean()),
+        uv: v.optional(v.boolean()),
+        freeze: v.optional(v.boolean()),
+      }),
+      useCase: v.string(),
+      userInteraction: v.optional(v.string()),
+      referenceScale: v.optional(v.object({
+        kind: v.string(),
+        dimensions: v.optional(v.object({ w: v.number(), d: v.number(), h: v.number() })),
+        quantity: v.optional(v.number()),
+      })),
+      budgetCeiling: v.optional(v.number()),
+    }),
+  },
+  handler: async (ctx, { projectId, scope }) => {
+    await ctx.db.patch(projectId, { scope, updatedAt: Date.now() });
+    return await ctx.db.get(projectId);
+  },
+});
+
+export const setArchetype = mutation({
+  args: {
+    projectId: v.id("projects"),
+    archetypeId: v.union(
+      v.literal("hinged_enclosure"), v.literal("sliding_enclosure"),
+      v.literal("bracket_plus_panel"), v.literal("divided_tray"),
+      v.literal("shelf_with_brackets"), v.literal("box_with_lid"),
+      v.null(),
+    ),
+    archetypeParams: v.optional(v.any()),
+  },
+  handler: async (ctx, { projectId, archetypeId, archetypeParams }) => {
+    await ctx.db.patch(projectId, { archetypeId, archetypeParams, updatedAt: Date.now() });
+    return await ctx.db.get(projectId);
+  },
+});
+
+export const setArchetypeInternal = internalMutation({
+  args: {
+    projectId: v.id("projects"),
+    archetypeId: v.any(),
+    archetypeParams: v.optional(v.any()),
+  },
+  handler: async (ctx, { projectId, archetypeId, archetypeParams }) => {
+    await ctx.db.patch(projectId, { archetypeId, archetypeParams, updatedAt: Date.now() });
+  },
+});
+
+export const breakOut = mutation({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, { projectId }) => {
+    await ctx.db.patch(projectId, { archetypeId: null, archetypeParams: null, updatedAt: Date.now() });
+    return await ctx.db.get(projectId);
   },
 });
