@@ -1,46 +1,19 @@
 import React from "react";
-import { useQuery, useMutation } from "convex/react";
-import { Link, useLocation } from "wouter";
+import { useQuery } from "convex/react";
+import { Link } from "wouter";
 import { Plus, Hammer, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { api } from "../../convex/_generated/api";
+import { NewProjectWizard } from "./NewProjectWizard";
 
 export default function Home() {
-  const [, setLocation] = useLocation();
   const projects = useQuery(api.projects.list);
-  const createProject = useMutation(api.projects.create);
 
-  const [newProjectName, setNewProjectName] = React.useState("");
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const [creating, setCreating] = React.useState(false);
 
   const isLoading = projects === undefined;
-
-  const handleCreateProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newProjectName.trim() || creating) return;
-    setCreating(true);
-    try {
-      const project = await createProject({ name: newProjectName, description: "" });
-      setIsDialogOpen(false);
-      setNewProjectName("");
-      if (project) setLocation(`/project/${project._id}`);
-    } finally {
-      setCreating(false);
-    }
-  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -66,47 +39,10 @@ export default function Home() {
           </div>
           <h1 className="text-xl font-bold tracking-tight uppercase">Fabware</h1>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2 font-mono uppercase tracking-wider text-xs">
-              <Plus className="w-4 h-4" />
-              New Project
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px] bg-card border-border">
-            <form onSubmit={handleCreateProject}>
-              <DialogHeader>
-                <DialogTitle className="font-mono uppercase tracking-wider text-primary">
-                  Initialize New Part
-                </DialogTitle>
-              </DialogHeader>
-              <div className="grid gap-4 py-6">
-                <div className="grid gap-2">
-                  <Label htmlFor="name" className="text-muted-foreground font-mono text-xs uppercase">
-                    Part Name / Ref
-                  </Label>
-                  <Input
-                    id="name"
-                    value={newProjectName}
-                    onChange={(e) => setNewProjectName(e.target.value)}
-                    className="font-mono bg-background border-border focus-visible:ring-primary"
-                    placeholder="e.g. BRKT-01-A"
-                    autoFocus
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="submit"
-                  disabled={creating || !newProjectName.trim()}
-                  className="w-full font-mono uppercase tracking-wider text-xs"
-                >
-                  {creating ? "Initializing..." : "Create Workspace"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <Button onClick={() => setIsDialogOpen(true)} className="gap-2 font-mono uppercase tracking-wider text-xs">
+          <Plus className="w-4 h-4" /> New Project
+        </Button>
+        <NewProjectWizard open={isDialogOpen} onOpenChange={setIsDialogOpen} />
       </header>
 
       <main className="flex-1 p-6 md:p-12 max-w-6xl mx-auto w-full">
