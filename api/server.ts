@@ -1,8 +1,8 @@
-// Vercel Function wrapping the Fabware Express app. Any request to /api/*
-// hits this handler, which hands it to the Express router defined in the
-// api-server package. We import the pre-built ESM bundle (dist/app.mjs)
-// via dynamic import because Vercel's Node builder compiles this file to
-// CommonJS, and CJS can't require() an ESM module synchronously.
+// Vercel Function wrapping the Fabware Express app. All /api/* traffic is
+// rewritten to this single handler via vercel.json so Express can do its
+// own routing. We import the pre-built ESM bundle (dist/app.mjs) via
+// dynamic import because Vercel's Node builder compiles this file to
+// CommonJS, which can't require() an ESM module synchronously.
 
 let cachedApp: ((req: unknown, res: unknown) => void) | null = null;
 
