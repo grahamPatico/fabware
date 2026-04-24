@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
-const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
 function WaitlistForm() {
   const [email, setEmail] = React.useState("");
@@ -124,13 +123,11 @@ export default function Landing() {
             >
               <Github className="w-4 h-4" />
             </a>
-            {!DEMO_MODE && (
-              <Link href="/studio">
-                <Button variant="outline" size="sm" className="font-mono uppercase tracking-wider text-xs">
-                  Studio →
-                </Button>
-              </Link>
-            )}
+            <Link href="/studio">
+              <Button variant="outline" size="sm" className="font-mono uppercase tracking-wider text-xs">
+                Open studio →
+              </Button>
+            </Link>
           </div>
         </div>
       </header>
