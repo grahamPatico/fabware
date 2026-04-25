@@ -100,7 +100,16 @@ async function applyToolCall(
       const project = await ctx.runQuery(api.projects.get, { projectId });
       const scope = project?.scope;
       if (!scope) return "Cannot generate archetype without scope. Ask for use case/tier/environment first.";
-      const params = arch.paramSchema.parse(call.input.params);
+      // Merge agent-supplied params over the archetype's defaults so the
+      // agent can omit fields it doesn't care about. paramSchema.parse
+      // validates the merged shape — fails informatively if invalid.
+      const merged = { ...arch.paramDefaults(scope), ...(call.input.params ?? {}) };
+      let params;
+      try {
+        params = arch.paramSchema.parse(merged);
+      } catch (err: any) {
+        return `Couldn't generate ${arch.label}: ${err.message?.slice(0, 200) ?? "param validation failed"}`;
+      }
       const { parts: genParts, interfaces: genInterfaces } = arch.generate(params, scope);
 
       await ctx.runMutation(internal.parts.replaceAll, {
@@ -144,8 +153,14 @@ async function applyToolCall(
       if (!project?.archetypeId) return "Project has no archetype — can't update params.";
       const arch = getArchetype(project.archetypeId);
       if (!arch) return `Unknown archetype: ${project.archetypeId}`;
-      const merged = { ...(project.archetypeParams ?? {}), ...call.input.paramPatch };
-      const params = arch.paramSchema.parse(merged);
+      const baseDefaults = project.scope ? arch.paramDefaults(project.scope) : {};
+      const merged = { ...baseDefaults, ...(project.archetypeParams ?? {}), ...(call.input.paramPatch ?? {}) };
+      let params;
+      try {
+        params = arch.paramSchema.parse(merged);
+      } catch (err: any) {
+        return `Couldn't update ${arch.label} params: ${err.message?.slice(0, 200) ?? "validation failed"}`;
+      }
       const { parts: genParts, interfaces: genInterfaces } = arch.generate(params, project.scope);
 
       await ctx.runMutation(internal.parts.replaceAll, {

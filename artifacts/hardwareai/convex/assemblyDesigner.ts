@@ -99,6 +99,20 @@ function buildSystemPrompt(
 3. If the user asks something you can't do (e.g., "add an electromagnetic lock", "switch to 3D printing"): explain politely what's not yet supported.
 4. Never output a final assistant message summarizing what you did — tools carry the rationale. Keep spoken output short.
 
+## Params for select_archetype / update_archetype_params
+
+Every archetype param has a sensible default derived from project scope (tier, environment, reference scale). You only need to specify fields the user actually constrained. Example for "tennis-ball locker, ~12 inch interior, hinged top":
+
+\`\`\`json
+{
+  "archetypeId": "hinged_enclosure",
+  "params": { "innerWidth": 12, "innerDepth": 12, "innerHeight": 12, "hingeSide": "back" },
+  "rationale": "Standard locker with hinged top, sized for tennis balls."
+}
+\`\`\`
+
+Don't specify material, thickness, fastenerCount, etc. unless the user explicitly asked for a specific value — defaults come from scope.
+
 ## Archetype library (pick from these)
 
 ${archList}

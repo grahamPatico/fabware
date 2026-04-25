@@ -16,6 +16,7 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
   const [quantity, setQuantity] = React.useState(1);
   const [suggestText, setSuggestText] = React.useState("");
   const [creating, setCreating] = React.useState(false);
+  const [addError, setAddError] = React.useState<string | null>(null);
 
   const matches = useQuery(
     api.assemblyParts.mcmasterSuggest,
@@ -28,6 +29,7 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
     e.preventDefault();
     if (!partNumber.trim() || creating) return;
     setCreating(true);
+    setAddError(null);
     try {
       await createPart({
         projectId,
@@ -36,6 +38,11 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
       });
       setPartNumber("");
       setQuantity(1);
+    } catch (err: any) {
+      const msg = err?.message ?? String(err);
+      // Convex errors are often verbose — extract the relevant line
+      const cleaned = msg.split("\n").find((l: string) => l.trim().length > 0) ?? msg;
+      setAddError(cleaned.slice(0, 200));
     } finally {
       setCreating(false);
     }
@@ -120,6 +127,11 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
           Add
         </Button>
       </form>
+      {addError && (
+        <div className="bg-destructive/10 border border-destructive/30 rounded p-2 font-mono text-[11px] text-destructive">
+          {addError}
+        </div>
+      )}
 
       <div className="flex flex-col gap-1 min-h-0 overflow-y-auto">
         {isLoading && <div className="text-xs text-muted-foreground font-mono">Loading…</div>}
