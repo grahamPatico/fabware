@@ -1,7 +1,6 @@
-import React, { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { Check, X, AlertTriangle, Minus, Wand2, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import React from "react";
+import { useQuery } from "convex/react";
+import { Check, X, AlertTriangle, Minus, Loader2 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
@@ -16,23 +15,12 @@ const STATUS_STYLES: Record<
 };
 
 export default function RulesStatusStrip({ projectId }: { projectId: Id<"projects"> }) {
-  const data = useQuery(api.partSpecs.getValidation, projectId ? { projectId } : "skip");
-  const apply = useMutation(api.partSpecs.applySuggestion);
-  const [applying, setApplying] = useState(false);
-
-  const handleFixAll = async () => {
-    setApplying(true);
-    try {
-      await apply({ projectId });
-    } finally {
-      setApplying(false);
-    }
-  };
+  const data = useQuery(api.validation.getAssemblyValidation, projectId ? { projectId } : "skip");
 
   if (data === undefined) {
     return (
       <div className="px-4 py-2 border-b border-border bg-card/60 backdrop-blur text-[11px] font-mono text-muted-foreground flex items-center gap-2">
-        <Loader2 className="w-3 h-3 animate-spin" /> Checking Send Cut Send rules…
+        <Loader2 className="w-3 h-3 animate-spin" /> Checking assembly rules…
       </div>
     );
   }
@@ -40,7 +28,7 @@ export default function RulesStatusStrip({ projectId }: { projectId: Id<"project
   if (!data.rules || data.rules.length === 0) {
     return (
       <div className="px-4 py-2 border-b border-border bg-card/60 backdrop-blur text-[11px] font-mono text-muted-foreground">
-        Send Cut Send rules will appear once a part is defined.
+        Assembly rules will appear once parts are defined.
       </div>
     );
   }
@@ -49,25 +37,9 @@ export default function RulesStatusStrip({ projectId }: { projectId: Id<"project
     <div className="px-3 py-2 border-b border-border bg-card/60 backdrop-blur">
       <div className="flex items-center justify-between mb-2">
         <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-          Send Cut Send Rules ({data.rules.filter((r) => r.status === "pass").length}/
+          Assembly Rules ({data.rules.filter((r) => r.status === "pass").length}/
           {data.rules.length} pass)
         </div>
-        {data.hasFailures && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleFixAll}
-            disabled={applying}
-            className="h-6 px-2 text-[10px] font-mono uppercase tracking-wider"
-          >
-            {applying ? (
-              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-            ) : (
-              <Wand2 className="w-3 h-3 mr-1" />
-            )}
-            Apply Suggestions
-          </Button>
-        )}
       </div>
       <div className="flex flex-wrap gap-1.5">
         {data.rules.map((rule) => {
