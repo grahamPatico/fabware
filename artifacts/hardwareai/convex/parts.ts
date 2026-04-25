@@ -194,6 +194,55 @@ async function insertPurchasedPart(ctx: any, a: any) {
 export const addPurchasedPart = mutation({ args: purchasedPartArgs, handler: insertPurchasedPart });
 export const addPurchasedPartInternal = internalMutation({ args: purchasedPartArgs, handler: insertPurchasedPart });
 
+export const updatePartDslByKindInternal = internalMutation({
+  args: { partId: v.id("parts"), dslJson: v.string() },
+  handler: async (ctx, { partId, dslJson }) => {
+    const existing = await ctx.db.get(partId);
+    if (!existing) throw new Error("Part not found");
+    const kind = existing.kind ?? "sheet_metal";
+    const now = Date.now();
+    if (kind === "printed") {
+      const dsl = PrintedDslSchema.parse(JSON.parse(dslJson));
+      await ctx.db.patch(partId, {
+        dslJson,
+        printedMaterial: dsl.material,
+        printedInfill: dsl.infill,
+        printedLayerHeight: dsl.layerHeight,
+        updatedAt: now,
+      });
+      return;
+    }
+    if (kind === "purchased") {
+      const dsl = PurchasedDslSchema.parse(JSON.parse(dslJson));
+      await ctx.db.patch(partId, {
+        dslJson,
+        purchasedPartNumber: dsl.mcmasterPartNumber,
+        purchasedQuantity: dsl.quantity,
+        unitCostUsd: dsl.unitCostUsd,
+        updatedAt: now,
+      });
+      return;
+    }
+    // sheet_metal
+    const dsl = PartDslSchema.parse(JSON.parse(dslJson));
+    const graph = buildFeatureGraph(dsl);
+    const preview: FlatPreviewSpec = {
+      partType: dsl.partType, material: dsl.material, thickness: dsl.thickness,
+      width: dsl.width, height: dsl.height, depth: dsl.depth ?? null,
+      bendAngles: null, bendRadius: null, holePattern: null,
+      powderCoat: !!dsl.finish, powderCoatColor: dsl.finish?.color ?? null,
+      dsl, featureGraph: graph,
+    };
+    const svg = generateSvgPreview(preview);
+    await ctx.db.patch(partId, {
+      partType: dsl.partType, material: dsl.material, thickness: dsl.thickness,
+      width: dsl.width, height: dsl.height, depth: dsl.depth ?? undefined,
+      powderCoat: !!dsl.finish, powderCoatColor: dsl.finish?.color ?? undefined,
+      dslJson, featureGraphJson: JSON.stringify(graph), svgPreview: svg, updatedAt: now,
+    });
+  },
+});
+
 export const replaceAll = internalMutation({
   args: {
     projectId: v.id("projects"),

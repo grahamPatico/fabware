@@ -136,9 +136,24 @@ async function applyToolCall(
     case "refine_part": {
       const target = partsSnapshot.find(p => p.role === call.input.role);
       if (!target) return `No part with role ${call.input.role}.`;
-      await ctx.runMutation(internal.parts.updatePartDslInternal, {
-        partId: target._id, dslJson: JSON.stringify(call.input.dsl),
-      });
+      // Validate the patched DSL matches the part's kind
+      const kind = target.kind ?? "sheet_metal";
+      const dslJson = JSON.stringify(call.input.dsl);
+      try {
+        if (kind === "printed") {
+          const { PrintedDslSchema } = await import("./lib/printedDsl");
+          PrintedDslSchema.parse(JSON.parse(dslJson));
+        } else if (kind === "purchased") {
+          const { PurchasedDslSchema } = await import("./lib/purchasedDsl");
+          PurchasedDslSchema.parse(JSON.parse(dslJson));
+        }
+        // sheet_metal: existing validator runs inside updatePartDslByKindInternal
+        await ctx.runMutation(internal.parts.updatePartDslByKindInternal, {
+          partId: target._id, dslJson,
+        });
+      } catch (err: any) {
+        return `Couldn't refine ${target.role}: ${err?.message?.slice(0, 200) ?? "validation error"}`;
+      }
       return `Refined ${target.role}.`;
     }
 
