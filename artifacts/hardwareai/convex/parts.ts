@@ -3,6 +3,8 @@ import { v } from "convex/values";
 import { generateSvgPreview, type FlatPreviewSpec } from "./lib/dxfGenerator";
 import { buildFeatureGraph } from "./lib/featureGraph";
 import { PartDslSchema } from "./lib/dsl";
+import { PrintedDslSchema } from "./lib/printedDsl";
+import { PurchasedDslSchema } from "./lib/purchasedDsl";
 
 const poseArgs = v.object({
   x: v.number(), y: v.number(), z: v.number(),
@@ -131,6 +133,66 @@ export const removePart = mutation({
     await ctx.db.delete(partId);
   },
 });
+
+const printedPartArgs = {
+  projectId: v.id("projects"),
+  role: v.string(),
+  label: v.string(),
+  position: poseArgs,
+  dslJson: v.string(),    // PrintedDsl JSON
+};
+
+async function insertPrintedPart(ctx: any, a: any) {
+  const dsl = PrintedDslSchema.parse(JSON.parse(a.dslJson));
+  const now = Date.now();
+  return await ctx.db.insert("parts", {
+    projectId: a.projectId,
+    role: a.role,
+    label: a.label,
+    position: a.position,
+    kind: "printed",
+    partType: "printed",  // legacy field; keep populated for backwards compat
+    dslJson: a.dslJson,
+    printedMaterial: dsl.material,
+    printedInfill: dsl.infill,
+    printedLayerHeight: dsl.layerHeight,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+export const addPrintedPart = mutation({ args: printedPartArgs, handler: insertPrintedPart });
+export const addPrintedPartInternal = internalMutation({ args: printedPartArgs, handler: insertPrintedPart });
+
+const purchasedPartArgs = {
+  projectId: v.id("projects"),
+  role: v.string(),
+  label: v.string(),
+  position: poseArgs,
+  dslJson: v.string(),    // PurchasedDsl JSON
+};
+
+async function insertPurchasedPart(ctx: any, a: any) {
+  const dsl = PurchasedDslSchema.parse(JSON.parse(a.dslJson));
+  const now = Date.now();
+  return await ctx.db.insert("parts", {
+    projectId: a.projectId,
+    role: a.role,
+    label: a.label,
+    position: a.position,
+    kind: "purchased",
+    partType: "purchased",
+    dslJson: a.dslJson,
+    purchasedPartNumber: dsl.mcmasterPartNumber,
+    purchasedQuantity: dsl.quantity,
+    unitCostUsd: dsl.unitCostUsd,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+export const addPurchasedPart = mutation({ args: purchasedPartArgs, handler: insertPurchasedPart });
+export const addPurchasedPartInternal = internalMutation({ args: purchasedPartArgs, handler: insertPurchasedPart });
 
 export const replaceAll = internalMutation({
   args: {
