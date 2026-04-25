@@ -14,10 +14,94 @@ export default defineSchema({
   projects: defineTable({
     name: v.string(),
     description: v.optional(v.string()),
-    status: v.string(), // "draft" | "designing" | "validating" | "ready_to_order"
+    status: v.string(),
+    scope: v.optional(v.object({
+      tier: v.union(v.literal("jerry-rigged"), v.literal("mvp"), v.literal("commercial")),
+      environment: v.object({
+        location: v.union(v.literal("indoor"), v.literal("outdoor")),
+        waterproof: v.optional(v.boolean()),
+        uv: v.optional(v.boolean()),
+        freeze: v.optional(v.boolean()),
+      }),
+      useCase: v.string(),
+      userInteraction: v.optional(v.string()),
+      referenceScale: v.optional(v.object({
+        kind: v.string(),
+        dimensions: v.optional(v.object({ w: v.number(), d: v.number(), h: v.number() })),
+        quantity: v.optional(v.number()),
+      })),
+      budgetCeiling: v.optional(v.number()),
+    })),
+    archetypeId: v.optional(v.union(
+      v.literal("hinged_enclosure"),
+      v.literal("sliding_enclosure"),
+      v.literal("bracket_plus_panel"),
+      v.literal("divided_tray"),
+      v.literal("shelf_with_brackets"),
+      v.literal("box_with_lid"),
+      v.null(),
+    )),
+    archetypeParams: v.optional(v.any()),
+    isMultiPart: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_updated", ["updatedAt"]),
+
+  // --- Parts (individual components within a multi-part project) ---
+  parts: defineTable({
+    projectId: v.id("projects"),
+    role: v.string(),
+    label: v.string(),
+    position: v.object({
+      x: v.number(), y: v.number(), z: v.number(),
+      rotX: v.number(), rotY: v.number(), rotZ: v.number(),
+    }),
+    partType: v.string(),
+    material: v.optional(v.string()),
+    thickness: v.optional(v.number()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    depth: v.optional(v.number()),
+    bendRadius: v.optional(v.number()),
+    bendAngles: v.optional(v.string()),
+    holePattern: v.optional(v.string()),
+    powderCoat: v.optional(v.boolean()),
+    powderCoatColor: v.optional(v.string()),
+    notes: v.optional(v.string()),
+    svgPreview: v.optional(v.string()),
+    dslJson: v.optional(v.string()),
+    featureGraphJson: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
+  // --- Interfaces (connections between parts) ---
+  interfaces: defineTable({
+    projectId: v.id("projects"),
+    kind: v.union(
+      v.literal("bolted"),
+      v.literal("pem_inserted"),
+      v.literal("riveted"),
+      v.literal("hinged"),
+    ),
+    partA: v.id("parts"),
+    partB: v.id("parts"),
+    featureRefs: v.array(v.object({
+      partId: v.id("parts"),
+      featureName: v.string(),
+    })),
+    hardwareRefs: v.array(v.object({
+      mcmasterPartNumber: v.string(),
+      quantity: v.number(),
+      role: v.optional(v.string()),
+    })),
+    accessSide: v.optional(v.union(
+      v.literal("A-to-B"),
+      v.literal("B-to-A"),
+      v.literal("either"),
+    )),
+    createdAt: v.number(),
+  }).index("by_project", ["projectId"]),
 
   // --- Messages (unified: chat-thread + project-scoped) ---
   messages: defineTable({

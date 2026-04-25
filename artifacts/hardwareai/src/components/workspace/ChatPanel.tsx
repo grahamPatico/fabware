@@ -32,10 +32,11 @@ const LS_EFFORT = "fabware.chat.effort";
 
 interface ChatPanelProps {
   projectId: Id<"projects">;
+  focusedPartRole?: string | null;
   disabled?: boolean;
 }
 
-export default function ChatPanel({ projectId, disabled = false }: ChatPanelProps) {
+export default function ChatPanel({ projectId, focusedPartRole, disabled = false }: ChatPanelProps) {
   const messages = useQuery(api.messages.listForProject, projectId ? { projectId } : "skip");
   const sendMessage = useAction(api.projectChat.send);
 
@@ -94,6 +95,7 @@ export default function ChatPanel({ projectId, disabled = false }: ChatPanelProp
         imageMediaType: image?.mediaType,
         model,
         effort,
+        focusedRole: focusedPartRole ?? undefined,
       });
     } finally {
       setSending(false);
@@ -114,6 +116,11 @@ export default function ChatPanel({ projectId, disabled = false }: ChatPanelProp
       <div className="p-3 border-b border-border bg-card shrink-0 flex items-center gap-2 flex-wrap">
         <h2 className="font-mono text-xs uppercase tracking-widest text-muted-foreground flex items-center gap-2 mr-auto">
           <Terminal className="w-3 h-3" /> Command Input
+          {focusedPartRole && (
+            <span className="ml-2 px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary text-[10px] uppercase tracking-wider">
+              Focused: {focusedPartRole}
+            </span>
+          )}
         </h2>
         <div className="flex items-center gap-1">
           <Cpu className="w-3 h-3 text-muted-foreground" />

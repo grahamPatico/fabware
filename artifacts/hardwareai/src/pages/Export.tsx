@@ -10,16 +10,17 @@ export default function Export() {
   const params = useParams();
   const projectId = (params.id as Id<"projects"> | undefined) ?? null;
   const project = useQuery(api.projects.get, projectId ? { projectId } : "skip");
-  const exportDxf = useMutation(api.exportDxf.run);
-  const [pending, setPending] = useState(false);
-  const [errored, setErrored] = useState(false);
+  const parts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
+  const runForPart = useMutation(api.exportDxf.runForPart);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const handleDownload = async () => {
+  const downloadPart = async (partId: Id<"parts">) => {
     if (!projectId) return;
-    setPending(true);
-    setErrored(false);
+    setDownloadingId(partId);
+    setErrors(prev => ({ ...prev, [partId]: "" }));
     try {
-      const data = await exportDxf({ projectId });
+      const data = await runForPart({ projectId, partId });
       const blob = new Blob([data.dxfContent], { type: "application/dxf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -29,19 +30,19 @@ export default function Export() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch {
-      setErrored(true);
+    } catch (err) {
+      setErrors(prev => ({ ...prev, [partId]: "Download failed." }));
     } finally {
-      setPending(false);
+      setDownloadingId(null);
     }
   };
 
   const instructions = [
-    "Download the DXF file using the button to the left.",
+    "Download the DXF file for each part using the buttons below.",
     "Verify dimensions and features in a CAD viewer if necessary.",
     "Navigate to Send Cut Send's upload portal.",
-    "Upload the DXF file.",
-    "Select your material and thickness as specified in the studio.",
+    "Upload each DXF file.",
+    "Select your material and thickness as specified.",
     "Add any bending or powder coating services if required.",
     "Proceed to checkout.",
   ];
@@ -55,6 +56,8 @@ export default function Export() {
   }
   if (!project) return <div className="p-8 font-mono text-destructive">Project not found</div>;
   const shortId = projectId ? projectId.slice(-4).toUpperCase() : "????";
+
+  const hasParts = parts && parts.length > 0;
 
   return (
     <div className="min-h-screen bg-background text-foreground font-mono flex flex-col">
@@ -90,33 +93,47 @@ export default function Export() {
             <h2 className="text-xl uppercase tracking-widest border-b border-border pb-2">
               Artifacts
             </h2>
-            <div className="bg-card border border-border rounded-lg p-6 flex flex-col items-center text-center space-y-4">
-              <div className="w-20 h-24 bg-background border-2 border-primary/30 rounded flex items-center justify-center shadow-lg relative overflow-hidden">
-                <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.05)_50%,transparent_75%)] bg-[length:250%_250%] animate-[gradient_3s_linear_infinite]" />
-                <span className="text-primary font-bold text-xl">DXF</span>
+
+            {hasParts ? (
+              <div className="space-y-3">
+                {parts.map(p => (
+                  <div key={p._id} className="flex items-center justify-between p-3 border border-border rounded bg-card">
+                    <div>
+                      <div className="font-bold">{p.label}</div>
+                      <div className="text-xs text-muted-foreground">{p.role} · {p.material ?? "—"}</div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <Button
+                        onClick={() => downloadPart(p._id)}
+                        disabled={downloadingId === p._id}
+                        className="gap-2"
+                        size="sm"
+                      >
+                        {downloadingId === p._id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Download className="w-4 h-4" />
+                        )}
+                        DXF
+                      </Button>
+                      {errors[p._id] && (
+                        <p className="text-xs text-destructive">{errors[p._id]}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div>
-                <p className="font-bold text-lg">{project.name.replace(/\s+/g, "_")}_v1.dxf</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  2D Flat Pattern for Laser Cutting
+            ) : (
+              <div className="bg-card border border-border rounded-lg p-6 flex flex-col items-center text-center space-y-4">
+                <div className="w-20 h-24 bg-background border-2 border-primary/30 rounded flex items-center justify-center shadow-lg relative overflow-hidden">
+                  <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(255,255,255,0.05)_50%,transparent_75%)] bg-[length:250%_250%] animate-[gradient_3s_linear_infinite]" />
+                  <span className="text-primary font-bold text-xl">DXF</span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  No parts found for this project. Generate parts in the studio first.
                 </p>
               </div>
-              <Button
-                className="w-full gap-2 uppercase tracking-wider mt-4"
-                onClick={handleDownload}
-                disabled={pending}
-              >
-                {pending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Download className="w-4 h-4" />
-                )}
-                {pending ? "Generating..." : "Download Payload"}
-              </Button>
-              {errored && (
-                <p className="text-xs text-destructive">Download failed. Please try again.</p>
-              )}
-            </div>
+            )}
           </div>
 
           <div className="space-y-6">
