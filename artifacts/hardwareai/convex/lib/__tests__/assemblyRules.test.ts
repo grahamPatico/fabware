@@ -60,4 +60,43 @@ describe("validateAssembly", () => {
     const rule = result.rules.find(r => r.id === "scope_material_match");
     expect(rule?.status).toBe("warn");
   });
+
+  it("passes hole_pattern_match for two parts with matching count + diameter regardless of pose", () => {
+    // Simulate archetype-generated assembly: base at z=0, wall rotated π/2 so world-space
+    // hole positions never coincide — but count + diameter both match.
+    const input: AssemblyInput = {
+      parts: [
+        {
+          id: "base",
+          role: "base",
+          pose: { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 },
+          dsl: platePartDsl(6, 4, 4, 0.266),
+        },
+        {
+          id: "wall",
+          role: "wall",
+          // Rotated π/2 around X axis and offset to z=innerH/2 — world-space holes won't coincide.
+          pose: { x: 0, y: 2, z: 3, rotX: Math.PI / 2, rotY: 0, rotZ: 0 },
+          dsl: platePartDsl(6, 4, 4, 0.266),
+        },
+      ],
+      interfaces: [{
+        kind: "bolted",
+        partA: "base",
+        partB: "wall",
+        featureRefs: [
+          { partId: "base", featureName: "mounting_hole" },
+          { partId: "wall", featureName: "mounting_hole" },
+        ],
+        hardwareRefs: [{ mcmasterPartNumber: "91251A540", quantity: 4 }],
+      }],
+      scope: null,
+    };
+    const result = validateAssembly(input);
+    const rule = result.rules.find(r => r.id === "hole_pattern_match");
+    expect(rule?.status).toBe("pass");
+    // The alignment check should be a warn (positions won't coincide due to different poses).
+    const alignRule = result.rules.find(r => r.id === "hole_position_alignment");
+    expect(alignRule?.status).toBe("warn");
+  });
 });

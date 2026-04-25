@@ -37,6 +37,7 @@ export function validateAssembly(input: AssemblyInput): { rules: RuleResult[]; h
   for (const iface of input.interfaces) {
     if (iface.kind === "bolted" || iface.kind === "riveted" || iface.kind === "pem_inserted") {
       rules.push(checkHolePatternMatch(iface, partsById));
+      rules.push(checkHoleAlignment(iface, partsById));
       rules.push(checkFastenerClearance(iface, partsById));
     }
     if (iface.kind === "hinged") {
@@ -77,6 +78,10 @@ function checkHolePatternMatch(
   }
   const holesA = partHoles(a, refA);
   const holesB = partHoles(b, refB);
+  if (holesA.length === 0 && holesB.length === 0) {
+    return { id: "hole_pattern_match", label: "Hole pattern match", status: "warn",
+      message: `No holes found for ${a.role}.${refA} or ${b.role}.${refB}.` };
+  }
   if (holesA.length !== holesB.length) {
     return {
       id: "hole_pattern_match", label: "Hole pattern match", status: "fail",
@@ -84,20 +89,51 @@ function checkHolePatternMatch(
       suggestion: "Make the two hole features have the same count.",
     };
   }
-  if (holesA.length === 0) {
-    return { id: "hole_pattern_match", label: "Hole pattern match", status: "warn",
-      message: `No holes found for ${a.role}.${refA} or ${b.role}.${refB}.` };
+  const diamA = holesA[0].diameter;
+  const diamB = holesB[0].diameter;
+  if (Math.abs(diamA - diamB) > 0.001) {
+    return {
+      id: "hole_pattern_match", label: "Hole pattern match", status: "fail",
+      message: `Hole diameter mismatch: ${a.role}.${refA} Ø${diamA}", ${b.role}.${refB} Ø${diamB}".`,
+      suggestion: "Ensure both features use the same nominal hole diameter.",
+    };
+  }
+  return { id: "hole_pattern_match", label: "Hole pattern match", status: "pass",
+    message: `${holesA.length} holes match (count + diameter).` };
+}
+
+function checkHoleAlignment(
+  iface: AssemblyInput["interfaces"][number],
+  parts: Map<string, AssemblyInput["parts"][number]>,
+): RuleResult {
+  const a = parts.get(iface.partA);
+  const b = parts.get(iface.partB);
+  if (!a || !b) {
+    return { id: "hole_position_alignment", label: "Hole position alignment", status: "warn",
+      message: `Interface references missing part(s) — skipping position check.` };
+  }
+  const refA = iface.featureRefs.find(r => r.partId === iface.partA)?.featureName;
+  const refB = iface.featureRefs.find(r => r.partId === iface.partB)?.featureName;
+  if (!refA || !refB) {
+    return { id: "hole_position_alignment", label: "Hole position alignment", status: "warn",
+      message: "Missing featureRefs — skipping position check." };
+  }
+  const holesA = partHoles(a, refA);
+  const holesB = partHoles(b, refB);
+  if (holesA.length === 0 || holesB.length === 0 || holesA.length !== holesB.length) {
+    return { id: "hole_position_alignment", label: "Hole position alignment", status: "warn",
+      message: "Hole count differs or zero — skipping position check." };
   }
   const unmatched = holesA.filter(ha => !holesB.some(hb => distance(ha.worldPoint, hb.worldPoint) <= POSITION_TOLERANCE));
   if (unmatched.length > 0) {
     return {
-      id: "hole_pattern_match", label: "Hole pattern match", status: "fail",
-      message: `${unmatched.length} hole(s) on ${a.role} don't have a match on ${b.role} within ±${POSITION_TOLERANCE}".`,
-      suggestion: "Adjust part positions or hole insets so the patterns line up.",
+      id: "hole_position_alignment", label: "Hole position alignment", status: "warn",
+      message: `${unmatched.length} hole(s) on ${a.role} don't coincide with ${b.role} in world space within ±${POSITION_TOLERANCE}".`,
+      suggestion: "Adjust part poses so the mating hole patterns coincide. (Geometric alignment is a future-slice concern.)",
     };
   }
-  return { id: "hole_pattern_match", label: "Hole pattern match", status: "pass",
-    message: `${holesA.length} holes aligned.` };
+  return { id: "hole_position_alignment", label: "Hole position alignment", status: "pass",
+    message: `${holesA.length} holes coincide in world space within ±${POSITION_TOLERANCE}".` };
 }
 
 function checkFastenerClearance(
