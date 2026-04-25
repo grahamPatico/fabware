@@ -71,6 +71,19 @@ export default defineSchema({
     svgPreview: v.optional(v.string()),
     dslJson: v.optional(v.string()),
     featureGraphJson: v.optional(v.string()),
+    kind: v.optional(v.union(
+      v.literal("sheet_metal"),
+      v.literal("printed"),
+      v.literal("purchased"),
+    )),
+    // printed-specific (only used when kind === "printed")
+    printedMaterial: v.optional(v.string()),
+    printedInfill: v.optional(v.number()),
+    printedLayerHeight: v.optional(v.number()),
+    // purchased-specific
+    purchasedPartNumber: v.optional(v.string()),
+    purchasedQuantity: v.optional(v.number()),
+    unitCostUsd: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project", ["projectId"]),
