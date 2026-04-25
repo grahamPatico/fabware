@@ -9,6 +9,8 @@ import type { Id } from "../../../convex/_generated/dataModel";
 
 export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"projects"> }) {
   const parts = useQuery(api.assemblyParts.list, projectId ? { projectId } : "skip");
+  const allParts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
+  const purchasedParts = (allParts ?? []).filter(p => (p.kind ?? "sheet_metal") === "purchased");
   const createPart = useMutation(api.assemblyParts.create);
   const deletePart = useMutation(api.assemblyParts.remove);
 
@@ -179,6 +181,31 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
           </div>
         ))}
       </div>
+
+      {purchasedParts.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-border/50">
+          <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-2">
+            Purchased parts (in assembly)
+          </div>
+          <div className="flex flex-col gap-1">
+            {purchasedParts.map(p => (
+              <a
+                key={p._id}
+                href={`https://www.mcmaster.com/${(p.purchasedPartNumber ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "")}/`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[11px] flex items-center gap-2 hover:text-primary transition-colors"
+              >
+                <Badge variant="secondary" className="font-mono text-[10px] w-10 justify-center">
+                  ×{p.purchasedQuantity ?? 1}
+                </Badge>
+                <span className="text-primary">{p.purchasedPartNumber}</span>
+                <span className="truncate text-muted-foreground">{p.label}</span>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
