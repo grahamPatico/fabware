@@ -2,6 +2,7 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 import { validateAssembly, type AssemblyInput } from "./lib/assemblyRules";
 import { PartDslSchema } from "./lib/dsl";
+import { validatePartByKind } from "./lib/partValidator";
 
 export const getAssemblyValidation = query({
   args: { projectId: v.id("projects") },
@@ -38,5 +39,14 @@ export const getAssemblyValidation = query({
       scope: project?.scope ?? null,
     };
     return validateAssembly(input);
+  },
+});
+
+export const getPartValidation = query({
+  args: { partId: v.id("parts") },
+  handler: async (ctx, { partId }) => {
+    const part = await ctx.db.get(partId);
+    if (!part) return null;
+    return validatePartByKind(part);
   },
 });
