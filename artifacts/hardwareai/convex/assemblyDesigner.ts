@@ -4,6 +4,7 @@ import { internalAction } from "./_generated/server";
 import { v } from "convex/values";
 import Anthropic from "@anthropic-ai/sdk";
 import { listArchetypes } from "./archetypes";
+import { MCMASTER_SEED } from "./lib/mcmasterSeed";
 
 const TOOLS = [
   {
@@ -129,6 +130,9 @@ function buildSystemPrompt(
   focusedRole: string | undefined,
 ): string {
   const archList = archetypes.map(a => `- ${a.id}: ${a.label} — ${a.description} [tags: ${a.tags.join(", ")}]`).join("\n");
+  const mcmasterCatalog = MCMASTER_SEED.map(
+    p => `- ${p.partNumber}: ${p.name} — ${p.description}`
+  ).join("\n");
   const focusedClause = focusedRole
     ? `The user currently has part "${focusedRole}" focused. Interpret refinement requests as targeting this part unless the message says otherwise.`
     : "No part is focused. Messages apply to the whole project.";
@@ -170,8 +174,25 @@ ${focusedClause}
 ## Rules
 
 - Numbers are in inches, degrees, or dimensionless counts. Never millimeters.
-- Use your own knowledge for sheet-metal manufacturing rules and McMaster-Carr part conventions; the orchestrator validates assemblies after each change and surfaces issues in the rules strip.
+- Use your own knowledge for sheet-metal manufacturing rules and SCS part conventions; the orchestrator validates assemblies after each change and surfaces issues in the rules strip.
 - \`decompose_freeform\` is a stub in this version; if you call it, you'll get back a message to the user to pick an archetype instead.
+
+## McMaster-Carr catalog (curated — use these part numbers verbatim)
+
+When you need a fastener, nut, washer, bearing, hinge, etc., pick the closest match from this curated catalog rather than asking the user for a part number:
+
+${mcmasterCatalog}
+
+Hole-clearance reminders:
+- 1/4-20 screws need a Ø0.266" clearance hole (or Ø0.250" for a "free fit").
+- M5 screws need a Ø0.217" (5.5mm) clearance hole.
+- #8-32 screws need a Ø0.177" clearance hole.
+
+If the user asks for an item the catalog doesn't have (e.g. a specific 3" OD aluminum washer), pick the closest curated entry and call it out in the rationale: "I used 92141A029 — a 1/4" steel zinc washer — which is the closest curated match; if you need exactly a 3" OD aluminum washer, paste the McMaster part number and I'll swap it in."
+
+**If the user pastes a McMaster part number** (e.g. "use 95475A150 instead"), accept it as-is and call \`add_purchased_part\` with that number — the user has just verified it on mcmaster.com. The post-action validator will WARN that it's not in the curated seed, which is informational only.
+
+**Never** invent or guess part numbers that aren't either in the curated list above OR pasted by the user.
 
 ## Choosing a part kind
 
