@@ -17,8 +17,16 @@ export const getAssemblyValidation = query({
       .withIndex("by_project", q => q.eq("projectId", projectId))
       .collect();
 
+    // Filter to sheet-metal parts only; assembly rules apply only to sheet-metal.
+    // Other-kind parts (printed, purchased) have their own per-kind rules via getPartValidation.
+    const sheetMetalParts = parts.filter(p => (p.kind ?? "sheet_metal") === "sheet_metal");
+
+    // Filter interfaces to those referencing only sheet-metal parts.
+    const sheetMetalIds = new Set(sheetMetalParts.map(p => p._id));
+    const sheetMetalInterfaces = ifaces.filter(i => sheetMetalIds.has(i.partA) && sheetMetalIds.has(i.partB));
+
     const input: AssemblyInput = {
-      parts: parts.map(p => ({
+      parts: sheetMetalParts.map(p => ({
         id: p._id as unknown as string,
         role: p.role,
         pose: p.position,
@@ -28,7 +36,7 @@ export const getAssemblyValidation = query({
           depth: p.depth ?? null, features: [], finish: null, assemblyRefs: [],
         },
       })),
-      interfaces: ifaces.map(i => ({
+      interfaces: sheetMetalInterfaces.map(i => ({
         kind: i.kind,
         partA: i.partA as unknown as string,
         partB: i.partB as unknown as string,
