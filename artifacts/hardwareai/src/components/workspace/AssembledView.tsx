@@ -1,54 +1,81 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Canvas, useThree } from "@react-three/fiber";
-import { OrbitControls, Grid } from "@react-three/drei";
+import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
+import { OrbitControls, Grid, Edges } from "@react-three/drei";
 import { useQuery } from "convex/react";
 import * as THREE from "three";
-import { Home } from "lucide-react";
+import { Home, Square } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 type Pose = { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number };
 
-function SheetMetalPart({ w, h, t, position }: { w: number; h: number; t: number; position: Pose }) {
-  return (
-    <mesh position={[position.x, position.z, position.y]} rotation={[position.rotX, position.rotZ, position.rotY]} castShadow receiveShadow>
-      <boxGeometry args={[w, t, h]} />
-      <meshStandardMaterial color="#d0d4da" metalness={0.4} roughness={0.6} />
-    </mesh>
-  );
+interface MeshProps {
+  size: [number, number, number];
+  position: Pose;
+  selected: boolean;
+  showBounds: boolean;
+  onClick: (e: ThreeEvent<MouseEvent>) => void;
+  color: string;
+  metalness?: number;
+  roughness?: number;
+  wireframe?: boolean;
+  opacity?: number;
 }
 
-function PrintedPart({ w, d, h, position }: { w: number; d: number; h: number; position: Pose }) {
+function PartMesh({
+  size,
+  position,
+  selected,
+  showBounds,
+  onClick,
+  color,
+  metalness = 0.3,
+  roughness = 0.6,
+  wireframe = false,
+  opacity = 1,
+}: MeshProps) {
   return (
-    <mesh position={[position.x, position.z, position.y]} rotation={[position.rotX, position.rotZ, position.rotY]} castShadow receiveShadow>
-      <boxGeometry args={[w / 25.4, h / 25.4, d / 25.4]} />
-      <meshStandardMaterial color="#a374ff" metalness={0.0} roughness={0.8} />
+    <mesh
+      position={[position.x, position.z, position.y]}
+      rotation={[position.rotX, position.rotZ, position.rotY]}
+      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
+      onPointerOut={() => { document.body.style.cursor = ""; }}
+      castShadow
+      receiveShadow
+    >
+      <boxGeometry args={size} />
+      <meshStandardMaterial
+        color={selected ? "#7dd3fc" : color}
+        metalness={metalness}
+        roughness={roughness}
+        wireframe={wireframe}
+        transparent={opacity < 1}
+        opacity={opacity}
+        emissive={selected ? "#0ea5e9" : "#000000"}
+        emissiveIntensity={selected ? 0.25 : 0}
+      />
+      {(showBounds || selected) && (
+        <Edges
+          color={selected ? "#38bdf8" : "#666666"}
+          lineWidth={selected ? 2.5 : 1}
+          threshold={1}
+        />
+      )}
     </mesh>
-  );
-}
-
-function PurchasedPart({ position }: { position: Pose; label: string }) {
-  return (
-    <group position={[position.x, position.z, position.y]} rotation={[position.rotX, position.rotZ, position.rotY]}>
-      <mesh>
-        <boxGeometry args={[0.5, 0.5, 0.5]} />
-        <meshStandardMaterial color="#f5b647" wireframe />
-      </mesh>
-    </group>
   );
 }
 
 // Reference-scale anchors — translucent stand-ins so users see what fits inside.
-// Inches throughout (assembly frame is inches).
 const REFERENCE_KINDS: Record<string, { diameter: number; color: string }> = {
-  "tennis ball":    { diameter: 2.575, color: "#d4ff00" },     // ITF regulation ~65mm
+  "tennis ball":    { diameter: 2.575, color: "#d4ff00" },
   "tennis":         { diameter: 2.575, color: "#d4ff00" },
   "baseball":       { diameter: 2.9,   color: "#f5e3c2" },
   "softball":       { diameter: 3.8,   color: "#fff5b8" },
   "basketball":     { diameter: 9.5,   color: "#cc6633" },
   "soccer ball":    { diameter: 8.7,   color: "#ffffff" },
   "golf ball":      { diameter: 1.68,  color: "#ffffff" },
-  "raspberry pi":   { diameter: 3.5,   color: "#5cba6f" },     // RPi 4 board diagonal-ish
+  "raspberry pi":   { diameter: 3.5,   color: "#5cba6f" },
   "raspberry pi zero": { diameter: 2.6, color: "#5cba6f" },
 };
 
@@ -76,7 +103,6 @@ function ReferenceAnchors({
   if (!ref) return null;
   const qty = Math.max(1, Math.min(scope.referenceScale.quantity ?? 1, 12));
   const r = ref.diameter / 2;
-  // Lay out in a row along X, centered on the assembly's interior centroid
   const spacing = ref.diameter * 1.05;
   const totalWidth = (qty - 1) * spacing;
   const startX = centerX - totalWidth / 2;
@@ -110,14 +136,12 @@ function frameCamera(
     }
     return;
   }
-  // Compute world AABB. Y/Z are swapped between assembly frame and Three.js (Z-up vs Y-up).
   const min = new THREE.Vector3(Infinity, Infinity, Infinity);
   const max = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
   for (const p of parts) {
     const tx = p.position.x;
-    const ty = p.position.z;       // assembly Z → three Y
-    const tz = p.position.y;       // assembly Y → three Z
-    // Approximate AABB by half-extents (ignoring rotation; gives a slightly loose fit)
+    const ty = p.position.z;
+    const tz = p.position.y;
     const r = Math.max(p.w, p.h, p.t) / 2;
     min.x = Math.min(min.x, tx - r);
     min.y = Math.min(min.y, ty - r);
@@ -131,7 +155,6 @@ function frameCamera(
   const longestEdge = Math.max(size.x, size.y, size.z) || 1;
   const fovRad = (camera.fov * Math.PI) / 180;
   const distance = (longestEdge * 0.5) / Math.tan(fovRad / 2);
-  // Place camera on a 1,1,1 isometric line, scaled to fit
   const dir = new THREE.Vector3(1, 0.8, 1).normalize();
   const newPos = new THREE.Vector3().copy(center).addScaledVector(dir, distance * 1.6);
   camera.position.copy(newPos);
@@ -155,7 +178,6 @@ function SceneController({
   homeSignal: number;
 }) {
   const { camera } = useThree();
-  // Re-frame whenever the part set changes meaningfully (count or any position) or homeSignal increments.
   const partKey = useMemo(
     () => parts.map(p => `${p.w}x${p.h}x${p.t}@${p.position.x},${p.position.y},${p.position.z}`).join("|"),
     [parts],
@@ -182,12 +204,19 @@ function printedBoundingBox(p: { dslJson?: string | null }): { w: number; d: num
   return { w: 25, d: 25, h: 5 };
 }
 
-export default function AssembledView({ projectId }: { projectId: Id<"projects"> }) {
+interface AssembledViewProps {
+  projectId: Id<"projects">;
+  focusedPartId?: Id<"parts"> | null;
+  onFocusPart?: (id: Id<"parts"> | null) => void;
+}
+
+export default function AssembledView({ projectId, focusedPartId = null, onFocusPart }: AssembledViewProps) {
   const parts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
   const project = useQuery(api.projects.get, projectId ? { projectId } : "skip");
   const controlsRef = useRef<any>(null);
   const [homeSignal, setHomeSignal] = useState(0);
-  // Build a uniform list with bounding-box-ish dims so the framer can compute bounds
+  const [showBounds, setShowBounds] = useState(false);
+
   const partBounds = useMemo(() => {
     if (!parts) return [];
     return parts.map(p => {
@@ -203,7 +232,6 @@ export default function AssembledView({ projectId }: { projectId: Id<"projects">
     });
   }, [parts]);
 
-  // Compute centroid for placing reference anchors
   const centroid = useMemo(() => {
     if (!partBounds.length) return { x: 0, y: 0, z: 0 };
     const sx = partBounds.reduce((a, p) => a + p.position.x, 0) / partBounds.length;
@@ -212,18 +240,56 @@ export default function AssembledView({ projectId }: { projectId: Id<"projects">
     return { x: sx, y: sy, z: sz };
   }, [partBounds]);
 
+  const handlePartClick = (id: Id<"parts">) => {
+    if (!onFocusPart) return;
+    onFocusPart(id === focusedPartId ? null : id);
+  };
+
+  const focusedPart = parts?.find(p => p._id === focusedPartId);
+
   return (
     <div className="relative w-full h-full">
-      <button
-        type="button"
-        onClick={() => setHomeSignal(s => s + 1)}
-        className="absolute top-3 right-3 z-10 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-card/80 backdrop-blur border border-border hover:border-primary/60 hover:bg-card transition-colors shadow-lg shadow-black/40 font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
-        title="Frame all parts"
+      <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setHomeSignal(s => s + 1)}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-card/80 backdrop-blur border border-border hover:border-primary/60 hover:bg-card transition-colors shadow-lg shadow-black/40 font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground"
+          title="Frame all parts"
+        >
+          <Home className="w-3.5 h-3.5" />
+          Home
+        </button>
+        <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-card/80 backdrop-blur border border-border shadow-lg shadow-black/40 font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showBounds}
+            onChange={(e) => setShowBounds(e.target.checked)}
+            className="accent-primary w-3 h-3"
+          />
+          <Square className="w-3.5 h-3.5" />
+          Bounds
+        </label>
+      </div>
+      {focusedPart && (
+        <div className="absolute top-3 left-3 z-10 px-3 py-1.5 rounded-md bg-primary/15 backdrop-blur border border-primary/40 shadow-lg shadow-black/40 font-mono text-[11px] flex items-center gap-2">
+          <span className="text-primary font-bold">{focusedPart.label}</span>
+          <span className="text-primary/60">·</span>
+          <span className="text-muted-foreground">{focusedPart.role}</span>
+          <button
+            type="button"
+            onClick={() => onFocusPart?.(null)}
+            className="ml-2 text-muted-foreground hover:text-foreground transition-colors"
+            title="Clear selection"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      <Canvas
+        camera={{ position: [20, 20, 20], fov: 35 }}
+        shadows
+        onPointerMissed={() => onFocusPart?.(null)}
       >
-        <Home className="w-3.5 h-3.5" />
-        Home
-      </button>
-      <Canvas camera={{ position: [20, 20, 20], fov: 35 }} shadows>
         <ambientLight intensity={0.6} />
         <directionalLight position={[20, 30, 10]} intensity={0.8} castShadow />
         <Grid args={[40, 40]} cellColor="#333" sectionColor="#555" fadeDistance={60} infiniteGrid />
@@ -231,20 +297,48 @@ export default function AssembledView({ projectId }: { projectId: Id<"projects">
         <SceneController parts={partBounds} controlsRef={controlsRef} homeSignal={homeSignal} />
         {parts?.map(p => {
           const kind = p.kind ?? "sheet_metal";
+          const selected = p._id === focusedPartId;
           if (kind === "printed") {
             const bb = printedBoundingBox(p);
-            return <PrintedPart key={p._id} w={bb.w} d={bb.d} h={bb.h} position={p.position} />;
+            return (
+              <PartMesh
+                key={p._id}
+                size={[bb.w / 25.4, bb.h / 25.4, bb.d / 25.4]}
+                position={p.position}
+                selected={selected}
+                showBounds={showBounds}
+                onClick={() => handlePartClick(p._id)}
+                color="#a374ff"
+                metalness={0}
+                roughness={0.8}
+              />
+            );
           }
           if (kind === "purchased") {
-            return <PurchasedPart key={p._id} position={p.position} label={p.label} />;
+            return (
+              <PartMesh
+                key={p._id}
+                size={[0.5, 0.5, 0.5]}
+                position={p.position}
+                selected={selected}
+                showBounds={showBounds}
+                onClick={() => handlePartClick(p._id)}
+                color="#f5b647"
+                wireframe
+              />
+            );
           }
           return (
-            <SheetMetalPart
+            <PartMesh
               key={p._id}
-              w={p.width ?? 1}
-              h={p.height ?? 1}
-              t={p.thickness ?? 0.075}
+              size={[p.width ?? 1, p.thickness ?? 0.075, p.height ?? 1]}
               position={p.position}
+              selected={selected}
+              showBounds={showBounds}
+              onClick={() => handlePartClick(p._id)}
+              color="#d0d4da"
+              metalness={0.4}
+              roughness={0.6}
             />
           );
         })}
@@ -258,4 +352,3 @@ export default function AssembledView({ projectId }: { projectId: Id<"projects">
     </div>
   );
 }
-

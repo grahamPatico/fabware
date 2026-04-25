@@ -158,7 +158,11 @@ export default function Workspace() {
             <PanelGroup direction="vertical" autoSaveId="fabware-workspace-v">
               <Panel defaultSize={70} minSize={30}>
                 <div className="h-full flex flex-col">
-                  <AssembledView projectId={projectId} />
+                  <AssembledView
+                    projectId={projectId}
+                    focusedPartId={focusedPartId}
+                    onFocusPart={setFocusedPartId}
+                  />
                 </div>
               </Panel>
               <PanelResizeHandle className={RESIZE_HANDLE_HORIZ} />
