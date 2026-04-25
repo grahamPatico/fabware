@@ -61,8 +61,12 @@ export const send = action({
     });
 
     const summaryLines: string[] = [];
+    let livePartsSnapshot = parts;
     for (const call of agentResult.toolCalls) {
-      summaryLines.push(await applyToolCall(ctx, a.projectId, parts, interfaces, call));
+      summaryLines.push(await applyToolCall(ctx, a.projectId, livePartsSnapshot, interfaces, call));
+      if (call.name === "select_archetype" || call.name === "update_archetype_params") {
+        livePartsSnapshot = await ctx.runQuery(api.parts.listForProject, { projectId: a.projectId });
+      }
     }
 
     const assistantText = agentResult.responseText.trim() ||
