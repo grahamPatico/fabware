@@ -117,6 +117,14 @@ export const remove = mutation({
       .collect();
     for (const a of assemblyParts) await ctx.db.delete(a._id);
 
+    const partsToDelete = await ctx.db.query("parts")
+      .withIndex("by_project", q => q.eq("projectId", projectId)).collect();
+    for (const p of partsToDelete) await ctx.db.delete(p._id);
+
+    const ifacesToDelete = await ctx.db.query("interfaces")
+      .withIndex("by_project", q => q.eq("projectId", projectId)).collect();
+    for (const i of ifacesToDelete) await ctx.db.delete(i._id);
+
     await ctx.db.delete(projectId);
   },
 });
