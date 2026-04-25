@@ -64,7 +64,12 @@ export const send = action({
     let livePartsSnapshot = parts;
     for (const call of agentResult.toolCalls) {
       summaryLines.push(await applyToolCall(ctx, a.projectId, livePartsSnapshot, interfaces, call));
-      if (call.name === "select_archetype" || call.name === "update_archetype_params") {
+      if (
+        call.name === "select_archetype" ||
+        call.name === "update_archetype_params" ||
+        call.name === "add_printed_part" ||
+        call.name === "add_purchased_part"
+      ) {
         livePartsSnapshot = await ctx.runQuery(api.parts.listForProject, { projectId: a.projectId });
       }
     }
@@ -183,6 +188,54 @@ async function applyToolCall(
 
     case "decompose_freeform":
       return "Free-form design isn't supported yet in v1. Pick the closest archetype instead (hinged_enclosure, box_with_lid, bracket_plus_panel, divided_tray, shelf_with_brackets, sliding_enclosure).";
+
+    case "add_printed_part": {
+      const dsl = JSON.stringify(call.input.dsl);
+      try {
+        await ctx.runMutation(internal.parts.addPrintedPartInternal, {
+          projectId,
+          role: call.input.role,
+          label: call.input.label,
+          position: call.input.position,
+          dslJson: dsl,
+        });
+      } catch (err: any) {
+        return `Couldn't add printed part ${call.input.role}: ${err?.message?.slice(0, 200) ?? "error"}`;
+      }
+      return `Added 3D-printed part: ${call.input.label}.`;
+    }
+
+    case "add_purchased_part": {
+      const dsl = JSON.stringify({
+        version: 1,
+        kind: "purchased",
+        mcmasterPartNumber: call.input.mcmasterPartNumber,
+        quantity: call.input.quantity,
+        label: call.input.label,
+      });
+      try {
+        await ctx.runMutation(internal.parts.addPurchasedPartInternal, {
+          projectId,
+          role: call.input.role,
+          label: call.input.label,
+          position: call.input.position,
+          dslJson: dsl,
+        });
+      } catch (err: any) {
+        return `Couldn't add purchased part ${call.input.role}: ${err?.message?.slice(0, 200) ?? "error"}`;
+      }
+      return `Added purchased: ${call.input.quantity} × ${call.input.label} (${call.input.mcmasterPartNumber}).`;
+    }
+
+    case "decide_make_or_buy": {
+      const decisionLabel: Record<string, string> = {
+        make_sheet_metal: "🔧 Make it (sheet metal)",
+        make_printed: "🟪 Make it (3D print)",
+        buy: "🛒 Buy it",
+      };
+      const label = decisionLabel[call.input.decision] ?? call.input.decision;
+      return `${label} — ${call.input.item}\n${call.input.reasoning}`;
+    }
 
     default:
       return `Unknown tool: ${call.name}`;
