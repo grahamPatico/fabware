@@ -77,20 +77,15 @@ export default function ChatPanel({ projectId, focusedPartRole, disabled = false
     e.target.value = "";
   };
 
-  const handleSend = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (disabled) return;
-    if ((!input.trim() && !pendingImage) || sending) return;
-
-    const content = input.trim() || (pendingImage ? "Use this reference image to design the part." : "");
-    const image = pendingImage;
-    setInput("");
-    setPendingImage(null);
+  const sendContent = async (content: string, image?: { data: string; mediaType: string }) => {
+    if (disabled || sending) return;
+    const trimmed = content.trim();
+    if (!trimmed && !image) return;
     setSending(true);
     try {
       await sendMessage({
         projectId,
-        content,
+        content: trimmed,
         imageData: image?.data,
         imageMediaType: image?.mediaType,
         model,
@@ -100,6 +95,16 @@ export default function ChatPanel({ projectId, focusedPartRole, disabled = false
     } finally {
       setSending(false);
     }
+  };
+
+  const handleSend = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if ((!input.trim() && !pendingImage) || sending) return;
+    const content = input.trim() || (pendingImage ? "Use this reference image to design the part." : "");
+    const image = pendingImage;
+    setInput("");
+    setPendingImage(null);
+    await sendContent(content, image ?? undefined);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -167,32 +172,56 @@ export default function ChatPanel({ projectId, focusedPartRole, disabled = false
             <p className="text-xs opacity-70">You can also attach a reference photo or sketch.</p>
           </div>
         ) : (
-          messages.map((msg, idx) => (
-            <div
-              key={msg._id ?? idx}
-              className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
-            >
-              <span className="text-[10px] font-mono text-muted-foreground uppercase mb-1 px-1">
-                {msg.role === "user" ? "User" : msg.model ? msg.model.replace("claude-", "") : "System"}
-              </span>
+          messages.map((msg, idx) => {
+            const isLast = idx === messages.length - 1;
+            const options = msg.role === "assistant" && isLast ? parseOptions(msg.content) : [];
+            return (
               <div
-                className={`max-w-[85%] rounded p-3 font-mono text-sm whitespace-pre-wrap ${
-                  msg.role === "user"
-                    ? "bg-primary/10 border border-primary/20 text-primary-foreground"
-                    : "bg-card border border-border text-foreground"
-                }`}
+                key={msg._id ?? idx}
+                className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
               >
-                {msg.imageData && msg.imageMediaType && (
-                  <img
-                    src={`data:${msg.imageMediaType};base64,${msg.imageData}`}
-                    alt="reference"
-                    className="max-w-full max-h-48 mb-2 rounded border border-border"
-                  />
+                <span className="text-[10px] font-mono text-muted-foreground uppercase mb-1 px-1">
+                  {msg.role === "user" ? "User" : msg.model ? msg.model.replace("claude-", "") : "System"}
+                </span>
+                <div
+                  className={`max-w-[85%] rounded p-3 font-mono text-sm whitespace-pre-wrap ${
+                    msg.role === "user"
+                      ? "bg-primary/10 border border-primary/20 text-primary-foreground"
+                      : "bg-card border border-border text-foreground"
+                  }`}
+                >
+                  {msg.imageData && msg.imageMediaType && (
+                    <img
+                      src={`data:${msg.imageMediaType};base64,${msg.imageData}`}
+                      alt="reference"
+                      className="max-w-full max-h-48 mb-2 rounded border border-border"
+                    />
+                  )}
+                  {msg.content}
+                </div>
+                {options.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2 max-w-[85%]">
+                    {options.map(o => (
+                      <Button
+                        key={o.n}
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={disabled || sending}
+                        onClick={() => sendContent(String(o.n))}
+                        className="font-mono text-xs gap-2 border-primary/30 hover:bg-primary/10"
+                        title={o.label}
+                      >
+                        <span className="font-bold text-primary">{o.n}</span>
+                        <span className="text-muted-foreground">·</span>
+                        <span className="truncate max-w-[260px]">{o.label}</span>
+                      </Button>
+                    ))}
+                  </div>
                 )}
-                {msg.content}
               </div>
-            </div>
-          ))
+            );
+          })
         )}
 
         {sending && (

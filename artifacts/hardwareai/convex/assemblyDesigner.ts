@@ -69,16 +69,6 @@ const TOOLS = [
       required: ["intent"],
     },
   },
-  {
-    name: "validate_dsl",
-    description: "Validate a single part's DSL against Send Cut Send rules.",
-    input_schema: { type: "object", properties: { dsl: { type: "object" } }, required: ["dsl"] },
-  },
-  {
-    name: "lookup_mcmaster",
-    description: "Look up a McMaster-Carr part.",
-    input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
-  },
 ] as const;
 
 function buildSystemPrompt(
@@ -128,8 +118,7 @@ ${focusedClause}
 ## Rules
 
 - Numbers are in inches, degrees, or dimensionless counts. Never millimeters.
-- Call \`validate_dsl\` before submitting any single-part DSL you're not sure about.
-- Look up McMaster parts with \`lookup_mcmaster\` before inventing part numbers.
+- Use your own knowledge for sheet-metal manufacturing rules and McMaster-Carr part conventions; the orchestrator validates assemblies after each change and surfaces issues in the rules strip.
 - \`decompose_freeform\` is a stub in this version; if you call it, you'll get back a message to the user to pick an archetype instead.
 `;
 }
