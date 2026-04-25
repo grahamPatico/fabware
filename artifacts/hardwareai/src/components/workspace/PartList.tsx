@@ -1,6 +1,7 @@
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { PartKindBadge } from "./PartKindBadge";
 
 interface Props {
   projectId: Id<"projects">;
@@ -26,7 +27,10 @@ export default function PartList({ projectId, focusedPartId, onFocusPart }: Prop
               p._id === focusedPartId ? "bg-primary/10 border-l-2 border-l-primary" : ""
             }`}
           >
-            <div className="font-bold">{p.label}</div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold">{p.label}</span>
+              <PartKindBadge kind={p.kind} />
+            </div>
             <div className="text-[10px] text-muted-foreground mt-0.5">
               {p.partType} · {p.material ?? "—"} · {p.thickness ?? "—"}"
             </div>

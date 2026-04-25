@@ -3,6 +3,8 @@ import { v } from "convex/values";
 import { PartDslSchema, legacyToDsl } from "./lib/dsl";
 import { buildFeatureGraph } from "./lib/featureGraph";
 import { generateDxf, type FlatPreviewSpec } from "./lib/dxfGenerator";
+import { PrintedDslSchema } from "./lib/printedDsl";
+import { generateStl } from "./lib/stlGenerator";
 
 
 function withGraph(spec: FlatPreviewSpec & { dslJson?: string | null }): FlatPreviewSpec {
@@ -131,6 +133,33 @@ export const runForPart = mutation({
         "Go to https://sendcutsend.com/upload and upload this DXF",
       ],
       estimatedParts: 1,
+    };
+  },
+});
+
+export const runForPrintedPart = mutation({
+  args: { projectId: v.id("projects"), partId: v.id("parts") },
+  handler: async (ctx, { projectId, partId }) => {
+    const project = await ctx.db.get(projectId);
+    const part = await ctx.db.get(partId);
+    if (!project) throw new Error("Project not found");
+    if (!part || part.projectId !== projectId) throw new Error("Part not found");
+    if (part.kind !== "printed") throw new Error("Part is not a printed part");
+    if (!part.dslJson) throw new Error("Part has no DSL");
+    const dsl = PrintedDslSchema.parse(JSON.parse(part.dslJson));
+    const stlContent = generateStl(dsl);
+    const filename = `${project.name.replace(/\s+/g, "-").toLowerCase()}-${part.role}.stl`;
+    await ctx.db.patch(projectId, { updatedAt: Date.now() });
+    return {
+      projectId, partId, filename, stlContent,
+      material: dsl.material, layerHeight: dsl.layerHeight, infill: dsl.infill,
+      instructions: [
+        `Download STL: ${filename}`,
+        `Print material: ${dsl.material}`,
+        `Layer height: ${dsl.layerHeight}mm`,
+        `Infill: ${Math.round(dsl.infill * 100)}%`,
+        "Slice in your preferred slicer (Cura/PrusaSlicer/Bambu Studio).",
+      ],
     };
   },
 });

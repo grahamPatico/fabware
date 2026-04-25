@@ -2,6 +2,7 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 import { validateAssembly, type AssemblyInput } from "./lib/assemblyRules";
 import { PartDslSchema } from "./lib/dsl";
+import { validatePartByKind } from "./lib/partValidator";
 
 export const getAssemblyValidation = query({
   args: { projectId: v.id("projects") },
@@ -16,8 +17,16 @@ export const getAssemblyValidation = query({
       .withIndex("by_project", q => q.eq("projectId", projectId))
       .collect();
 
+    // Filter to sheet-metal parts only; assembly rules apply only to sheet-metal.
+    // Other-kind parts (printed, purchased) have their own per-kind rules via getPartValidation.
+    const sheetMetalParts = parts.filter(p => (p.kind ?? "sheet_metal") === "sheet_metal");
+
+    // Filter interfaces to those referencing only sheet-metal parts.
+    const sheetMetalIds = new Set(sheetMetalParts.map(p => p._id));
+    const sheetMetalInterfaces = ifaces.filter(i => sheetMetalIds.has(i.partA) && sheetMetalIds.has(i.partB));
+
     const input: AssemblyInput = {
-      parts: parts.map(p => ({
+      parts: sheetMetalParts.map(p => ({
         id: p._id as unknown as string,
         role: p.role,
         pose: p.position,
@@ -27,7 +36,7 @@ export const getAssemblyValidation = query({
           depth: p.depth ?? null, features: [], finish: null, assemblyRefs: [],
         },
       })),
-      interfaces: ifaces.map(i => ({
+      interfaces: sheetMetalInterfaces.map(i => ({
         kind: i.kind,
         partA: i.partA as unknown as string,
         partB: i.partB as unknown as string,
@@ -38,5 +47,14 @@ export const getAssemblyValidation = query({
       scope: project?.scope ?? null,
     };
     return validateAssembly(input);
+  },
+});
+
+export const getPartValidation = query({
+  args: { partId: v.id("parts") },
+  handler: async (ctx, { partId }) => {
+    const part = await ctx.db.get(partId);
+    if (!part) return null;
+    return validatePartByKind(part);
   },
 });

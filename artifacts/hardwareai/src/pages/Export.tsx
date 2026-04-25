@@ -12,26 +12,38 @@ export default function Export() {
   const project = useQuery(api.projects.get, projectId ? { projectId } : "skip");
   const parts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
   const runForPart = useMutation(api.exportDxf.runForPart);
+  const runForPrintedPart = useMutation(api.exportDxf.runForPrintedPart);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  const downloadPart = async (partId: Id<"parts">) => {
+  const buttonLabel = (k: string | null | undefined) =>
+    k === "printed" ? "STL" : k === "purchased" ? "Open" : "DXF";
+
+  const downloadPart = async (part: { _id: Id<"parts">; kind?: string | null; purchasedPartNumber?: string | null; role: string }) => {
     if (!projectId) return;
-    setDownloadingId(partId);
-    setErrors(prev => ({ ...prev, [partId]: "" }));
+    setDownloadingId(part._id);
+    setErrors(prev => ({ ...prev, [part._id]: "" }));
     try {
-      const data = await runForPart({ projectId, partId });
-      const blob = new Blob([data.dxfContent], { type: "application/dxf" });
+      const kind = part.kind ?? "sheet_metal";
+      if (kind === "purchased") {
+        const clean = (part.purchasedPartNumber ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+        window.open(`https://www.mcmaster.com/${clean}/`, "_blank", "noopener,noreferrer");
+        return;
+      }
+      const data = kind === "printed"
+        ? await runForPrintedPart({ projectId, partId: part._id })
+        : await runForPart({ projectId, partId: part._id });
+      const content = (data as any).stlContent ?? (data as any).dxfContent;
+      const ext = kind === "printed" ? "stl" : "dxf";
+      const blob = new Blob([content], { type: `application/${ext}` });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = data.filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      a.download = (data as any).filename ?? `${part.role}.${ext}`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (err) {
-      setErrors(prev => ({ ...prev, [partId]: "Download failed." }));
+    } catch (err: any) {
+      setErrors(prev => ({ ...prev, [part._id]: err?.message?.slice(0, 200) ?? "Download failed." }));
     } finally {
       setDownloadingId(null);
     }
@@ -104,7 +116,7 @@ export default function Export() {
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <Button
-                        onClick={() => downloadPart(p._id)}
+                        onClick={() => downloadPart(p)}
                         disabled={downloadingId === p._id}
                         className="gap-2"
                         size="sm"
@@ -114,7 +126,7 @@ export default function Export() {
                         ) : (
                           <Download className="w-4 h-4" />
                         )}
-                        DXF
+                        {buttonLabel(p.kind)}
                       </Button>
                       {errors[p._id] && (
                         <p className="text-xs text-destructive">{errors[p._id]}</p>

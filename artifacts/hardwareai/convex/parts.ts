@@ -3,6 +3,8 @@ import { v } from "convex/values";
 import { generateSvgPreview, type FlatPreviewSpec } from "./lib/dxfGenerator";
 import { buildFeatureGraph } from "./lib/featureGraph";
 import { PartDslSchema } from "./lib/dsl";
+import { PrintedDslSchema } from "./lib/printedDsl";
+import { PurchasedDslSchema } from "./lib/purchasedDsl";
 
 const poseArgs = v.object({
   x: v.number(), y: v.number(), z: v.number(),
@@ -129,6 +131,115 @@ export const removePart = mutation({
       if (iface.partA === partId || iface.partB === partId) await ctx.db.delete(iface._id);
     }
     await ctx.db.delete(partId);
+  },
+});
+
+const printedPartArgs = {
+  projectId: v.id("projects"),
+  role: v.string(),
+  label: v.string(),
+  position: poseArgs,
+  dslJson: v.string(),    // PrintedDsl JSON
+};
+
+async function insertPrintedPart(ctx: any, a: any) {
+  const dsl = PrintedDslSchema.parse(JSON.parse(a.dslJson));
+  const now = Date.now();
+  return await ctx.db.insert("parts", {
+    projectId: a.projectId,
+    role: a.role,
+    label: a.label,
+    position: a.position,
+    kind: "printed",
+    partType: "printed",  // legacy field; keep populated for backwards compat
+    dslJson: a.dslJson,
+    printedMaterial: dsl.material,
+    printedInfill: dsl.infill,
+    printedLayerHeight: dsl.layerHeight,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+export const addPrintedPart = mutation({ args: printedPartArgs, handler: insertPrintedPart });
+export const addPrintedPartInternal = internalMutation({ args: printedPartArgs, handler: insertPrintedPart });
+
+const purchasedPartArgs = {
+  projectId: v.id("projects"),
+  role: v.string(),
+  label: v.string(),
+  position: poseArgs,
+  dslJson: v.string(),    // PurchasedDsl JSON
+};
+
+async function insertPurchasedPart(ctx: any, a: any) {
+  const dsl = PurchasedDslSchema.parse(JSON.parse(a.dslJson));
+  const now = Date.now();
+  return await ctx.db.insert("parts", {
+    projectId: a.projectId,
+    role: a.role,
+    label: a.label,
+    position: a.position,
+    kind: "purchased",
+    partType: "purchased",
+    dslJson: a.dslJson,
+    purchasedPartNumber: dsl.mcmasterPartNumber,
+    purchasedQuantity: dsl.quantity,
+    unitCostUsd: dsl.unitCostUsd,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+export const addPurchasedPart = mutation({ args: purchasedPartArgs, handler: insertPurchasedPart });
+export const addPurchasedPartInternal = internalMutation({ args: purchasedPartArgs, handler: insertPurchasedPart });
+
+export const updatePartDslByKindInternal = internalMutation({
+  args: { partId: v.id("parts"), dslJson: v.string() },
+  handler: async (ctx, { partId, dslJson }) => {
+    const existing = await ctx.db.get(partId);
+    if (!existing) throw new Error("Part not found");
+    const kind = existing.kind ?? "sheet_metal";
+    const now = Date.now();
+    if (kind === "printed") {
+      const dsl = PrintedDslSchema.parse(JSON.parse(dslJson));
+      await ctx.db.patch(partId, {
+        dslJson,
+        printedMaterial: dsl.material,
+        printedInfill: dsl.infill,
+        printedLayerHeight: dsl.layerHeight,
+        updatedAt: now,
+      });
+      return;
+    }
+    if (kind === "purchased") {
+      const dsl = PurchasedDslSchema.parse(JSON.parse(dslJson));
+      await ctx.db.patch(partId, {
+        dslJson,
+        purchasedPartNumber: dsl.mcmasterPartNumber,
+        purchasedQuantity: dsl.quantity,
+        unitCostUsd: dsl.unitCostUsd,
+        updatedAt: now,
+      });
+      return;
+    }
+    // sheet_metal
+    const dsl = PartDslSchema.parse(JSON.parse(dslJson));
+    const graph = buildFeatureGraph(dsl);
+    const preview: FlatPreviewSpec = {
+      partType: dsl.partType, material: dsl.material, thickness: dsl.thickness,
+      width: dsl.width, height: dsl.height, depth: dsl.depth ?? null,
+      bendAngles: null, bendRadius: null, holePattern: null,
+      powderCoat: !!dsl.finish, powderCoatColor: dsl.finish?.color ?? null,
+      dsl, featureGraph: graph,
+    };
+    const svg = generateSvgPreview(preview);
+    await ctx.db.patch(partId, {
+      partType: dsl.partType, material: dsl.material, thickness: dsl.thickness,
+      width: dsl.width, height: dsl.height, depth: dsl.depth ?? undefined,
+      powderCoat: !!dsl.finish, powderCoatColor: dsl.finish?.color ?? undefined,
+      dslJson, featureGraphJson: JSON.stringify(graph), svgPreview: svg, updatedAt: now,
+    });
   },
 });
 

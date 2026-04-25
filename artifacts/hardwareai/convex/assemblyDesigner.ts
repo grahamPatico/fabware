@@ -69,6 +69,58 @@ const TOOLS = [
       required: ["intent"],
     },
   },
+  {
+    name: "add_printed_part",
+    description: "Add a 3D-printed part to the project. Use for small custom shapes (bezels, knobs, brackets that don't justify sheet metal, complex geometries). Provide a PrintedDsl with primitive (box/cylinder/plate_with_holes) and a material (PLA/PETG/Nylon/ABS/Resin).",
+    input_schema: {
+      type: "object",
+      properties: {
+        role: { type: "string", description: "Snake-case role like 'keypad_bezel' or 'cable_grommet'." },
+        label: { type: "string", description: "Human label." },
+        dsl: { type: "object", description: "PrintedDsl JSON." },
+        position: {
+          type: "object",
+          properties: { x: { type: "number" }, y: { type: "number" }, z: { type: "number" }, rotX: { type: "number" }, rotY: { type: "number" }, rotZ: { type: "number" } },
+          required: ["x", "y", "z", "rotX", "rotY", "rotZ"],
+        },
+        rationale: { type: "string" },
+      },
+      required: ["role", "label", "dsl", "position", "rationale"],
+    },
+  },
+  {
+    name: "add_purchased_part",
+    description: "Add a purchased part referencing a McMaster part number. Use for fasteners, bearings, hinges, rubber feet, and other off-the-shelf hardware that's cheaper to buy than to make.",
+    input_schema: {
+      type: "object",
+      properties: {
+        role: { type: "string" },
+        label: { type: "string" },
+        mcmasterPartNumber: { type: "string" },
+        quantity: { type: "number" },
+        position: {
+          type: "object",
+          properties: { x: { type: "number" }, y: { type: "number" }, z: { type: "number" }, rotX: { type: "number" }, rotY: { type: "number" }, rotZ: { type: "number" } },
+          required: ["x", "y", "z", "rotX", "rotY", "rotZ"],
+        },
+        rationale: { type: "string" },
+      },
+      required: ["role", "label", "mcmasterPartNumber", "quantity", "position", "rationale"],
+    },
+  },
+  {
+    name: "decide_make_or_buy",
+    description: "Reason out loud about whether something the user wants should be a custom part (sheet metal or 3D print) or a purchased off-the-shelf item. The 'decision' field is shown to the user verbatim.",
+    input_schema: {
+      type: "object",
+      properties: {
+        item: { type: "string", description: "What the user is asking for (e.g. 'rubber foot', '12mm bearing')." },
+        decision: { type: "string", enum: ["make_sheet_metal", "make_printed", "buy"], description: "The recommendation." },
+        reasoning: { type: "string", description: "Short rationale shown to the user." },
+      },
+      required: ["item", "decision", "reasoning"],
+    },
+  },
 ] as const;
 
 function buildSystemPrompt(
@@ -120,6 +172,24 @@ ${focusedClause}
 - Numbers are in inches, degrees, or dimensionless counts. Never millimeters.
 - Use your own knowledge for sheet-metal manufacturing rules and McMaster-Carr part conventions; the orchestrator validates assemblies after each change and surfaces issues in the rules strip.
 - \`decompose_freeform\` is a stub in this version; if you call it, you'll get back a message to the user to pick an archetype instead.
+
+## Choosing a part kind
+
+Every custom part you add is one of three kinds:
+
+- **sheet_metal** — flat-pattern parts laser-cut by Send Cut Send. Use for panels, brackets, enclosures, anything dominated by 2D geometry with optional bends. Already covered by archetypes.
+- **printed** — 3D-printed parts (FDM/resin). Use for small custom shapes with complex 3D geometry: bezels, knobs, cable grommets, snap-fit clips, mounting standoffs. Add via \`add_printed_part\`.
+- **purchased** — off-the-shelf parts from McMaster. Use for fasteners, bearings, hinges, rubber feet, springs, magnets — anything where buying is cheaper, faster, and higher quality than making. Add via \`add_purchased_part\`.
+
+When the user asks for something and it's not obvious which kind to use, call \`decide_make_or_buy\` first. Defaults:
+
+- If it's a fastener/bearing/spring/hinge → buy.
+- If it's a 2D-dominant flat panel or bracket → sheet metal (use the existing archetype tools or refine_part).
+- If it's a small 3D shape with curves, snap fits, or features that don't unfold cleanly → printed.
+- If the user explicitly says "3D print", "PLA", "STL" → printed.
+- If the user says "stainless 304" or "powder coat" → sheet metal.
+
+Never invent McMaster part numbers; ask the user or use only numbers from the curated catalog you've already seen in the system prompt.
 `;
 }
 
