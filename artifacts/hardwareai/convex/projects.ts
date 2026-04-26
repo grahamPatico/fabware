@@ -172,6 +172,13 @@ export const updateScope = mutation({
   },
   handler: async (ctx, { projectId, scope }) => {
     await ctx.db.patch(projectId, { scope, updatedAt: Date.now() });
+    // If this project has opted into the new harness, kick the orchestrator so the
+    // scoping → decomposing transition fires immediately (it would otherwise wait
+    // until the next setUseNewHarness toggle or external trigger).
+    const project = await ctx.db.get(projectId);
+    if (project?.useNewHarness === true) {
+      await ctx.scheduler.runAfter(0, internal.orchestrator.tick.tick, { projectId });
+    }
     return await ctx.db.get(projectId);
   },
 });
