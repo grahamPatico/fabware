@@ -1,5 +1,6 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 
 export const list = query({
   args: {},
@@ -189,5 +190,16 @@ export const breakOut = mutation({
   handler: async (ctx, { projectId }) => {
     await ctx.db.patch(projectId, { archetypeId: null, archetypeParams: null, updatedAt: Date.now() });
     return await ctx.db.get(projectId);
+  },
+});
+
+export const setUseNewHarness = mutation({
+  args: { projectId: v.id("projects"), enabled: v.boolean() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.projectId, { useNewHarness: args.enabled, updatedAt: Date.now() });
+    if (args.enabled) {
+      // Kick the orchestrator so a freshly-flagged project starts ticking.
+      await ctx.scheduler.runAfter(0, internal.orchestrator.tick.tick, { projectId: args.projectId });
+    }
   },
 });
