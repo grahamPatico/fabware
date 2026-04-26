@@ -9,6 +9,7 @@ export default defineConfig({
       "convex/archetypes/**/*.test.ts",
       "convex/plugins/**/*.test.ts",
       "convex/orchestrator/**/*.test.ts",
+      "convex/specialists/**/*.test.ts",
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
     ],
