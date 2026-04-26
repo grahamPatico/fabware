@@ -130,6 +130,13 @@ export const removePart = mutation({
     for (const iface of ifaces) {
       if (iface.partA === partId || iface.partB === partId) await ctx.db.delete(iface._id);
     }
+    // Cascade-delete any violations that pointed at this specific part.
+    // (Project-level remove handles these too; this is for individual part removal.)
+    const partViolations = await ctx.db
+      .query("violations")
+      .withIndex("by_part", (q) => q.eq("partId", partId))
+      .collect();
+    for (const vio of partViolations) await ctx.db.delete(vio._id);
     await ctx.db.delete(partId);
   },
 });
