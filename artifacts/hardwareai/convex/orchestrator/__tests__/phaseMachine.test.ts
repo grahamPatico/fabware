@@ -69,4 +69,47 @@ describe("computeNextAction", () => {
       expect(action.toPhase).toBe("validating");
     }
   });
+
+  it("transitions decomposing → designing when parts exist", () => {
+    const action = computeNextAction({
+      project: { ...baseProject("decomposing"), scope: { tier: "mvp" } } as never,
+      parts: [{ _id: "pt1", kind: "sheet_metal" } as never],
+      openEscalations: [],
+      registeredKinds: [],
+    });
+    expect(action.kind).toBe("transitionPhase");
+    if (action.kind === "transitionPhase") {
+      expect(action.toPhase).toBe("designing");
+    }
+  });
+
+  it("returns 'noop' in validating phase (assembly validator not yet wired)", () => {
+    const action = computeNextAction({
+      project: baseProject("validating"),
+      parts: [],
+      openEscalations: [],
+      registeredKinds: [],
+    });
+    expect(action.kind).toBe("noop");
+  });
+
+  it("returns 'noop' in exporting phase (exporter not yet wired)", () => {
+    const action = computeNextAction({
+      project: baseProject("exporting"),
+      parts: [],
+      openEscalations: [],
+      registeredKinds: [],
+    });
+    expect(action.kind).toBe("noop");
+  });
+
+  it("returns 'wait' when project is done", () => {
+    const action = computeNextAction({
+      project: baseProject("done"),
+      parts: [],
+      openEscalations: [],
+      registeredKinds: [],
+    });
+    expect(action.kind).toBe("wait");
+  });
 });
