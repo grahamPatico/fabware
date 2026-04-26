@@ -205,7 +205,40 @@ async function applyToolCall(
       return "Free-form design isn't supported yet in v1. Pick the closest archetype instead (hinged_enclosure, box_with_lid, bracket_plus_panel, divided_tray, shelf_with_brackets, sliding_enclosure).";
 
     case "add_printed_part": {
-      const dsl = JSON.stringify(call.input.dsl);
+      // Tolerant defaults: agent often omits version/kind/layerHeight/infill,
+      // and sometimes feature.name. Fill them in before validation.
+      // Also coerce rotations: if any |rot| > 2π, assume agent gave degrees.
+      const TWO_PI = 2 * Math.PI;
+      const pos = call.input.position;
+      const looksDegrees = ["rotX", "rotY", "rotZ"].some(k => Math.abs(pos?.[k] ?? 0) > TWO_PI);
+      if (looksDegrees) {
+        pos.rotX = (pos.rotX ?? 0) * (Math.PI / 180);
+        pos.rotY = (pos.rotY ?? 0) * (Math.PI / 180);
+        pos.rotZ = (pos.rotZ ?? 0) * (Math.PI / 180);
+      }
+      const rawDsl = (call.input.dsl ?? {}) as Record<string, unknown>;
+      const rawFeatures = Array.isArray(rawDsl.features) ? rawDsl.features : [];
+      const features = rawFeatures.map((f: any, i: number) => {
+        const filled: any = {
+          name: typeof f?.name === "string" && f.name.length > 0 ? f.name : `${f?.kind ?? "feature"}_${i}`,
+          ...f,
+        };
+        // Pocket: agent often gives `depth` (Y dim) but forgets `depthZ` (cut depth).
+        if (filled.kind === "pocket" && typeof filled.depthZ !== "number") {
+          filled.depthZ = 3;
+        }
+        return filled;
+      });
+      const filledDsl = {
+        version: 1,
+        kind: "printed",
+        material: rawDsl.material ?? "PLA",
+        layerHeight: typeof rawDsl.layerHeight === "number" ? rawDsl.layerHeight : 0.2,
+        infill: typeof rawDsl.infill === "number" ? rawDsl.infill : 0.2,
+        primitive: rawDsl.primitive,
+        features,
+      };
+      const dsl = JSON.stringify(filledDsl);
       try {
         await ctx.runMutation(internal.parts.addPrintedPartInternal, {
           projectId,
@@ -221,6 +254,15 @@ async function applyToolCall(
     }
 
     case "add_purchased_part": {
+      // Coerce degree-rotations same as add_printed_part.
+      const TWO_PI2 = 2 * Math.PI;
+      const ppos = call.input.position;
+      const ppLooksDegrees = ["rotX", "rotY", "rotZ"].some(k => Math.abs(ppos?.[k] ?? 0) > TWO_PI2);
+      if (ppLooksDegrees) {
+        ppos.rotX = (ppos.rotX ?? 0) * (Math.PI / 180);
+        ppos.rotY = (ppos.rotY ?? 0) * (Math.PI / 180);
+        ppos.rotZ = (ppos.rotZ ?? 0) * (Math.PI / 180);
+      }
       const dsl = JSON.stringify({
         version: 1,
         kind: "purchased",
@@ -233,7 +275,7 @@ async function applyToolCall(
           projectId,
           role: call.input.role,
           label: call.input.label,
-          position: call.input.position,
+          position: ppos,
           dslJson: dsl,
         });
       } catch (err: any) {

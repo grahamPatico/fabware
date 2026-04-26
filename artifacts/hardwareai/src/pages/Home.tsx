@@ -48,7 +48,7 @@ export default function Home() {
       <main className="flex-1 p-6 md:p-12 max-w-6xl mx-auto w-full">
         <div className="flex items-center justify-between mb-8">
           <h2 className="text-2xl font-mono uppercase tracking-widest text-muted-foreground">
-            Recent Parts
+            Recent Projects
           </h2>
         </div>
 
@@ -62,10 +62,10 @@ export default function Home() {
           <div className="text-center py-20 border border-dashed border-border rounded-lg bg-card/50">
             <Hammer className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
             <h3 className="text-lg font-mono text-muted-foreground uppercase">
-              No parts designed yet
+              No projects yet
             </h3>
             <p className="text-sm text-muted-foreground/70 mt-2 max-w-sm mx-auto">
-              Initialize a new project to start designing hardware using plain text.
+              Start a new project to design an assembly from plain text.
             </p>
           </div>
         ) : (

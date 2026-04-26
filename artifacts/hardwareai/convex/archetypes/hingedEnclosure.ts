@@ -72,13 +72,18 @@ function generate(params: Params, _scope: ProjectScope) {
     pattern: "bottom_row" as const, inset: 0.375,
   });
 
+  // Convention: cavity occupies x∈[0, innerW], y∈[0, innerD], z∈[0, innerH].
+  // All part centers placed accordingly so geometry lines up.
+  const cx = params.innerWidth / 2;
+  const cy = params.innerDepth / 2;
+  const cz = innerH / 2;
   const parts = [
-    { role: "base",       label: "Base",         dsl: makePlate("base",       outerW, outerD, params, { ...hole(params.fastenerCount), pattern: "corner" as const }),    position: { x: 0,                y: 0,                       z: 0,           rotX: 0,            rotY: 0, rotZ: 0 } },
-    { role: "wall_front", label: "Wall — Front", dsl: makePlate("wall_front", outerW, innerH, params, hole(params.fastenerCount)),                                position: { x: 0,                y: -t,                      z: innerH / 2,  rotX: Math.PI / 2,  rotY: 0, rotZ: 0 } },
-    { role: "wall_back",  label: "Wall — Back",  dsl: makePlate("wall_back",  outerW, innerH, params, hole(params.fastenerCount)),                                position: { x: 0,                y: params.innerDepth,       z: innerH / 2,  rotX: Math.PI / 2,  rotY: 0, rotZ: 0 } },
-    { role: "wall_left",  label: "Wall — Left",  dsl: makePlate("wall_left",  outerD, innerH, params, hole(params.fastenerCount)),                                position: { x: -t,               y: params.innerDepth / 2,   z: innerH / 2,  rotX: Math.PI / 2,  rotY: 0, rotZ: Math.PI / 2 } },
-    { role: "wall_right", label: "Wall — Right", dsl: makePlate("wall_right", outerD, innerH, params, hole(params.fastenerCount)),                                position: { x: params.innerWidth, y: params.innerDepth / 2,   z: innerH / 2,  rotX: Math.PI / 2,  rotY: 0, rotZ: Math.PI / 2 } },
-    { role: "lid",        label: "Lid",          dsl: makePlate("lid",        outerW, outerD, params, { ...hole(params.fastenerCount), pattern: "bottom_row" as const }),  position: { x: 0,                y: 0,                       z: innerH + t,  rotX: 0,            rotY: 0, rotZ: 0 } },
+    { role: "base",       label: "Base",         dsl: makePlate("base",       outerW, outerD, params, { ...hole(params.fastenerCount), pattern: "corner" as const }),    position: { x: cx,           y: cy,                z: -t / 2,       rotX: 0,            rotY: 0, rotZ: 0 } },
+    { role: "wall_front", label: "Wall — Front", dsl: makePlate("wall_front", outerW, innerH, params, hole(params.fastenerCount)),                                position: { x: cx,           y: -t / 2,            z: cz,           rotX: Math.PI / 2,  rotY: 0, rotZ: 0 } },
+    { role: "wall_back",  label: "Wall — Back",  dsl: makePlate("wall_back",  outerW, innerH, params, hole(params.fastenerCount)),                                position: { x: cx,           y: params.innerDepth + t / 2, z: cz,   rotX: Math.PI / 2,  rotY: 0, rotZ: 0 } },
+    { role: "wall_left",  label: "Wall — Left",  dsl: makePlate("wall_left",  outerD, innerH, params, hole(params.fastenerCount)),                                position: { x: -t / 2,       y: cy,                z: cz,           rotX: Math.PI / 2,  rotY: 0, rotZ: Math.PI / 2 } },
+    { role: "wall_right", label: "Wall — Right", dsl: makePlate("wall_right", outerD, innerH, params, hole(params.fastenerCount)),                                position: { x: params.innerWidth + t / 2, y: cy, z: cz,           rotX: Math.PI / 2,  rotY: 0, rotZ: Math.PI / 2 } },
+    { role: "lid",        label: "Lid",          dsl: makePlate("lid",        outerW, outerD, params, { ...hole(params.fastenerCount), pattern: "bottom_row" as const }),  position: { x: cx,           y: cy,                z: innerH + t / 2, rotX: 0,            rotY: 0, rotZ: 0 } },
   ];
 
   const interfaces = [

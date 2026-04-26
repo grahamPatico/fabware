@@ -87,21 +87,29 @@ function findReferenceKind(kind: string): { diameter: number; color: string } | 
   return null;
 }
 
+function parseQuantityFromKind(kind: string): number | null {
+  const m = kind.match(/^\s*(\d+)\b/);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return Number.isFinite(n) ? n : null;
+}
+
 function ReferenceAnchors({
   scope,
   centerX,
   centerY,
-  centerZ,
+  floorZ,
 }: {
   scope: { referenceScale?: { kind: string; quantity?: number; dimensions?: { w: number; d: number; h: number } } | null } | null;
   centerX: number;
   centerY: number;
-  centerZ: number;
+  floorZ: number;
 }) {
   if (!scope?.referenceScale) return null;
   const ref = findReferenceKind(scope.referenceScale.kind);
   if (!ref) return null;
-  const qty = Math.max(1, Math.min(scope.referenceScale.quantity ?? 1, 12));
+  const explicitQty = scope.referenceScale.quantity ?? parseQuantityFromKind(scope.referenceScale.kind);
+  const qty = Math.max(1, Math.min(explicitQty ?? 1, 12));
   const r = ref.diameter / 2;
   const spacing = ref.diameter * 1.05;
   const totalWidth = (qty - 1) * spacing;
@@ -111,11 +119,11 @@ function ReferenceAnchors({
       {Array.from({ length: qty }).map((_, i) => (
         <mesh
           key={i}
-          position={[startX + i * spacing, centerZ + r, centerY]}
+          position={[startX + i * spacing, floorZ + r, centerY]}
           castShadow
         >
           <sphereGeometry args={[r, 24, 16]} />
-          <meshStandardMaterial color={ref.color} transparent opacity={0.55} roughness={0.45} />
+          <meshStandardMaterial color={ref.color} transparent opacity={0.6} roughness={0.45} />
         </mesh>
       ))}
     </>
@@ -232,12 +240,20 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
     });
   }, [parts]);
 
-  const centroid = useMemo(() => {
-    if (!partBounds.length) return { x: 0, y: 0, z: 0 };
-    const sx = partBounds.reduce((a, p) => a + p.position.x, 0) / partBounds.length;
-    const sy = partBounds.reduce((a, p) => a + p.position.y, 0) / partBounds.length;
-    const sz = partBounds.reduce((a, p) => a + p.position.z, 0) / partBounds.length;
-    return { x: sx, y: sy, z: sz };
+  const bbox = useMemo(() => {
+    if (!partBounds.length) return { cx: 0, cy: 0, floorZ: 0 };
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity;
+    for (const p of partBounds) {
+      const rxy = Math.max(p.w, p.h, p.t) / 2;
+      minX = Math.min(minX, p.position.x - rxy);
+      maxX = Math.max(maxX, p.position.x + rxy);
+      minY = Math.min(minY, p.position.y - rxy);
+      maxY = Math.max(maxY, p.position.y + rxy);
+      minZ = Math.min(minZ, p.position.z - p.t / 2);
+    }
+    return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, floorZ: minZ };
   }, [partBounds]);
 
   const handlePartClick = (id: Id<"parts">) => {
@@ -344,9 +360,9 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
         })}
         <ReferenceAnchors
           scope={project?.scope ?? null}
-          centerX={centroid.x}
-          centerY={centroid.y}
-          centerZ={centroid.z}
+          centerX={bbox.cx}
+          centerY={bbox.cy}
+          floorZ={bbox.floorZ}
         />
       </Canvas>
     </div>

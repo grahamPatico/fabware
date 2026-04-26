@@ -7,10 +7,37 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
+type HardwareRef = { mcmasterPartNumber: string; quantity: number; role?: string };
+
+function aggregateInterfaceHardware(
+  interfaces: Array<{ hardwareRefs?: HardwareRef[] | null }> | undefined,
+): Array<{ partNumber: string; quantity: number; roles: Set<string> }> {
+  if (!interfaces) return [];
+  const map = new Map<string, { partNumber: string; quantity: number; roles: Set<string> }>();
+  for (const iface of interfaces) {
+    for (const ref of iface.hardwareRefs ?? []) {
+      const existing = map.get(ref.mcmasterPartNumber);
+      if (existing) {
+        existing.quantity += ref.quantity;
+        if (ref.role) existing.roles.add(ref.role);
+      } else {
+        map.set(ref.mcmasterPartNumber, {
+          partNumber: ref.mcmasterPartNumber,
+          quantity: ref.quantity,
+          roles: new Set(ref.role ? [ref.role] : []),
+        });
+      }
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => a.partNumber.localeCompare(b.partNumber));
+}
+
 export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"projects"> }) {
   const parts = useQuery(api.assemblyParts.list, projectId ? { projectId } : "skip");
   const allParts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
+  const interfaces = useQuery(api.interfaces.listForProject, projectId ? { projectId } : "skip");
   const purchasedParts = (allParts ?? []).filter(p => (p.kind ?? "sheet_metal") === "purchased");
+  const interfaceHardware = aggregateInterfaceHardware(interfaces);
   const createPart = useMutation(api.assemblyParts.create);
   const deletePart = useMutation(api.assemblyParts.remove);
 
@@ -60,7 +87,7 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
           </span>
         </div>
         <Badge variant="outline" className="font-mono text-[10px]">
-          {(parts ?? []).length} item{(parts ?? []).length === 1 ? "" : "s"}
+          {(parts ?? []).length + interfaceHardware.length + purchasedParts.length} item{(parts ?? []).length + interfaceHardware.length + purchasedParts.length === 1 ? "" : "s"}
         </Badge>
       </div>
 
@@ -137,9 +164,38 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
 
       <div className="flex flex-col gap-1 min-h-0 overflow-y-auto">
         {isLoading && <div className="text-xs text-muted-foreground font-mono">Loading…</div>}
-        {!isLoading && (parts ?? []).length === 0 && (
+        {!isLoading && (parts ?? []).length === 0 && interfaceHardware.length === 0 && (
           <div className="text-xs text-muted-foreground font-mono italic py-2">
             No assembly parts yet. Search above, or ask the chat: "add four 1/4-20 cap screws for the mounting holes."
+          </div>
+        )}
+        {interfaceHardware.length > 0 && (
+          <div className="mb-2">
+            <div className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground mb-1">
+              Required hardware (from interfaces)
+            </div>
+            {interfaceHardware.map((h) => (
+              <a
+                key={h.partNumber}
+                href={`https://www.mcmaster.com/${h.partNumber.replace(/[^A-Z0-9]/gi, "").toUpperCase()}/`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors"
+              >
+                <Badge variant="secondary" className="font-mono text-[10px] shrink-0 w-10 justify-center">
+                  ×{h.quantity}
+                </Badge>
+                <span className="font-mono text-xs text-primary flex items-center gap-1 shrink-0">
+                  {h.partNumber}
+                  <ExternalLink className="w-3 h-3" />
+                </span>
+                {h.roles.size > 0 && (
+                  <span className="font-mono text-[10px] uppercase text-muted-foreground truncate">
+                    {Array.from(h.roles).join(", ")}
+                  </span>
+                )}
+              </a>
+            ))}
           </div>
         )}
         {(parts ?? []).map((p) => (

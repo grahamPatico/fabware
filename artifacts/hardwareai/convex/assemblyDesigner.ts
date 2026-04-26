@@ -72,15 +72,38 @@ const TOOLS = [
   },
   {
     name: "add_printed_part",
-    description: "Add a 3D-printed part to the project. Use for small custom shapes (bezels, knobs, brackets that don't justify sheet metal, complex geometries). Provide a PrintedDsl with primitive (box/cylinder/plate_with_holes) and a material (PLA/PETG/Nylon/ABS/Resin).",
+    description: "Add a 3D-printed part to the project. Use for small custom shapes (bezels, knobs, brackets that don't justify sheet metal, complex geometries). All dimensions in MILLIMETERS (not inches).",
     input_schema: {
       type: "object",
       properties: {
         role: { type: "string", description: "Snake-case role like 'keypad_bezel' or 'cable_grommet'." },
         label: { type: "string", description: "Human label." },
-        dsl: { type: "object", description: "PrintedDsl JSON." },
+        dsl: {
+          type: "object",
+          description: "PrintedDsl. Required fields: material, primitive. Optional: layerHeight (default 0.2), infill (default 0.2). The wrapper fields version=1 and kind='printed' are added automatically.",
+          properties: {
+            material: { type: "string", enum: ["PLA", "PETG", "Nylon", "ABS", "Resin"] },
+            layerHeight: { type: "number", description: "Layer height in mm. Typical: 0.2 for PLA/PETG, 0.05–0.1 for resin." },
+            infill: { type: "number", description: "Fractional infill 0..1. Typical: 0.15–0.3." },
+            primitive: {
+              description: "One of three primitive kinds: box, cylinder, or plate_with_holes.",
+              oneOf: [
+                { type: "object", properties: { kind: { const: "box" }, width: { type: "number" }, depth: { type: "number" }, height: { type: "number" } }, required: ["kind", "width", "depth", "height"] },
+                { type: "object", properties: { kind: { const: "cylinder" }, radius: { type: "number" }, height: { type: "number" } }, required: ["kind", "radius", "height"] },
+                { type: "object", properties: { kind: { const: "plate_with_holes" }, width: { type: "number" }, depth: { type: "number" }, thickness: { type: "number" }, holes: { type: "array", items: { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, diameter: { type: "number" } }, required: ["x", "y", "diameter"] } } }, required: ["kind", "width", "depth", "thickness"] },
+              ],
+            },
+            features: {
+              type: "array",
+              description: "Optional features. Each one of hole_through, boss, or pocket.",
+              items: { type: "object" },
+            },
+          },
+          required: ["material", "primitive"],
+        },
         position: {
           type: "object",
+          description: "Position in INCHES (assembly frame). Rotations rotX/rotY/rotZ in RADIANS (e.g., 90° = 1.5708, 180° = 3.1416). Use 0 for no rotation. Even though printed part dimensions are in mm, position is shared with sheet-metal parts in inches.",
           properties: { x: { type: "number" }, y: { type: "number" }, z: { type: "number" }, rotX: { type: "number" }, rotY: { type: "number" }, rotZ: { type: "number" } },
           required: ["x", "y", "z", "rotX", "rotY", "rotZ"],
         },

@@ -74,12 +74,15 @@ function generate(params: Params, _scope: ProjectScope) {
     diameter: mountingHoleDia, pattern: "corner" as const, inset: 0.375,
   };
 
+  const cx = params.innerWidth / 2;
+  const cy = params.innerDepth / 2;
+  const cz = innerH / 2;
   const parts: GeneratedPart[] = [
-    { role: "base",       label: "Base",         dsl: makePlate(outerW, outerD, params, cornerHole),    position: { x: 0,                 y: 0,                     z: 0,          rotX: 0,           rotY: 0, rotZ: 0 } },
-    { role: "wall_front", label: "Wall — Front", dsl: makePlate(outerW, innerH, params, bottomRowHole), position: { x: 0,                 y: -t,                    z: innerH / 2, rotX: Math.PI / 2, rotY: 0, rotZ: 0 } },
-    { role: "wall_back",  label: "Wall — Back",  dsl: makePlate(outerW, innerH, params, bottomRowHole), position: { x: 0,                 y: params.innerDepth,     z: innerH / 2, rotX: Math.PI / 2, rotY: 0, rotZ: 0 } },
-    { role: "wall_left",  label: "Wall — Left",  dsl: makePlate(outerD, innerH, params, bottomRowHole), position: { x: -t,                y: params.innerDepth / 2, z: innerH / 2, rotX: Math.PI / 2, rotY: 0, rotZ: Math.PI / 2 } },
-    { role: "wall_right", label: "Wall — Right", dsl: makePlate(outerD, innerH, params, bottomRowHole), position: { x: params.innerWidth, y: params.innerDepth / 2, z: innerH / 2, rotX: Math.PI / 2, rotY: 0, rotZ: Math.PI / 2 } },
+    { role: "base",       label: "Base",         dsl: makePlate(outerW, outerD, params, cornerHole),    position: { x: cx,           y: cy,                z: -t / 2,         rotX: 0,           rotY: 0, rotZ: 0 } },
+    { role: "wall_front", label: "Wall — Front", dsl: makePlate(outerW, innerH, params, bottomRowHole), position: { x: cx,           y: -t / 2,            z: cz,             rotX: Math.PI / 2, rotY: 0, rotZ: 0 } },
+    { role: "wall_back",  label: "Wall — Back",  dsl: makePlate(outerW, innerH, params, bottomRowHole), position: { x: cx,           y: params.innerDepth + t / 2, z: cz,     rotX: Math.PI / 2, rotY: 0, rotZ: 0 } },
+    { role: "wall_left",  label: "Wall — Left",  dsl: makePlate(outerD, innerH, params, bottomRowHole), position: { x: -t / 2,       y: cy,                z: cz,             rotX: Math.PI / 2, rotY: 0, rotZ: Math.PI / 2 } },
+    { role: "wall_right", label: "Wall — Right", dsl: makePlate(outerD, innerH, params, bottomRowHole), position: { x: params.innerWidth + t / 2, y: cy, z: cz,             rotX: Math.PI / 2, rotY: 0, rotZ: Math.PI / 2 } },
   ];
 
   // Add dividers, evenly spaced along the width
