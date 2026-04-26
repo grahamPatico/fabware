@@ -1,4 +1,4 @@
-import { query } from "../_generated/server";
+import { query, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 
@@ -46,5 +46,19 @@ export const getDesignPlan = query({
       .withIndex("by_project_status", (q) => q.eq("projectId", args.projectId).eq("status", "open"))
       .collect();
     return assembleDesignPlan({ project, parts, interfaces, openViolations, openEscalations });
+  },
+});
+
+export const _internalTickContext = internalQuery({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, args) => {
+    const project = await ctx.db.get(args.projectId);
+    if (!project) return null;
+    const parts = await ctx.db.query("parts").withIndex("by_project", (q) => q.eq("projectId", args.projectId)).collect();
+    const openEscalations = await ctx.db
+      .query("escalations")
+      .withIndex("by_project_status", (q) => q.eq("projectId", args.projectId).eq("status", "open"))
+      .collect();
+    return { project, parts, openEscalations };
   },
 });
