@@ -69,7 +69,7 @@ export const tick = internalAction({
       const partKind = (partRecord as { kind?: string } | undefined)?.kind ?? "sheet_metal";
 
       // Mark the part 'designing' so a re-entrant tick doesn't re-dispatch it.
-      await ctx.runMutation(internal.specialists.sheetMetal._setPartStatus, {
+      await ctx.runMutation(internal.specialists.sheetMetalInternals._setPartStatus, {
         partId: action.partId as Id<"parts">,
         status: "designing",
       });
