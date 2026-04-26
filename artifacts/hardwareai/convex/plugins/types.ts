@@ -3,7 +3,7 @@
  * hardware-assembly, …) implements this shape. Pure TS; no Convex, no Anthropic.
  */
 
-import type { ZodType } from "zod";
+import type { ZodType } from "zod/v4";
 
 // ─── Identity ────────────────────────────────────────────────────────────────
 
