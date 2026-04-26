@@ -2,6 +2,9 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 
+// NOTE: structurally identical to AgentTool in convex/plugins/types.ts. Plan 4 should
+// consolidate to a single canonical source — likely by re-exporting from plugins/types
+// here, since plugins/types is the contract source-of-truth.
 export interface AgentTool {
   name: string;
   description: string;
