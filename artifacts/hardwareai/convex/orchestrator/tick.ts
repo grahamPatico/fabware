@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { computeNextAction } from "./phaseMachine";
 import { registeredKinds } from "../plugins/registry";
+import type { Id } from "../_generated/dataModel";
 
 /**
  * Orchestrator heartbeat. Call after any state change that might advance the plan
@@ -62,12 +63,41 @@ export const tick = internalAction({
     }
 
     if (action.kind === "designPart") {
-      // Plan 2 wires the actual specialist dispatch here.
+      // Look up the plugin for the part's kind. computeNextAction already
+      // verified registeredKinds.includes(part.kind), so this is defensive.
+      const partRecord = parts.find((p: { _id: string }) => p._id === action.partId);
+      const partKind = (partRecord as { kind?: string } | undefined)?.kind ?? "sheet_metal";
+
+      // Mark the part 'designing' so a re-entrant tick doesn't re-dispatch it.
+      await ctx.runMutation(internal.specialists.sheetMetal._setPartStatus, {
+        partId: action.partId as Id<"parts">,
+        status: "designing",
+      });
+
       await ctx.runMutation(internal.orchestrator.planEvents.append, {
         projectId: args.projectId,
         kind: "specialist-scheduled",
-        payload: { partId: action.partId, message: "specialist not yet wired (Plan 2)" },
+        payload: { partId: action.partId, details: { kind: partKind } },
       });
+
+      // Dispatch the right specialist for this kind. Today only sheet_metal exists;
+      // future kinds get their own dispatch lines (Plan 5 = printed, Plan 6 = hardware-assembly).
+      if (partKind === "sheet_metal") {
+        await ctx.scheduler.runAfter(0, internal.specialists.sheetMetal.run, {
+          projectId: args.projectId,
+          partId: action.partId as Id<"parts">,
+        });
+      } else {
+        // No plugin's specialist registered yet — log and leave the part as 'designing';
+        // the next tick will not re-dispatch (status guard) until a future plan ships
+        // its specialist. This branch is unreachable in Plan 2 because computeNextAction
+        // gates designPart on registeredKinds, which only contains 'sheet_metal'.
+        await ctx.runMutation(internal.orchestrator.planEvents.append, {
+          projectId: args.projectId,
+          kind: "noop-logged",
+          payload: { partId: action.partId, message: `specialist for kind="${partKind}" not yet wired` },
+        });
+      }
       return action;
     }
 

@@ -40,7 +40,10 @@ export function computeNextAction(input: Input): Action {
   }
 
   if (phase === "designing") {
-    const pending = input.parts.find((p) => (p as Doc<"parts"> & { status?: string }).status === "pending");
+    const pending = input.parts.find((p) => {
+      const status = (p as Doc<"parts"> & { status?: string }).status;
+      return status === "pending" || status === undefined;
+    });
     if (pending) {
       const kind = (pending as Doc<"parts"> & { kind?: string }).kind as PartKind | undefined;
       if (!kind || !input.registeredKinds.includes(kind)) {
@@ -50,7 +53,7 @@ export function computeNextAction(input: Input): Action {
     }
     const allDone = input.parts.every((p) => {
       const s = (p as Doc<"parts"> & { status?: string }).status;
-      return s === "ok" || s === "escalated";
+      return s === "ok" || s === "escalated" || s === "failed";
     });
     if (allDone && input.parts.length > 0) {
       return { kind: "transitionPhase", fromPhase: "designing", toPhase: "validating" };

@@ -126,4 +126,17 @@ describe("computeNextAction", () => {
     });
     expect(action.kind).toBe("wait");
   });
+
+  it("skips parts in 'designing' status (specialist already in flight)", () => {
+    const action = computeNextAction({
+      project: { ...baseProject("designing"), scope: { tier: "mvp" } } as never,
+      parts: [
+        { _id: "pt1", kind: "sheet_metal", status: "designing" } as never,
+        { _id: "pt2", kind: "sheet_metal", status: "ok" } as never,
+      ],
+      openEscalations: [],
+      registeredKinds: ["sheet_metal"],
+    });
+    expect(action.kind).toBe("noop");
+  });
 });
