@@ -4,7 +4,14 @@ import path from "path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["convex/lib/**/*.test.ts", "convex/archetypes/**/*.test.ts", "src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: [
+      "convex/lib/**/*.test.ts",
+      "convex/archetypes/**/*.test.ts",
+      "convex/plugins/**/*.test.ts",
+      "convex/orchestrator/**/*.test.ts",
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+    ],
     globals: false,
   },
   resolve: {
