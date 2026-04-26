@@ -30,6 +30,20 @@ describe("computeNextAction", () => {
     expect(action.kind).toBe("wait");
   });
 
+  it("transitions scoping → decomposing when scope is set", () => {
+    const action = computeNextAction({
+      project: { ...baseProject("scoping"), scope: { tier: "mvp" } } as never,
+      parts: [],
+      openEscalations: [],
+      registeredKinds: [],
+    });
+    expect(action.kind).toBe("transitionPhase");
+    if (action.kind === "transitionPhase") {
+      expect(action.fromPhase).toBe("scoping");
+      expect(action.toPhase).toBe("decomposing");
+    }
+  });
+
   it("returns 'noop' when phase is 'designing' but no plugins registered yet", () => {
     const action = computeNextAction({
       project: { ...baseProject("designing"), scope: { tier: "mvp" } } as never,
