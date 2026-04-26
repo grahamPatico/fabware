@@ -126,6 +126,25 @@ export const remove = mutation({
       .withIndex("by_project", q => q.eq("projectId", projectId)).collect();
     for (const i of ifacesToDelete) await ctx.db.delete(i._id);
 
+    // Cascade-delete harness tables added in Plan 1.
+    const violations = await ctx.db
+      .query("violations")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .collect();
+    for (const v of violations) await ctx.db.delete(v._id);
+
+    const escalations = await ctx.db
+      .query("escalations")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .collect();
+    for (const e of escalations) await ctx.db.delete(e._id);
+
+    const planEvents = await ctx.db
+      .query("planEvents")
+      .withIndex("by_project_at", (q) => q.eq("projectId", projectId))
+      .collect();
+    for (const ev of planEvents) await ctx.db.delete(ev._id);
+
     await ctx.db.delete(projectId);
   },
 });
