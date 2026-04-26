@@ -43,4 +43,15 @@ describe("sheetMetalPlugin", () => {
     });
     expect(result).toBeNull();
   });
+
+  it("exposes the sheet-metal tool surface (refine_part + add_feature_to_part)", () => {
+    const names = sheetMetalPlugin.tools.map((t) => t.name);
+    expect(names).toContain("refine_part");
+    expect(names).toContain("add_feature_to_part");
+    expect(sheetMetalPlugin.tools.length).toBe(2);
+  });
+
+  it("has a non-empty systemPromptFragment", () => {
+    expect(sheetMetalPlugin.systemPromptFragment.length).toBeGreaterThan(50);
+  });
 });

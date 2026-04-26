@@ -1,15 +1,16 @@
 import type { ProcessPlugin } from "../types";
 import { DslSchema, type Dsl } from "./dsl";
 import { validate } from "./validator";
+import { TOOLS } from "./tools";
+import { systemPromptFragment } from "./prompts";
 
 export const sheetMetalPlugin: ProcessPlugin<Dsl> = {
   kind: "sheet_metal",
 
   dslSchema: DslSchema,
 
-  // Plan 3 wires the real tool surface (currently lives in convex/assemblyDesigner.ts).
-  tools: [],
-  systemPromptFragment: "",
+  tools: TOOLS,
+  systemPromptFragment,
 
   // Plan 4 ports each scsRules rule into its own Rule<Dsl> file. Until then, validate()
   // bypasses rules[] entirely and calls the adapter directly.
