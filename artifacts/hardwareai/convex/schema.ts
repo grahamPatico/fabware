@@ -43,6 +43,15 @@ export default defineSchema({
     )),
     archetypeParams: v.optional(v.any()),
     isMultiPart: v.optional(v.boolean()),
+    phase: v.optional(v.union(
+      v.literal("scoping"),
+      v.literal("decomposing"),
+      v.literal("designing"),
+      v.literal("validating"),
+      v.literal("exporting"),
+      v.literal("done"),
+    )),
+    useNewHarness: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_updated", ["updatedAt"]),
@@ -215,4 +224,74 @@ export default defineSchema({
     userAgent: v.optional(v.string()),
     createdAt: v.number(),
   }),
+
+  // --- AI harness: violations (per-part + assembly-level) ---
+  violations: defineTable({
+    projectId: v.id("projects"),
+    partId: v.optional(v.id("parts")),         // null = assembly-level violation
+    ruleId: v.string(),
+    severity: v.union(v.literal("error"), v.literal("warn")),
+    tier: v.union(v.literal("auto-fixable"), v.literal("requires-judgment")),
+    message: v.string(),
+    agentMessage: v.string(),
+    suggestedFix: v.optional(v.any()),
+    location: v.optional(v.object({
+      kind: v.union(
+        v.literal("hole"), v.literal("slot"), v.literal("edge"),
+        v.literal("bend"), v.literal("face"), v.literal("feature"),
+        v.literal("interface"), v.literal("part"),
+      ),
+      id: v.string(),
+    })),
+    status: v.union(
+      v.literal("open"),
+      v.literal("auto-repaired"),
+      v.literal("escalated"),
+      v.literal("dismissed"),
+      v.literal("resolved"),
+    ),
+    resolution: v.optional(v.object({
+      kind: v.string(),
+      by: v.union(v.literal("agent"), v.literal("user")),
+      at: v.number(),
+      note: v.optional(v.string()),
+    })),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_part", ["partId"]),
+
+  // --- AI harness: escalations (open questions for the user) ---
+  escalations: defineTable({
+    projectId: v.id("projects"),
+    sourceViolationId: v.optional(v.id("violations")),
+    question: v.string(),
+    suggestedAnswer: v.optional(v.string()),
+    choices: v.optional(v.array(v.string())),
+    status: v.union(v.literal("open"), v.literal("answered")),
+    answer: v.optional(v.string()),
+    createdAt: v.number(),
+    answeredAt: v.optional(v.number()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"]),
+
+  // --- AI harness: append-only audit log of plan transitions ---
+  planEvents: defineTable({
+    projectId: v.id("projects"),
+    at: v.number(),
+    kind: v.union(
+      v.literal("phase-changed"),
+      v.literal("specialist-scheduled"),
+      v.literal("specialist-completed"),
+      v.literal("auto-repaired"),
+      v.literal("violation-opened"),
+      v.literal("violation-resolved"),
+      v.literal("escalation-opened"),
+      v.literal("escalation-answered"),
+    ),
+    payload: v.any(),
+  }).index("by_project_at", ["projectId", "at"]),
 });
