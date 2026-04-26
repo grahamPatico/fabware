@@ -39,7 +39,7 @@ export const tick = internalAction({
     if (action.kind === "noop") {
       await ctx.runMutation(internal.orchestrator.planEvents.append, {
         projectId: args.projectId,
-        kind: "specialist-scheduled",      // benign reuse — Plan 2 splits this out
+        kind: "noop-logged",
         payload: { message: action.reason },
       });
       return action;

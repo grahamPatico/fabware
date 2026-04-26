@@ -126,6 +126,7 @@ export type ProjectPhase =
 
 export type PlanEventKind =
   | "phase-changed"
+  | "noop-logged"
   | "specialist-scheduled"
   | "specialist-completed"
   | "auto-repaired"

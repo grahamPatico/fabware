@@ -292,6 +292,7 @@ export default defineSchema({
     at: v.number(),
     kind: v.union(
       v.literal("phase-changed"),
+      v.literal("noop-logged"),
       v.literal("specialist-scheduled"),
       v.literal("specialist-completed"),
       v.literal("auto-repaired"),
