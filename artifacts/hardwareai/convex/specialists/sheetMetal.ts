@@ -4,7 +4,7 @@ import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { sheetMetalPlugin } from "../plugins/sheet_metal";
-import { runSpecialistOnce, type SpecialistResult, buildRepairPrompt, applyToolCallToDsl } from "./_helpers";
+import { runSpecialistOnce, type SpecialistResult, runAgentRepairLoop } from "./_helpers";
 import { runAgentTurn } from "../lib/anthropicClient";
 import type { PartKind } from "../plugins/types";
 import type { Doc } from "../_generated/dataModel";
@@ -76,56 +76,25 @@ export const run = internalAction({
     // 3.5: Agent repair loop. If pure-function validation produced violations whose
     // autoRepair was null (always in Plans 2 & 3), give the Anthropic agent up to
     // REPAIR_TURN_BUDGET turns to apply mechanical fixes via plugin tools.
-    let currentDsl = result.repairedDsl;
-    let currentViolations = result.violations;
-    let agentApplyCount = 0;
+    const repaired = await runAgentRepairLoop({
+      plugin: sheetMetalPlugin,
+      initialDsl: result.repairedDsl,
+      initialViolations: result.violations,
+      ctx: { scope: part.scope ?? null, peerParts: part.peerParts },
+      partLabel: part.label,
+      budget: REPAIR_TURN_BUDGET,
+      runAgentTurn,
+    });
 
-    if (currentViolations.length > 0) {
-      for (let turn = 0; turn < REPAIR_TURN_BUDGET; turn += 1) {
-        const prompt = buildRepairPrompt({
-          scope: part.scope,
-          partLabel: part.label,
-          partDsl: currentDsl,
-          violations: currentViolations,
-          pluginSystemPromptFragment: sheetMetalPlugin.systemPromptFragment,
-          pluginTools: sheetMetalPlugin.tools,
-        });
+    const currentDsl = repaired.finalDsl;
+    const currentViolations = repaired.finalViolations;
+    const agentApplyCount = repaired.agentApplyCount;
 
-        const turnResult = await runAgentTurn({
-          model: "claude-sonnet-4-6",
-          effort: "low",
-          system: prompt.system,
-          tools: prompt.tools,
-          messages: [{ role: "user", content: prompt.userMessage }],
-        });
-
-        let anyApplied = false;
-        for (const toolCall of turnResult.toolCalls) {
-          const applied = applyToolCallToDsl(currentDsl, toolCall, sheetMetalPlugin.dslSchema);
-          if (applied.applied) {
-            currentDsl = applied.dsl;
-            anyApplied = true;
-            agentApplyCount += 1;
-          }
-        }
-
-        if (!anyApplied) break;  // agent gave up — nothing further to try
-
-        // Re-validate after applying tool calls.
-        currentViolations = sheetMetalPlugin.validate(currentDsl, {
-          scope: part.scope ?? null,
-          peerParts: part.peerParts,
-        });
-        if (currentViolations.length === 0) break;
-      }
-
-      // If the loop changed the DSL (any agent-apply succeeded), persist it.
-      if (agentApplyCount > 0) {
-        await ctx.runMutation(internal.specialists.sheetMetalInternals._setPartDsl, {
-          partId: args.partId,
-          dslJson: JSON.stringify(currentDsl),
-        });
-      }
+    if (agentApplyCount > 0) {
+      await ctx.runMutation(internal.specialists.sheetMetalInternals._setPartDsl, {
+        partId: args.partId,
+        dslJson: JSON.stringify(currentDsl),
+      });
     }
 
     // 5. Write whatever violations survived the repair loop.

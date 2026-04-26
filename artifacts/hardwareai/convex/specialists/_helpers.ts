@@ -1,4 +1,5 @@
 import type { ProcessPlugin, PartContext, Violation, AgentTool } from "../plugins/types";
+import type { AgentTurnInput, AgentTurnResult } from "../lib/anthropicClient";
 
 export interface SpecialistResult<TDsl> {
   status: "ok" | "escalated";
@@ -134,4 +135,71 @@ export function applyToolCallToDsl<TDsl>(
   }
 
   return { dsl, applied: false };
+}
+
+export type RunAgentTurnFn = (input: AgentTurnInput) => Promise<AgentTurnResult>;
+
+export interface AgentRepairResult<TDsl> {
+  finalDsl: TDsl;
+  finalViolations: Violation[];
+  agentApplyCount: number;
+  turnsUsed: number;
+}
+
+interface RunRepairLoopInput<TDsl> {
+  plugin: ProcessPlugin<TDsl>;
+  initialDsl: TDsl;
+  initialViolations: Violation[];
+  ctx: PartContext;
+  partLabel: string;
+  budget: number;
+  runAgentTurn: RunAgentTurnFn;
+}
+
+export async function runAgentRepairLoop<TDsl>(input: RunRepairLoopInput<TDsl>): Promise<AgentRepairResult<TDsl>> {
+  let currentDsl = input.initialDsl;
+  let currentViolations = input.initialViolations;
+  let agentApplyCount = 0;
+  let turnsUsed = 0;
+
+  if (currentViolations.length === 0) {
+    return { finalDsl: currentDsl, finalViolations: currentViolations, agentApplyCount, turnsUsed };
+  }
+
+  for (let turn = 0; turn < input.budget; turn += 1) {
+    turnsUsed += 1;
+    const prompt = buildRepairPrompt({
+      scope: input.ctx.scope,
+      partLabel: input.partLabel,
+      partDsl: currentDsl,
+      violations: currentViolations,
+      pluginSystemPromptFragment: input.plugin.systemPromptFragment,
+      pluginTools: input.plugin.tools,
+    });
+
+    const turnResult = await input.runAgentTurn({
+      model: "claude-sonnet-4-6",
+      effort: "low",
+      system: prompt.system,
+      tools: prompt.tools,
+      messages: [{ role: "user", content: prompt.userMessage }],
+    });
+
+    let anyApplied = false;
+    for (const toolCall of turnResult.toolCalls) {
+      const applied = applyToolCallToDsl(currentDsl, toolCall, input.plugin.dslSchema);
+      if (applied.applied) {
+        currentDsl = applied.dsl;
+        anyApplied = true;
+        agentApplyCount += 1;
+      }
+    }
+
+    if (!anyApplied) break;
+
+    currentViolations = input.plugin.validate(currentDsl, input.ctx);
+    if (currentViolations.length === 0) break;
+  }
+
+  return { finalDsl: currentDsl, finalViolations: currentViolations, agentApplyCount, turnsUsed };
 }
