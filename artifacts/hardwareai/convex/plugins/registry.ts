@@ -18,3 +18,8 @@ export function registeredKinds(): PartKind[] {
 export function _registerPlugin<TDsl>(plugin: ProcessPlugin<TDsl>): void {
   REGISTRY[plugin.kind] = plugin as ProcessPlugin<unknown>;
 }
+
+/** Test-only — clear all registered plugins. Production code must not call this. */
+export function _resetRegistry(): void {
+  for (const k of Object.keys(REGISTRY) as PartKind[]) delete REGISTRY[k];
+}
