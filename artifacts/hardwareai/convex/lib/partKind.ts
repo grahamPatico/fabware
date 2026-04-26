@@ -2,7 +2,11 @@ import type { PartDsl } from "./dsl";
 import type { PrintedDsl } from "./printedDsl";
 import type { PurchasedDsl } from "./purchasedDsl";
 
-export type PartKind = "sheet_metal" | "printed" | "purchased";
+// Canonical PartKind lives in convex/plugins/types.ts. Re-export here so existing
+// callers (convex/lib/partValidator.ts, convex/parts.ts, etc.) keep working.
+export type { PartKind } from "../plugins/types";
+
+import type { PartKind } from "../plugins/types";
 
 /** Default to "sheet_metal" for legacy parts that don't carry kind. */
 export function readKind(part: { kind?: string | null }): PartKind {
