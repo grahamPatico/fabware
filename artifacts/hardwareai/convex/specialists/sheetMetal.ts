@@ -3,7 +3,7 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { sheetMetalPlugin } from "../plugins/sheet_metal";
 import { runSpecialistOnce, type SpecialistResult } from "./_helpers";
-import type { Tier, PartKind } from "../plugins/types";
+import type { PartKind } from "../plugins/types";
 import type { Doc } from "../_generated/dataModel";
 
 /**
@@ -68,33 +68,16 @@ export const run = internalAction({
       });
     }
 
-    // 5. Write violations + escalations for what's left. In Plan 2, every violation
-    // is tier='requires-judgment' so it escalates immediately.
-    for (const v of result.violations) {
-      const tier: Tier = "requires-judgment";
-      const violationId = await ctx.runMutation(internal.orchestrator.violations.open, {
+    // 5. Write all violations + escalations in one atomic batch.
+    if (result.violations.length > 0) {
+      await ctx.runMutation(internal.orchestrator.violations.processViolations, {
         projectId: args.projectId,
         partId: args.partId,
-        ruleId: v.ruleId,
-        severity: v.severity,
-        tier,
-        message: v.message,
-        agentMessage: v.agentMessage,
-        suggestedFix: v.suggestedFix,
-        location: v.location,
-      });
-      await ctx.runMutation(internal.orchestrator.escalations.open, {
-        projectId: args.projectId,
-        sourceViolationId: violationId,
-        question: v.message,
-        suggestedAnswer: undefined,
-        choices: undefined,
-      });
-      await ctx.runMutation(internal.orchestrator.violations.resolve, {
-        violationId,
-        status: "escalated",
-        by: "agent",
-        note: undefined,
+        entries: result.violations.map((v) => ({
+          violation: v,
+          tier: "requires-judgment" as const,
+          escalate: true,
+        })),
       });
     }
 
