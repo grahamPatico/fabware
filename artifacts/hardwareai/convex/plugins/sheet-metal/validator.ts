@@ -23,9 +23,11 @@ export function validate(dsl: Dsl, _ctx: PartContext): Violation[] {
       ruleId: `sheet.${r.id}`,
       severity,
       message: r.message,
-      // agentMessage is the message + any suggestion. Plan 4 will craft per-rule
-      // imperative phrasings; for now this is a serviceable best-effort.
-      agentMessage: r.suggestion ? `${r.message} ${r.suggestion}` : r.message,
+      // agentMessage is imperative text for the agent. r.suggestion is a structured
+      // Partial<SpecInput> shape, not text — it goes in suggestedFix where the agent
+      // (Plan 3+) and the autoRepair function (Plan 4+) can interpret it as data.
+      agentMessage: r.message,
+      suggestedFix: r.suggestion,
     });
   }
   return violations;

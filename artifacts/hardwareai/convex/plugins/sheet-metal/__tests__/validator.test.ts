@@ -49,4 +49,16 @@ describe("sheet-metal validator", () => {
       expect(v.severity).toMatch(/error|warn/);
     }
   });
+
+  it("populates suggestedFix when scsRules emits a structured suggestion", () => {
+    // Material "Unknown Steel" triggers a rule whose suggestion is { material: "Mild Steel (CRS)" } per scsRules.ts.
+    const violations = validate({ ...baseDsl, material: "Unknown Steel" }, ctx);
+    const matRule = violations.find((v) => v.ruleId === "sheet.material");
+    expect(matRule).toBeDefined();
+    if (matRule) {
+      expect(matRule.suggestedFix).toBeDefined();
+      // agentMessage is plain text, never an object stringification
+      expect(matRule.agentMessage).not.toContain("[object Object]");
+    }
+  });
 });
