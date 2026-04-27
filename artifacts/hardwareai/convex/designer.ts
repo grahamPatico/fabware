@@ -1,6 +1,7 @@
 "use node";
 
 import { internalAction } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import Anthropic from "@anthropic-ai/sdk";
 import {
@@ -206,6 +207,13 @@ function buildHistoryForLlm(
   return messages;
 }
 
+interface TurnUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+}
+
 async function runAgentLoop(
   client: Anthropic,
   model: string,
@@ -218,7 +226,9 @@ async function runAgentLoop(
   rationale: string;
   finalValidation: ValidationResult;
   iterations: number;
+  usages: TurnUsage[];
 }> {
+  const usages: TurnUsage[] = [];
   const conversation: Anthropic.Messages.MessageParam[] = [...initialMessages];
   let iter = 0;
   let lastValidatedDsl: PartDsl | null = null;
@@ -237,6 +247,12 @@ async function runAgentLoop(
       (params as unknown as { output_config: { effort: string } }).output_config = { effort };
     }
     const response = await client.messages.create(params);
+    usages.push({
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+      cacheCreationTokens: response.usage.cache_creation_input_tokens ?? 0,
+    });
 
     const toolUses = response.content.filter(
       (b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
@@ -344,6 +360,7 @@ async function runAgentLoop(
         rationale: finalSubmitted.rationale,
         finalValidation: validateSpec(snapped),
         iterations: iter,
+        usages,
       };
     }
   }
@@ -358,6 +375,7 @@ async function runAgentLoop(
       rationale: "Snapped your design to Send Cut Send's catalog (model didn't finalize, used last validated draft).",
       finalValidation: validateSpec(snapped),
       iterations: iter,
+      usages,
     };
   }
 
@@ -367,6 +385,7 @@ async function runAgentLoop(
     rationale: "Couldn't fully understand the request — kept the existing design.",
     finalValidation: validateSpec(legacyFallback),
     iterations: iter,
+    usages,
   };
 }
 
@@ -431,9 +450,10 @@ export const generateDesign = internalAction({
       v.object({ data: v.string(), mediaType: v.string() }),
     ),
     isFirst: v.boolean(),
+    projectId: v.optional(v.id("projects")),
   },
-  handler: async (_ctx, args): Promise<DesignResult> => {
-    const { userMessage, model, effort, history, existingSpec, image, isFirst } = args;
+  handler: async (ctx, args): Promise<DesignResult> => {
+    const { userMessage, model, effort, history, existingSpec, image, isFirst, projectId } = args;
 
     const lower = userMessage.toLowerCase().trim();
     const isSmallTalk =
@@ -489,7 +509,19 @@ export const generateDesign = internalAction({
       };
     }
 
-    const { finalDsl, rationale, finalValidation } = result;
+    const { finalDsl, rationale, finalValidation, usages } = result;
+    for (const u of usages) {
+      await ctx.runMutation(internal.tokenUsage.record, {
+        feature: "designer",
+        model,
+        effort,
+        projectId,
+        inputTokens: u.inputTokens,
+        outputTokens: u.outputTokens,
+        cacheReadTokens: u.cacheReadTokens,
+        cacheCreationTokens: u.cacheCreationTokens,
+      });
+    }
     const legacy = dslToLegacy(finalDsl);
     const featureGraph = buildFeatureGraph(finalDsl);
     const previewSpec: FlatPreviewSpec = { ...legacy, dsl: finalDsl, featureGraph };

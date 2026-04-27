@@ -108,6 +108,18 @@ export const send = action({
       },
     });
 
+    await ctx.runMutation(internal.tokenUsage.record, {
+      feature: "chat",
+      model,
+      effort,
+      threadId,
+      messageId: assistantId,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      cacheReadTokens: response.usage.cache_read_input_tokens ?? undefined,
+      cacheCreationTokens: response.usage.cache_creation_input_tokens ?? undefined,
+    });
+
     return { messageId: assistantId, stopReason: response.stop_reason };
   },
 });

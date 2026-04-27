@@ -1,6 +1,7 @@
 "use node";
 
 import { internalAction } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import Anthropic from "@anthropic-ai/sdk";
 import { listArchetypes } from "./archetypes";
@@ -253,7 +254,7 @@ export const runAgent = internalAction({
       interfaces: v.array(v.any()),
     }),
   },
-  handler: async (_ctx, args): Promise<{ toolCalls: Array<{ name: string; input: any }>; responseText: string }> => {
+  handler: async (ctx, args): Promise<{ toolCalls: Array<{ name: string; input: any }>; responseText: string }> => {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
 
@@ -277,6 +278,17 @@ export const runAgent = internalAction({
       (params as any).output_config = { effort: args.effort };
     }
     const response = await client.messages.create(params);
+
+    await ctx.runMutation(internal.tokenUsage.record, {
+      feature: "assembly_designer",
+      model: args.model,
+      effort: args.effort,
+      projectId: args.projectId,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      cacheReadTokens: response.usage.cache_read_input_tokens ?? undefined,
+      cacheCreationTokens: response.usage.cache_creation_input_tokens ?? undefined,
+    });
 
     const toolCalls: Array<{ name: string; input: any }> = [];
     let responseText = "";

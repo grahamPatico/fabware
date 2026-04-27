@@ -140,6 +140,25 @@ export default defineSchema({
     .index("by_thread", ["threadId", "createdAt"])
     .index("by_project", ["projectId", "createdAt"]),
 
+  // --- Token usage (per Anthropic call) ---
+  tokenUsage: defineTable({
+    feature: v.string(),
+    model: v.string(),
+    effort: v.optional(v.string()),
+    threadId: v.optional(v.id("threads")),
+    projectId: v.optional(v.id("projects")),
+    messageId: v.optional(v.id("messages")),
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    cacheReadTokens: v.number(),
+    cacheCreationTokens: v.number(),
+    costUsd: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_time", ["createdAt"])
+    .index("by_project_time", ["projectId", "createdAt"])
+    .index("by_thread_time", ["threadId", "createdAt"]),
+
   // --- Part Specs (one per project) ---
   partSpecs: defineTable({
     projectId: v.id("projects"),
