@@ -96,7 +96,7 @@ async function applyToolCall(
 ): Promise<string> {
   switch (call.name) {
     case "capture_scope":
-      await ctx.runMutation(api.projects.updateScope, { projectId, scope: call.input.scope });
+      await ctx.runMutation(api.projects.updateScope, { projectId, scope: coerceScope(call.input.scope) });
       return "Scope updated.";
 
     case "select_archetype": {
@@ -297,4 +297,33 @@ async function applyToolCall(
     default:
       return `Unknown tool: ${call.name}`;
   }
+}
+
+function coerceScope(raw: any): any {
+  if (!raw || typeof raw !== "object") return raw;
+  const out: any = { ...raw };
+
+  const env = out.environment;
+  if (typeof env === "string") {
+    out.environment = { location: env === "outdoor" ? "outdoor" : "indoor" };
+  } else if (env && typeof env === "object" && typeof env.location !== "string") {
+    out.environment = { ...env, location: "indoor" };
+  }
+
+  const rs = out.referenceScale;
+  if (typeof rs === "string") {
+    const m = rs.match(/(\d+(?:\.\d+)?)\s*[xX*×]\s*(\d+(?:\.\d+)?)\s*[xX*×]\s*(\d+(?:\.\d+)?)/);
+    out.referenceScale = m
+      ? { kind: rs, dimensions: { w: parseFloat(m[1]), d: parseFloat(m[2]), h: parseFloat(m[3]) } }
+      : { kind: rs };
+  } else if (rs && typeof rs === "object" && typeof rs.kind !== "string") {
+    out.referenceScale = { ...rs, kind: "object" };
+  }
+
+  if (typeof out.budgetCeiling === "string") {
+    const n = parseFloat(out.budgetCeiling.replace(/[^0-9.]/g, ""));
+    out.budgetCeiling = isNaN(n) ? undefined : n;
+  }
+
+  return out;
 }

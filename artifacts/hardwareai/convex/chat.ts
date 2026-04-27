@@ -76,8 +76,10 @@ export const send = action({
       model,
       max_tokens: 16000,
       messages: conversationMessages,
-      thinking: { type: "adaptive" },
     };
+    if (supportsEffort(model)) {
+      (createArgs as unknown as { thinking: { type: string } }).thinking = { type: "adaptive" };
+    }
     if (outputConfig.effort) {
       (createArgs as unknown as { output_config: { effort: Effort } }).output_config = {
         effort: outputConfig.effort,

@@ -10,8 +10,51 @@ import { MCMASTER_SEED } from "./lib/mcmasterSeed";
 const TOOLS = [
   {
     name: "capture_scope",
-    description: "Store the project's scope (tier, environment, use case, reference scale). Call on new-project creation and whenever the user updates intent.",
-    input_schema: { type: "object", properties: { scope: { type: "object" } }, required: ["scope"] },
+    description: "Store the project's scope. Call on new-project creation and whenever the user updates intent.",
+    input_schema: {
+      type: "object",
+      properties: {
+        scope: {
+          type: "object",
+          properties: {
+            tier: {
+              type: "string",
+              enum: ["jerry-rigged", "mvp", "commercial"],
+              description: "Build quality target. jerry-rigged = quick prototype, mvp = working demo, commercial = production-ready.",
+            },
+            environment: {
+              type: "object",
+              properties: {
+                location: { type: "string", enum: ["indoor", "outdoor"] },
+                waterproof: { type: "boolean" },
+                uv: { type: "boolean" },
+                freeze: { type: "boolean" },
+              },
+              required: ["location"],
+            },
+            useCase: { type: "string", description: "Short description of what the part is for." },
+            userInteraction: { type: "string" },
+            referenceScale: {
+              type: "object",
+              description: "Reference object the user named (e.g. 'tennis ball', 'iPhone', 'shoebox') and optional dimensions in inches.",
+              properties: {
+                kind: { type: "string" },
+                dimensions: {
+                  type: "object",
+                  properties: { w: { type: "number" }, d: { type: "number" }, h: { type: "number" } },
+                  required: ["w", "d", "h"],
+                },
+                quantity: { type: "number" },
+              },
+              required: ["kind"],
+            },
+            budgetCeiling: { type: "number", description: "Total budget ceiling in USD." },
+          },
+          required: ["tier", "environment", "useCase"],
+        },
+      },
+      required: ["scope"],
+    },
   },
   {
     name: "select_archetype",
