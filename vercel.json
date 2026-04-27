@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd artifacts/hardwareai && npx convex deploy --cmd 'pnpm --filter @workspace/hardwareai build' --cmd-url-env-var-name VITE_CONVEX_URL",
+  "buildCommand": "cd artifacts/hardwareai && npx convex codegen && cd ../.. && pnpm --filter @workspace/hardwareai build",
   "outputDirectory": "artifacts/hardwareai/dist/public",
   "installCommand": "pnpm install --prefer-offline",
   "framework": null,
