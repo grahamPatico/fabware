@@ -13,8 +13,9 @@
 // directly in `validatePartByKind` so the bend rules also surface in the
 // existing assembly-rules panel.
 
-import type { PartDsl, BendFeature, HoleFeature } from "./dsl";
+import type { PartDsl, BendFeature } from "./dsl";
 import { SCS_MATERIALS, type MaterialRule } from "./scsRules";
+import { flatPattern } from "./flatPattern";
 
 export type SimStatus = "pass" | "warn" | "fail";
 
@@ -46,43 +47,10 @@ function warn(id: string, label: string, message: string, suggestion?: string): 
   return { id, label, status: "warn", message, suggestion };
 }
 
-function holeLocalPositions(hole: HoleFeature, width: number, height: number): Array<{ x: number; y: number }> {
-  const inset = hole.inset ?? 0.375;
-  const out: Array<{ x: number; y: number }> = [];
-  switch (hole.pattern) {
-    case "corner": {
-      const n = Math.min(hole.count, 4);
-      const corners = [
-        { x: inset,         y: inset          },
-        { x: width - inset, y: inset          },
-        { x: inset,         y: height - inset },
-        { x: width - inset, y: height - inset },
-      ];
-      for (let i = 0; i < n; i++) out.push(corners[i]);
-      break;
-    }
-    case "center":
-      out.push({ x: width / 2, y: height / 2 });
-      break;
-    case "top_row": {
-      const y = height - inset;
-      const step = (width - 2 * inset) / Math.max(hole.count - 1, 1);
-      for (let i = 0; i < hole.count; i++) out.push({ x: inset + i * step, y });
-      break;
-    }
-    case "bottom_row": {
-      const y = inset;
-      const step = (width - 2 * inset) / Math.max(hole.count - 1, 1);
-      for (let i = 0; i < hole.count; i++) out.push({ x: inset + i * step, y });
-      break;
-    }
-  }
-  return out;
-}
-
 export function simulatePart(dsl: PartDsl): SimStep[] {
   const mat = SCS_MATERIALS[dsl.material] ?? FALLBACK;
   const t = dsl.thickness;
+  const pattern = flatPattern(dsl);
   const steps: SimStep[] = [];
 
   // ============================================================
@@ -107,20 +75,16 @@ export function simulatePart(dsl: PartDsl): SimStep[] {
   // Hole-to-edge distance: every hole's outer rim must sit at least 2*t from
   // the part outline. SCS will laser through closer, but the rim deforms during
   // material handling. Rule applies to all sheet-metal regardless of bends.
-  const holes = dsl.features.filter((f): f is HoleFeature => f.kind === "hole");
-  if (holes.length > 0) {
+  if (pattern.holes.length > 0) {
     const minClear = 2 * t;
     let worstName = "";
     let worstDist = Infinity;
-    for (const h of holes) {
+    for (const h of pattern.holes) {
       const r = h.diameter / 2;
-      const positions = holeLocalPositions(h, dsl.width, dsl.height);
-      for (const p of positions) {
-        const distToEdge = Math.min(p.x, p.y, dsl.width - p.x, dsl.height - p.y) - r;
-        if (distToEdge < minClear && distToEdge < worstDist) {
-          worstDist = distToEdge;
-          worstName = h.name;
-        }
+      const distToEdge = Math.min(h.center.x, h.center.y, dsl.width - h.center.x, dsl.height - h.center.y) - r;
+      if (distToEdge < minClear && distToEdge < worstDist) {
+        worstDist = distToEdge;
+        worstName = h.featureName;
       }
     }
     if (worstDist === Infinity) {
@@ -211,27 +175,23 @@ export function simulatePart(dsl: PartDsl): SimStep[] {
 
     // Hole-to-bend clearance (≥ 2× thickness from bend tangent OR holes will distort)
     const minHoleClear = 2 * t;
-    const holes = dsl.features.filter((f): f is HoleFeature => f.kind === "hole");
     let holeClearOk = true;
     let worstHoleDist = Infinity;
     let worstHoleName = "";
-    for (const h of holes) {
-      const positions = holeLocalPositions(h, dsl.width, dsl.height);
-      for (const p of positions) {
-        const distFromBend = bend.axis === "horizontal"
-          ? Math.abs(p.y - bendLine)
-          : Math.abs(p.x - bendLine);
-        const required = minHoleClear + h.diameter / 2;
-        if (distFromBend < required) {
-          holeClearOk = false;
-          if (distFromBend < worstHoleDist) {
-            worstHoleDist = distFromBend;
-            worstHoleName = h.name;
-          }
+    for (const h of pattern.holes) {
+      const distFromBend = bend.axis === "horizontal"
+        ? Math.abs(h.center.y - bendLine)
+        : Math.abs(h.center.x - bendLine);
+      const required = minHoleClear + h.diameter / 2;
+      if (distFromBend < required) {
+        holeClearOk = false;
+        if (distFromBend < worstHoleDist) {
+          worstHoleDist = distFromBend;
+          worstHoleName = h.featureName;
         }
       }
     }
-    if (holes.length === 0) {
+    if (pattern.holes.length === 0) {
       rules.push(pass("hole_to_bend", "Hole clearance N/A", "No holes on this part."));
     } else if (holeClearOk) {
       rules.push(pass("hole_to_bend", "Hole-to-bend clearance OK",

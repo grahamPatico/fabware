@@ -8,89 +8,42 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { holeWorldPositions } from "../../../convex/lib/featuresInWorld";
 import { PartDslSchema } from "../../../convex/lib/dsl";
+import { flatPattern, type FlatPattern as FlatPatternRecord } from "../../../convex/lib/flatPattern";
 import { MCMASTER_SEED } from "../../../convex/lib/mcmasterSeed";
 
 type Pose = { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number };
 
-interface HoleSpec {
-  count: number;
+interface HoleMark {
+  /** Center in part-local frame, with origin at outline bottom-left. */
+  center: { x: number; y: number };
   diameter: number;
-  pattern: "corner" | "center" | "top_row" | "bottom_row";
-  inset?: number | null;
 }
 
 interface HoleMarksProps {
   /** Local box dimensions matching the sheet-metal convention: [width, thickness, height]. */
   size: [number, number, number];
-  holes: HoleSpec[];
-}
-
-function holeLocalPositions(h: HoleSpec, width: number, height: number): Array<{ x: number; y: number }> {
-  const inset = h.inset ?? 0.375;
-  const out: Array<{ x: number; y: number }> = [];
-  switch (h.pattern) {
-    case "corner": {
-      const n = Math.min(h.count, 4);
-      const corners = [
-        { x: inset,         y: inset         },
-        { x: width - inset, y: inset         },
-        { x: inset,         y: height - inset },
-        { x: width - inset, y: height - inset },
-      ];
-      for (let i = 0; i < n; i++) out.push(corners[i]);
-      if (h.count > 4) {
-        const edges = [
-          { x: width / 2,        y: inset          },
-          { x: width / 2,        y: height - inset },
-          { x: inset,            y: height / 2     },
-          { x: width - inset,    y: height / 2     },
-        ];
-        for (let i = 0; i < h.count - 4; i++) out.push(edges[i % 4]);
-      }
-      break;
-    }
-    case "center":
-      out.push({ x: width / 2, y: height / 2 });
-      break;
-    case "top_row": {
-      const y = height - inset;
-      const step = (width - 2 * inset) / Math.max(h.count - 1, 1);
-      for (let i = 0; i < h.count; i++) out.push({ x: inset + i * step, y });
-      break;
-    }
-    case "bottom_row": {
-      const y = inset;
-      const step = (width - 2 * inset) / Math.max(h.count - 1, 1);
-      for (let i = 0; i < h.count; i++) out.push({ x: inset + i * step, y });
-      break;
-    }
-  }
-  return out;
+  holes: HoleMark[];
 }
 
 /**
- * Render every DSL hole feature as a thin black cylinder embedded in the
- * part. Cylinder axis = part's local Y (thickness direction), length =
- * thickness * 1.02 so the disk caps are visible on both faces. Visual-only
- * — does not modify the underlying boxGeometry / extrude shape (true
- * cutouts via THREE.Shape.holes is queued as a follow-up).
+ * Render hole-pattern positions (already computed by `flatPattern`) as thin
+ * black cylinders embedded in the part. Cylinder axis = part's local Y
+ * (thickness direction), length = thickness * 1.02 so the disk caps are
+ * visible on both faces. Visual-only — true cutouts via THREE.Shape.holes
+ * is queued as a follow-up.
  */
 function HoleMarks({ size, holes }: HoleMarksProps) {
   const [w, t, h] = size;
   const meshes = useMemo(() => {
     const out: Array<{ key: string; pos: [number, number, number]; r: number }> = [];
-    let idx = 0;
-    for (const hole of holes) {
-      if (!Number.isFinite(hole.diameter) || hole.diameter <= 0) continue;
-      const positions = holeLocalPositions(hole, w, h);
-      for (const p of positions) {
-        out.push({
-          key: `hole-${idx++}`,
-          pos: [p.x - w / 2, 0, p.y - h / 2],
-          r: hole.diameter / 2,
-        });
-      }
-    }
+    holes.forEach((hole, idx) => {
+      if (!Number.isFinite(hole.diameter) || hole.diameter <= 0) return;
+      out.push({
+        key: `hole-${idx}`,
+        pos: [hole.center.x - w / 2, 0, hole.center.y - h / 2],
+        r: hole.diameter / 2,
+      });
+    });
     return out;
   }, [w, t, h, holes]);
   if (meshes.length === 0) return null;
@@ -167,67 +120,34 @@ function BendLines({ size, bends }: BendLinesProps) {
   );
 }
 
-type Outline =
-  | { kind: "rectangle" }
-  | { kind: "polygon"; points: Array<{ x: number; y: number }> }
-  | { kind: "star"; numPoints: number; outerRadius: number; innerRadius: number }
-  | { kind: "circle"; radius: number }
-  | { kind: "regular_polygon"; sides: number; radius: number };
-
-function buildShape(outline: Outline, fallbackW: number, fallbackH: number): THREE.Shape {
+/**
+ * Build a `THREE.Shape` from a pre-computed `FlatPattern`. The pattern's
+ * `outlineSegments` already include tab notches; we just re-anchor to the
+ * AABB center so the extrude geometry centers on the part origin.
+ */
+function shapeFromPattern(pattern: FlatPatternRecord): THREE.Shape {
   const shape = new THREE.Shape();
-  if (outline.kind === "rectangle") {
-    const w = fallbackW, h = fallbackH;
-    shape.moveTo(-w / 2, -h / 2); shape.lineTo(w / 2, -h / 2);
-    shape.lineTo(w / 2, h / 2); shape.lineTo(-w / 2, h / 2);
-    shape.closePath();
+  if (pattern.circle) {
+    shape.absarc(0, 0, pattern.circle.radius, 0, Math.PI * 2, false);
     return shape;
   }
-  if (outline.kind === "polygon") {
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-    for (const p of outline.points) {
-      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
-      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
-    }
-    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-    outline.points.forEach((p, i) => {
-      const x = p.x - cx, y = p.y - cy;
-      if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
-    });
-    shape.closePath();
+  const pts = pattern.outlineSegments;
+  if (pts.length < 3) {
+    // Empty fallback to avoid undefined ExtrudeGeometry.
+    shape.moveTo(0, 0);
     return shape;
   }
-  if (outline.kind === "circle") {
-    const r = outline.radius;
-    shape.absarc(0, 0, r, 0, Math.PI * 2, false);
-    return shape;
-  }
-  if (outline.kind === "regular_polygon") {
-    const { sides, radius } = outline;
-    for (let i = 0; i < sides; i++) {
-      const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
-      const x = Math.cos(angle) * radius, y = Math.sin(angle) * radius;
-      if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
-    }
-    shape.closePath();
-    return shape;
-  }
-  // star
-  const { numPoints, outerRadius, innerRadius } = outline;
-  for (let i = 0; i < numPoints * 2; i++) {
-    const r = i % 2 === 0 ? outerRadius : innerRadius;
-    const angle = (i / (numPoints * 2)) * Math.PI * 2 - Math.PI / 2;
-    const x = Math.cos(angle) * r, y = Math.sin(angle) * r;
+  const cx = pattern.width / 2, cy = pattern.height / 2;
+  pts.forEach((p, i) => {
+    const x = p.x - cx, y = p.y - cy;
     if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
-  }
+  });
   shape.closePath();
   return shape;
 }
 
 interface ExtrudedPartMeshProps {
-  outline: Outline;
-  width: number;
-  height: number;
+  pattern: FlatPatternRecord;
   thickness: number;
   position: Pose;
   selected: boolean;
@@ -238,17 +158,19 @@ interface ExtrudedPartMeshProps {
   roughness?: number;
   opacity?: number;
   bends?: BendLinesProps["bends"];
-  holes?: HoleSpec[];
+  holes?: HoleMark[];
   textureKey?: TextureKey;
 }
 
 function ExtrudedPartMesh({
-  outline, width, height, thickness, position, selected, showBounds, onClick,
+  pattern, thickness, position, selected, showBounds, onClick,
   color, metalness = 0.4, roughness = 0.6, opacity = 1, bends, holes, textureKey,
 }: ExtrudedPartMeshProps) {
+  const width = pattern.width;
+  const height = pattern.height;
   const maps = useMemo(() => getMaterialMaps(textureKey ?? null), [textureKey]);
   const geometry = useMemo(() => {
-    const shape = buildShape(outline, width, height);
+    const shape = shapeFromPattern(pattern);
     const geom = new THREE.ExtrudeGeometry(shape, {
       depth: thickness,
       bevelEnabled: false,
@@ -262,7 +184,7 @@ function ExtrudedPartMesh({
     // pose math (size = [width, thickness, height] along three.js x,y,z).
     geom.rotateX(-Math.PI / 2);
     return geom;
-  }, [outline, width, height, thickness]);
+  }, [pattern, thickness]);
 
   return (
     <mesh
@@ -307,7 +229,7 @@ interface MeshProps {
   wireframe?: boolean;
   opacity?: number;
   bends?: BendLinesProps["bends"];
-  holes?: HoleSpec[];
+  holes?: HoleMark[];
   textureKey?: TextureKey;
 }
 
@@ -1116,32 +1038,26 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
             );
           }
           const appearance = sheetMetalAppearance(p.material);
-          let outline: Outline | undefined;
-          let bends: BendLinesProps["bends"] | undefined;
-          let holes: HoleSpec[] | undefined;
+          let pattern: FlatPatternRecord | null = null;
+          let isFreeformOutline = false;
           if (p.dslJson) {
             try {
-              const parsedDsl = JSON.parse(p.dslJson);
-              if (parsedDsl?.outline?.kind && parsedDsl.outline.kind !== "rectangle") {
-                outline = parsedDsl.outline as Outline;
-              }
-              if (Array.isArray(parsedDsl?.features)) {
-                bends = parsedDsl.features
-                  .filter((f: any) => f.kind === "bend" && (f.axis === "horizontal" || f.axis === "vertical"))
-                  .map((f: any) => ({ axis: f.axis, positionRatio: typeof f.positionRatio === "number" ? f.positionRatio : 0.4 }));
-                holes = parsedDsl.features
-                  .filter((f: any) => f.kind === "hole" && typeof f.diameter === "number" && typeof f.count === "number")
-                  .map((f: any) => ({ count: f.count, diameter: f.diameter, pattern: f.pattern ?? "corner", inset: f.inset ?? null }));
-              }
+              const parsedDsl = PartDslSchema.parse(JSON.parse(p.dslJson));
+              pattern = flatPattern(parsedDsl);
+              const outlineKind = parsedDsl.outline?.kind ?? "rectangle";
+              isFreeformOutline = outlineKind !== "rectangle";
             } catch { /* ignore */ }
           }
-          if (outline) {
+          const bends = pattern?.bendTangents.map(b => ({ axis: b.axis, positionRatio: b.positionRatio }));
+          const holes: HoleMark[] | undefined = pattern?.holes.map(h => ({
+            center: { x: h.center.x, y: h.center.y },
+            diameter: h.diameter,
+          }));
+          if (pattern && isFreeformOutline) {
             return wrapWithHinge(
               <ExtrudedPartMesh
                 key={p._id}
-                outline={outline}
-                width={p.width ?? 1}
-                height={p.height ?? 1}
+                pattern={pattern}
                 thickness={p.thickness ?? 0.075}
                 position={p.position}
                 selected={selected}
