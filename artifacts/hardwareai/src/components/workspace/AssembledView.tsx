@@ -12,6 +12,100 @@ import { MCMASTER_SEED } from "../../../convex/lib/mcmasterSeed";
 
 type Pose = { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number };
 
+interface HoleSpec {
+  count: number;
+  diameter: number;
+  pattern: "corner" | "center" | "top_row" | "bottom_row";
+  inset?: number | null;
+}
+
+interface HoleMarksProps {
+  /** Local box dimensions matching the sheet-metal convention: [width, thickness, height]. */
+  size: [number, number, number];
+  holes: HoleSpec[];
+}
+
+function holeLocalPositions(h: HoleSpec, width: number, height: number): Array<{ x: number; y: number }> {
+  const inset = h.inset ?? 0.375;
+  const out: Array<{ x: number; y: number }> = [];
+  switch (h.pattern) {
+    case "corner": {
+      const n = Math.min(h.count, 4);
+      const corners = [
+        { x: inset,         y: inset         },
+        { x: width - inset, y: inset         },
+        { x: inset,         y: height - inset },
+        { x: width - inset, y: height - inset },
+      ];
+      for (let i = 0; i < n; i++) out.push(corners[i]);
+      if (h.count > 4) {
+        const edges = [
+          { x: width / 2,        y: inset          },
+          { x: width / 2,        y: height - inset },
+          { x: inset,            y: height / 2     },
+          { x: width - inset,    y: height / 2     },
+        ];
+        for (let i = 0; i < h.count - 4; i++) out.push(edges[i % 4]);
+      }
+      break;
+    }
+    case "center":
+      out.push({ x: width / 2, y: height / 2 });
+      break;
+    case "top_row": {
+      const y = height - inset;
+      const step = (width - 2 * inset) / Math.max(h.count - 1, 1);
+      for (let i = 0; i < h.count; i++) out.push({ x: inset + i * step, y });
+      break;
+    }
+    case "bottom_row": {
+      const y = inset;
+      const step = (width - 2 * inset) / Math.max(h.count - 1, 1);
+      for (let i = 0; i < h.count; i++) out.push({ x: inset + i * step, y });
+      break;
+    }
+  }
+  return out;
+}
+
+/**
+ * Render every DSL hole feature as a thin black cylinder embedded in the
+ * part. Cylinder axis = part's local Y (thickness direction), length =
+ * thickness * 1.02 so the disk caps are visible on both faces. Visual-only
+ * — does not modify the underlying boxGeometry / extrude shape (true
+ * cutouts via THREE.Shape.holes is queued as a follow-up).
+ */
+function HoleMarks({ size, holes }: HoleMarksProps) {
+  const [w, t, h] = size;
+  const meshes = useMemo(() => {
+    const out: Array<{ key: string; pos: [number, number, number]; r: number }> = [];
+    let idx = 0;
+    for (const hole of holes) {
+      if (!Number.isFinite(hole.diameter) || hole.diameter <= 0) continue;
+      const positions = holeLocalPositions(hole, w, h);
+      for (const p of positions) {
+        out.push({
+          key: `hole-${idx++}`,
+          pos: [p.x - w / 2, 0, p.y - h / 2],
+          r: hole.diameter / 2,
+        });
+      }
+    }
+    return out;
+  }, [w, t, h, holes]);
+  if (meshes.length === 0) return null;
+  return (
+    <>
+      {meshes.map(m => (
+        <mesh key={m.key} position={m.pos}>
+          <cylinderGeometry args={[m.r, m.r, t * 1.02, 18]} />
+          <meshStandardMaterial color="#0a0a0a" metalness={0.05} roughness={0.95} />
+        </mesh>
+      ))}
+    </>
+  );
+}
+
 interface BendLinesProps {
   /** Local box dimensions matching the sheet-metal convention: [width, thickness, height]. */
   size: [number, number, number];
@@ -144,12 +238,13 @@ interface ExtrudedPartMeshProps {
   roughness?: number;
   opacity?: number;
   bends?: BendLinesProps["bends"];
+  holes?: HoleSpec[];
   textureKey?: TextureKey;
 }
 
 function ExtrudedPartMesh({
   outline, width, height, thickness, position, selected, showBounds, onClick,
-  color, metalness = 0.4, roughness = 0.6, opacity = 1, bends, textureKey,
+  color, metalness = 0.4, roughness = 0.6, opacity = 1, bends, holes, textureKey,
 }: ExtrudedPartMeshProps) {
   const maps = useMemo(() => getMaterialMaps(textureKey ?? null), [textureKey]);
   const geometry = useMemo(() => {
@@ -195,6 +290,7 @@ function ExtrudedPartMesh({
         <Edges color={selected ? "#38bdf8" : "#666666"} lineWidth={selected ? 2.5 : 1} threshold={1} />
       )}
       {bends && bends.length > 0 && <BendLines size={[width, thickness, height]} bends={bends} />}
+      {holes && holes.length > 0 && <HoleMarks size={[width, thickness, height]} holes={holes} />}
     </mesh>
   );
 }
@@ -211,6 +307,7 @@ interface MeshProps {
   wireframe?: boolean;
   opacity?: number;
   bends?: BendLinesProps["bends"];
+  holes?: HoleSpec[];
   textureKey?: TextureKey;
 }
 
@@ -226,6 +323,7 @@ function PartMesh({
   wireframe = false,
   opacity = 1,
   bends,
+  holes,
   textureKey,
 }: MeshProps) {
   const maps = useMemo(() => getMaterialMaps(textureKey ?? null), [textureKey]);
@@ -260,6 +358,7 @@ function PartMesh({
         />
       )}
       {bends && bends.length > 0 && <BendLines size={size} bends={bends} />}
+      {holes && holes.length > 0 && <HoleMarks size={size} holes={holes} />}
     </mesh>
   );
 }
@@ -1019,6 +1118,7 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
           const appearance = sheetMetalAppearance(p.material);
           let outline: Outline | undefined;
           let bends: BendLinesProps["bends"] | undefined;
+          let holes: HoleSpec[] | undefined;
           if (p.dslJson) {
             try {
               const parsedDsl = JSON.parse(p.dslJson);
@@ -1029,6 +1129,9 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
                 bends = parsedDsl.features
                   .filter((f: any) => f.kind === "bend" && (f.axis === "horizontal" || f.axis === "vertical"))
                   .map((f: any) => ({ axis: f.axis, positionRatio: typeof f.positionRatio === "number" ? f.positionRatio : 0.4 }));
+                holes = parsedDsl.features
+                  .filter((f: any) => f.kind === "hole" && typeof f.diameter === "number" && typeof f.count === "number")
+                  .map((f: any) => ({ count: f.count, diameter: f.diameter, pattern: f.pattern ?? "corner", inset: f.inset ?? null }));
               }
             } catch { /* ignore */ }
           }
@@ -1049,6 +1152,7 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
                 roughness={appearance.roughness}
                 opacity={appearance.opacity}
                 bends={bends}
+                holes={holes}
                 textureKey={appearance.texture}
               />
             );
@@ -1066,6 +1170,7 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
               roughness={appearance.roughness}
               opacity={appearance.opacity}
               bends={bends}
+              holes={holes}
               textureKey={appearance.texture}
             />
           );

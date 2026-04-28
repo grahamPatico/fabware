@@ -209,10 +209,17 @@ but render it as a box" gaps to close.
   `<PartMesh>` and `<ExtrudedPartMesh>` meshStandardMaterial via
   `normalMap` + `roughnessMap`. 256×256 RGBA DataTextures with
   `RepeatWrapping` × 8 so detail scales naturally with part size.
-- [ ] **3.5 Hole rendering.** Current parts are solid rectangular boxes;
-  the holes (which exist in the DSL) aren't visible. Render them as black
-  circles on the surface (texture or actual subtraction). Even just a flat
-  texture indicating hole positions would be a huge readability win.
+- [x] **3.5 Hole rendering.** _Done 2026-04-28._ New `<HoleMarks>`
+  component embeds a thin black cylinder at every hole position computed
+  from the DSL (`holeLocalPositions` mirrors the bendSim/featuresInWorld
+  logic for the four patterns: corner / center / top_row / bottom_row).
+  Cylinder length = thickness × 1.02 so the disk caps stick out 1% on
+  both faces and read as black circles when the surface texture isn't
+  visible. Mounted as a child of both `<PartMesh>` and
+  `<ExtrudedPartMesh>` so it inherits the full pose rotation. Visual-only
+  for now — true cutouts via `THREE.Shape.holes` is queued in the
+  backlog. Default 4-corner mounting hole patterns now render visibly on
+  every wall + base of an archetype-generated locker.
 
 ## Tier 4 — Validators
 
@@ -315,6 +322,9 @@ but render it as a box" gaps to close.
 - Animated fold preview in the 3D view (carved off 3.3): step the
   simulator forward → tween each bend's angle from 0 to its target while
   the user scrubs the BendSimulatorPanel timeline.
+- True hole cutouts (carved off 3.5): use `THREE.Shape.holes` so the
+  ExtrudeGeometry actually subtracts the hole instead of just covering it
+  with a black cylinder. Required for accurate DXF + flat-pattern PDF.
 
 ## Status log
 
@@ -336,3 +346,4 @@ but render it as a box" gaps to close.
 | 2026-04-27 | 2.6 mfg primer tool | `manufacturing:summarizeForProject` query + `check_manufacturing` agent tool. Aggregates per-part rules + simulator step status into a compact summary the agent surfaces between turns. Closes the self-repair loop. |
 | 2026-04-28 | 3.3 bend lines | Yellow dashed lines on part top surface for every bend feature; mounted inside both PartMesh and ExtrudedPartMesh so they inherit pose rotation. Animated fold preview spun off into backlog. |
 | 2026-04-28 | 3.4 material textures | Procedural normal + roughness maps per material (brushed-aluminum striations, mild-steel grain, galvanized blobs, copper/brass soft grain, stainless fine grain). Cached at module level, applied via `normalMap` + `roughnessMap` on both PartMesh and ExtrudedPartMesh. |
+| 2026-04-28 | 3.5 hole rendering | `<HoleMarks>` mounts thin black cylinders at every DSL hole position, mounted in both PartMesh + ExtrudedPartMesh. True cutouts queued in backlog. **Tier 3 fully complete.** |
