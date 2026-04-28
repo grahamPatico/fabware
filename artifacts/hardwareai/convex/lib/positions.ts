@@ -2,6 +2,9 @@
 // a 6-DOF `position` in that frame. Feature positions are local to the part's
 // own frame. This file gives us the conversion both ways, and exposes a
 // small API the interface validation rules use.
+//
+// All math here is in the DATA frame (Z-up). The renderer permutes data Y/Z at
+// the leaf — see `docs/conventions/coordinate-frames.md` for the full story.
 
 export interface Pose {
   x: number;

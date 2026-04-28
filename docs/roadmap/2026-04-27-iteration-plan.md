@@ -44,12 +44,11 @@ audited.
   rotation bug found in box_with_lid, divided_tray, sliding_enclosure (and the
   shelf-with-brackets bracket orientation was completely wrong — brackets
   rendered horizontal). All six archetypes now clean per `_audit:auditAllArchetypes`._
-- [ ] **1.2 Document the data-frame convention.** AssembledView swaps `[x, z,
-  y]` between data and three.js because the box's local axes are
-  `[width, thickness, height]` along three.js `(x, y, z)` — this took us 3
-  rounds of debugging to nail down. Write a one-pager at
-  `docs/conventions/coordinate-frames.md` so future code doesn't reintroduce
-  the bug. Reference from `positions.ts` and `intersect.ts` headers.
+- [x] **1.2 Document the data-frame convention.** _Done 2026-04-27. Wrote
+  `docs/conventions/coordinate-frames.md` (data Y↔three.js Z swap, rotation
+  permutation, eulerXyzToAxes contract, recipes for common rotations,
+  pointers to relevant files). Header comments in `intersect.ts` and
+  `positions.ts` reference the doc._
 - [x] **1.3 Add an automated regression check that every archetype's default
   output passes intersection.** Shipped as the `_audit:auditAllArchetypes`
   internal action, callable via `npx convex run`. Bypasses the agent so the
@@ -212,3 +211,4 @@ but render it as a box" gaps to close.
 | 2026-04-27 | _initial drafting_ | Plan written; starting 1.1. |
 | 2026-04-27 | 1.1 audit + fix | All 6 archetypes pass `parts_dont_intersect`. Same wall rotation bug fixed across boxWithLid, dividedTray, slidingEnclosure; brackets reoriented in shelfWithBrackets. |
 | 2026-04-27 | 1.3 regression infra | `_audit:auditAllArchetypes` ships — run any time to verify all archetypes' defaults are clean. |
+| 2026-04-27 | 1.2 conventions doc | `docs/conventions/coordinate-frames.md` written with rotation recipes; intersect.ts + positions.ts reference it. |

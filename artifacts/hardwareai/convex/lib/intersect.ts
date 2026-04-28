@@ -1,5 +1,12 @@
 // OBB-OBB intersection via Separating Axis Theorem.
 //
+// IMPORTANT: this file operates in the renderer (three.js) frame, not the data
+// frame the parts table stores. `poseObb` applies the same Y↔Z swap as
+// AssembledView, and `eulerXyzToAxes` mirrors three.js's
+// Matrix4.makeRotationFromEuler('XYZ'). If you change either, read
+// `docs/conventions/coordinate-frames.md` first — the SAT and the renderer
+// must stay in lock-step or the validator and visual will silently disagree.
+//
 // We model every part as a single oriented bounding box in the assembly frame.
 // For sheet metal that's an exact fit (the part IS a rectangular plate). For
 // 3D-printed and purchased parts it's the part's overall bounding box — good
