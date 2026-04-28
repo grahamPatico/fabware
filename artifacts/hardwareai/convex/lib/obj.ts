@@ -10,34 +10,9 @@
 // any Fabware-specific tooling.
 
 import type { Doc } from "../_generated/dataModel";
+import { eulerAxesDataFrame, applyAxes, type Vec3 } from "./transform3d";
 
-type Vec3 = [number, number, number];
 type Pose = { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number };
-
-/**
- * Build the rotation matrix (column-major) for an intrinsic XYZ Euler. Same
- * convention as `convex/lib/positions.ts` — apply rotateX, then rotateY,
- * then rotateZ.
- */
-function eulerXyz(rx: number, ry: number, rz: number): { ax: Vec3; ay: Vec3; az: Vec3 } {
-  const cx = Math.cos(rx), sx = Math.sin(rx);
-  const cy = Math.cos(ry), sy = Math.sin(ry);
-  const cz = Math.cos(rz), sz = Math.sin(rz);
-  // R = Rz · Ry · Rx (applied to a column vector). Columns are world-space images of e_x, e_y, e_z.
-  const ax: Vec3 = [cy * cz, cy * sz, -sy];
-  const ay: Vec3 = [sx * sy * cz - cx * sz, sx * sy * sz + cx * cz, sx * cy];
-  const az: Vec3 = [cx * sy * cz + sx * sz, cx * sy * sz - sx * cz, cx * cy];
-  return { ax, ay, az };
-}
-
-function transform(local: Vec3, pose: Pose, ax: Vec3, ay: Vec3, az: Vec3): Vec3 {
-  const [lx, ly, lz] = local;
-  return [
-    pose.x + ax[0] * lx + ay[0] * ly + az[0] * lz,
-    pose.y + ax[1] * lx + ay[1] * ly + az[1] * lz,
-    pose.z + ax[2] * lx + ay[2] * ly + az[2] * lz,
-  ];
-}
 
 interface PartBox {
   role: string;
@@ -107,10 +82,11 @@ export function generateAssemblyObj(parts: Doc<"parts">[], projectName: string):
 
   for (const b of boxes) {
     lines.push(`g ${b.role.replace(/[^a-zA-Z0-9_-]/g, "_")}`);
-    const { ax, ay, az } = eulerXyz(b.pose.rotX, b.pose.rotY, b.pose.rotZ);
+    const axes = eulerAxesDataFrame(b.pose.rotX, b.pose.rotY, b.pose.rotZ);
+    const translation: Vec3 = [b.pose.x, b.pose.y, b.pose.z];
     const [w, t, h] = b.size;
     for (const [lx, ly, lz] of BOX_LOCAL_VERTS) {
-      const world = transform([lx * w, ly * t, lz * h], b.pose, ax, ay, az);
+      const world = applyAxes(axes, translation, [lx * w, ly * t, lz * h]);
       lines.push(`v ${world[0].toFixed(4)} ${world[1].toFixed(4)} ${world[2].toFixed(4)}`);
     }
     for (const [a, c, d] of BOX_FACES_1BASED) {

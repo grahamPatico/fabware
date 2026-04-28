@@ -17,6 +17,7 @@
 // NOT count as intersection. Only positive volumetric overlap is reported.
 
 import type { Pose } from "./positions";
+import { posePositionRenderer, rendererAxesFromPose } from "./transform3d";
 
 export type Vec3 = [number, number, number];
 
@@ -42,42 +43,23 @@ function lenSq(a: Vec3): number {
 }
 
 /**
- * Build the rotation matrix for an intrinsic XYZ Euler rotation
- * (rotateX, then rotateY, then rotateZ — same convention as `positions.ts`)
- * and return its three column vectors as the OBB's local axes in world space.
- */
-/**
- * Mirrors three.js's `Matrix4.makeRotationFromEuler` with order='XYZ' so the
- * SAT operates in the exact frame the renderer uses. Source:
- * three.js/src/math/Matrix4.js (XYZ branch).
- */
-export function eulerXyzToAxes(rx: number, ry: number, rz: number): [Vec3, Vec3, Vec3] {
-  const a = Math.cos(rx), b = Math.sin(rx);
-  const c = Math.cos(ry), d = Math.sin(ry);
-  const e = Math.cos(rz), f = Math.sin(rz);
-  const ae = a * e, af = a * f, be = b * e, bf = b * f;
-  return [
-    [c * e,         af + be * d,    bf - ae * d],
-    [-c * f,        ae - bf * d,    be + af * d],
-    [d,             -b * c,         a * c],
-  ];
-}
-
-/**
  * Build the OBB in the same frame the renderer uses for boxGeometry. The data
  * frame swaps (y, z) → (z, y) at the world level (see AssembledView's
  * `position={[x, z, y]}` / `rotation={[rotX, rotZ, rotY]}`), and box-local
  * axes are aligned with that swapped frame. SAT is frame-invariant, so doing
  * the entire test in this frame gives the right answer with one consistent
- * convention.
+ * convention. The Pose → renderer frame conversion lives in `transform3d.ts`.
  */
 export function poseObb(pose: Pose, size: Vec3): Obb {
   return {
-    center: [pose.x, pose.z, pose.y],
+    center: posePositionRenderer(pose),
     halfExtents: [size[0] / 2, size[1] / 2, size[2] / 2],
-    axes: eulerXyzToAxes(pose.rotX, pose.rotZ, pose.rotY),
+    axes: rendererAxesFromPose(pose),
   };
 }
+
+// Re-export so callers that imported `eulerXyzToAxes` from this file keep working.
+export { eulerAxesThreeJs as eulerXyzToAxes } from "./transform3d";
 
 export interface IntersectResult {
   intersect: boolean;
