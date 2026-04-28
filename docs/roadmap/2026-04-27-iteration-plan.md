@@ -183,9 +183,22 @@ but render it as a box" gaps to close.
   (centers on AABB), `star`, `circle`, `regular_polygon`. Geometry is
   rotated −π/2 around X after extrude so its thickness axis matches the
   existing box convention; rest of the pose math is unchanged.
-- [ ] **3.3 Render bend lines.** Each `bend` feature should appear as a
-  dashed line on the part surface in the unfolded preview AND show as the
-  fold edge in the assembled view. Currently bends are invisible.
+- [x] **3.3 Render bend lines.** _Done 2026-04-28._ New `<BendLines>`
+  component rendered as a child of both `PartMesh` (rectangle parts) and
+  `ExtrudedPartMesh` (custom outlines). Reads each part's DSL bend
+  features at render time, draws yellow dashed lines on the part's top
+  surface (y = +thickness/2 + ε) along the bend tangent: horizontal bends
+  span the width at the positionRatio along the height, vertical bends
+  span the height at the positionRatio along the width. Dash size scales
+  to part dimensions. `depthTest: false` keeps the line visible when the
+  part is rotated and the surface faces away from the camera. Inherits the
+  full pose rotation since it's a child of the mesh group, so bends on
+  walls render correctly even after the rotation fixes from chunk 1.1.
+  **Verify**: build is green; default archetypes have no bend features so
+  there's nothing to render visually until a part is refined to add one.
+  The cut-step path through the simulator (chunk 2.7a) still works for
+  parts both with and without bends. Animated fold preview is queued under
+  a new follow-up chunk in the backlog.
 - [ ] **3.4 Material textures.** Subtle PBR maps so brushed aluminum
   doesn't look identical to mild steel. Use single-channel normal maps
   generated procedurally — no external assets needed.
@@ -292,6 +305,9 @@ but render it as a box" gaps to close.
 - Code-split the 1.1MB three.js bundle.
 - Re-introduce a curated McMaster catalog refresh script (was in
   scripts/scrape-scs.ts, deleted with the old api-server).
+- Animated fold preview in the 3D view (carved off 3.3): step the
+  simulator forward → tween each bend's angle from 0 to its target while
+  the user scrubs the BendSimulatorPanel timeline.
 
 ## Status log
 
@@ -311,3 +327,4 @@ but render it as a box" gaps to close.
 | 2026-04-27 | 2.2 weld_joint | New `tab` feature + `weld_joint` interface kind. Validator checks tab/slot pairing, count match, fit, and clearance slack; surfaces amber Tab+Weld badge in InterfaceList. `_audit:auditWeldJoint` smoke covers pass / fail-size / warn-sloppy / fail-count. |
 | 2026-04-27 | 2.3 hinge classes | `hingeStyle` (butt/piano/concealed) plumbed through hingedEnclosure params + tier-aware default. Per-style validator: butt counts holes per leaf, piano enforces hole-every-3", concealed checks for cup bore + bracket mounts. Style encoded in role string as pivot:STYLE. Smoke `_audit:auditHingeStyle` covers all seven scenarios. |
 | 2026-04-27 | 2.6 mfg primer tool | `manufacturing:summarizeForProject` query + `check_manufacturing` agent tool. Aggregates per-part rules + simulator step status into a compact summary the agent surfaces between turns. Closes the self-repair loop. |
+| 2026-04-28 | 3.3 bend lines | Yellow dashed lines on part top surface for every bend feature; mounted inside both PartMesh and ExtrudedPartMesh so they inherit pose rotation. Animated fold preview spun off into backlog. |

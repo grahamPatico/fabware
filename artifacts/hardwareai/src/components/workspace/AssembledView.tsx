@@ -12,6 +12,67 @@ import { MCMASTER_SEED } from "../../../convex/lib/mcmasterSeed";
 
 type Pose = { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number };
 
+interface BendLinesProps {
+  /** Local box dimensions matching the sheet-metal convention: [width, thickness, height]. */
+  size: [number, number, number];
+  bends: Array<{ axis: "horizontal" | "vertical"; positionRatio: number }>;
+}
+
+/**
+ * Dashed yellow lines drawn on a sheet-metal part's top surface (y = +thickness/2)
+ * showing where each bend tangent sits. Mounted as a child of the part mesh so
+ * it inherits the same pose rotation.
+ *
+ * `axis = "horizontal"` → bend runs across the WIDTH at a specific HEIGHT-position.
+ * `axis = "vertical"`   → bend runs across the HEIGHT at a specific WIDTH-position.
+ */
+function BendLines({ size, bends }: BendLinesProps) {
+  const [w, t, h] = size;
+  const yTop = t / 2 + 0.001; // hair above the surface so it doesn't z-fight
+
+  const segments = useMemo(() => {
+    const points: number[] = [];
+    for (const b of bends) {
+      if (b.axis === "horizontal") {
+        const z = (b.positionRatio - 0.5) * h;
+        points.push(-w / 2, yTop, z, w / 2, yTop, z);
+      } else {
+        const x = (b.positionRatio - 0.5) * w;
+        points.push(x, yTop, -h / 2, x, yTop, h / 2);
+      }
+    }
+    return new Float32Array(points);
+  }, [w, t, h, bends, yTop]);
+
+  const geom = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(segments, 3));
+    return g;
+  }, [segments]);
+
+  // Dashed materials need computeLineDistances. Using a custom lineSegments
+  // ref to call it after geometry mounts.
+  const ref = useRef<THREE.LineSegments | null>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.computeLineDistances();
+  }, [segments]);
+
+  if (bends.length === 0) return null;
+  return (
+    <lineSegments ref={ref as any} geometry={geom}>
+      <lineDashedMaterial
+        color="#facc15"
+        dashSize={Math.max(0.08, Math.min(w, h) * 0.04)}
+        gapSize={Math.max(0.05, Math.min(w, h) * 0.025)}
+        linewidth={2}
+        depthTest={false}
+        transparent
+        opacity={0.95}
+      />
+    </lineSegments>
+  );
+}
+
 type Outline =
   | { kind: "rectangle" }
   | { kind: "polygon"; points: Array<{ x: number; y: number }> }
@@ -82,11 +143,12 @@ interface ExtrudedPartMeshProps {
   metalness?: number;
   roughness?: number;
   opacity?: number;
+  bends?: BendLinesProps["bends"];
 }
 
 function ExtrudedPartMesh({
   outline, width, height, thickness, position, selected, showBounds, onClick,
-  color, metalness = 0.4, roughness = 0.6, opacity = 1,
+  color, metalness = 0.4, roughness = 0.6, opacity = 1, bends,
 }: ExtrudedPartMeshProps) {
   const geometry = useMemo(() => {
     const shape = buildShape(outline, width, height);
@@ -128,6 +190,7 @@ function ExtrudedPartMesh({
       {(showBounds || selected) && (
         <Edges color={selected ? "#38bdf8" : "#666666"} lineWidth={selected ? 2.5 : 1} threshold={1} />
       )}
+      {bends && bends.length > 0 && <BendLines size={[width, thickness, height]} bends={bends} />}
     </mesh>
   );
 }
@@ -143,6 +206,7 @@ interface MeshProps {
   roughness?: number;
   wireframe?: boolean;
   opacity?: number;
+  bends?: BendLinesProps["bends"];
 }
 
 function PartMesh({
@@ -156,6 +220,7 @@ function PartMesh({
   roughness = 0.6,
   wireframe = false,
   opacity = 1,
+  bends,
 }: MeshProps) {
   return (
     <mesh
@@ -185,6 +250,7 @@ function PartMesh({
           threshold={1}
         />
       )}
+      {bends && bends.length > 0 && <BendLines size={size} bends={bends} />}
     </mesh>
   );
 }
@@ -839,11 +905,17 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
           }
           const appearance = sheetMetalAppearance(p.material);
           let outline: Outline | undefined;
+          let bends: BendLinesProps["bends"] | undefined;
           if (p.dslJson) {
             try {
               const parsedDsl = JSON.parse(p.dslJson);
               if (parsedDsl?.outline?.kind && parsedDsl.outline.kind !== "rectangle") {
                 outline = parsedDsl.outline as Outline;
+              }
+              if (Array.isArray(parsedDsl?.features)) {
+                bends = parsedDsl.features
+                  .filter((f: any) => f.kind === "bend" && (f.axis === "horizontal" || f.axis === "vertical"))
+                  .map((f: any) => ({ axis: f.axis, positionRatio: typeof f.positionRatio === "number" ? f.positionRatio : 0.4 }));
               }
             } catch { /* ignore */ }
           }
@@ -863,6 +935,7 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
                 metalness={appearance.metalness}
                 roughness={appearance.roughness}
                 opacity={appearance.opacity}
+                bends={bends}
               />
             );
           }
@@ -878,6 +951,7 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
               metalness={appearance.metalness}
               roughness={appearance.roughness}
               opacity={appearance.opacity}
+              bends={bends}
             />
           );
         })}
