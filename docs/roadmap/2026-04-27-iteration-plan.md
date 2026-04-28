@@ -106,7 +106,14 @@ agent should pick the right construction for the user's tier and use case.
   bend issues land in the existing assembly-rules panel today. Verified on
   a base plate (cut-only step) and through `_audit:auditAllArchetypes`.
   **Next**: 2.7b — UI tab with timeline scrubber + animated fold preview.
-- [ ] **2.7b Laser + bend simulator UI.** _Added 2026-04-27 from user request._
+- [x] **2.7b Laser + bend simulator UI.** _Done 2026-04-27._
+  `BendSimulatorPanel` mounts under the 3D view; binds to `focusedPartId`
+  via `simulation:simulatePartById`. Renders a horizontal step strip with
+  per-step status icon (cut / bend / interference), click any step to
+  inspect its rules below. Tone-coded fail/warn/pass cards include the
+  message + suggestion. Empty state when no part focused; null state when
+  the focused part is printed/purchased. _Held over for follow-up:_
+  animated fold preview in the 3D view itself (queued under 3.3 bend lines)._
   Build an interactive simulator that takes a sheet-metal part DSL (outline,
   thickness, material, bend features, holes) and produces:
   (a) the laser-cut step — material-specific kerf and feasibility
@@ -245,3 +252,4 @@ but render it as a box" gaps to close.
 | 2026-04-27 | 2.1 weld seams | New `weld_seam` interface kind + `bodyConstruction` param. Default mvp locker now has 4 welds + 1 hinge instead of 4 bolts × 4 fasteners + 1 hinge — body fasteners drop from 16 to 0. Orange Flame badge in InterfaceList. |
 | 2026-04-27 | 2.7 logged (new) | User asked for a laser + bend simulator; logged as a new tier-2 chunk with acceptance criteria. |
 | 2026-04-27 | 2.4 + 2.5 + 2.7a | Backend simulator shipped: cut step + per-bend rules (radius / flange / hole clearance) + interference. Wired into part validator + new `simulation:simulatePartById` query. UI scrubber stays as 2.7b. |
+| 2026-04-27 | 2.7b simulator UI | `BendSimulatorPanel` under the 3D view: step strip + per-step rules card. Visible the moment a sheet-metal part is focused. |

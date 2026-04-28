@@ -18,6 +18,7 @@ import {
 import ChatPanel from "@/components/workspace/ChatPanel";
 import AssembledView from "@/components/workspace/AssembledView";
 import RulesStatusStrip from "@/components/workspace/RulesStatusStrip";
+import BendSimulatorPanel from "@/components/workspace/BendSimulatorPanel";
 import HistoryPanel from "@/components/workspace/HistoryPanel";
 import AssemblyPartsPanel from "@/components/workspace/AssemblyPartsPanel";
 import PartList from "@/components/workspace/PartList";
@@ -173,12 +174,15 @@ export default function Workspace() {
             <PanelGroup direction="vertical" autoSaveId="fabware-workspace-v">
               <Panel defaultSize={70} minSize={30}>
                 <div className="h-full flex flex-col">
-                  <AssembledView
-                    projectId={projectId}
-                    focusedPartId={focusedPartId}
-                    onFocusPart={setFocusedPartId}
-                    hiddenPartIds={hiddenPartIds}
-                  />
+                  <div className="flex-1 min-h-0">
+                    <AssembledView
+                      projectId={projectId}
+                      focusedPartId={focusedPartId}
+                      onFocusPart={setFocusedPartId}
+                      hiddenPartIds={hiddenPartIds}
+                    />
+                  </div>
+                  <BendSimulatorPanel focusedPartId={focusedPartId} />
                 </div>
               </Panel>
               <PanelResizeHandle className={RESIZE_HANDLE_HORIZ} />
