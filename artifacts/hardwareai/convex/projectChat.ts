@@ -39,6 +39,18 @@ export const send = action({
       .filter(m => !(m._id === last?._id && m.role === "user"))
       .map(m => ({ role: m.role, content: m.content }));
 
+    // Run current validation BEFORE the agent so it can see what's broken and
+    // proactively repair on this turn instead of needing another round-trip.
+    const currentValidation = parts.length > 0
+      ? await ctx.runQuery(api.validation.getAssemblyValidation, { projectId: a.projectId })
+      : { rules: [], hasFailures: false };
+    const violations = currentValidation.rules
+      .filter((r: any) => r.status === "fail" || r.status === "warn")
+      .map((r: any) => ({
+        id: r.id, label: r.label, status: r.status,
+        message: r.message, suggestion: r.suggestion,
+      }));
+
     const projectState = {
       scope: project.scope ?? null,
       archetypeId: project.archetypeId ?? null,
@@ -48,6 +60,7 @@ export const send = action({
         kind: i.kind, partA: i.partA, partB: i.partB,
         featureRefs: i.featureRefs, hardwareRefs: i.hardwareRefs,
       })),
+      violations,
     };
 
     const agentResult = await ctx.runAction(internal.assemblyDesigner.runAgent, {

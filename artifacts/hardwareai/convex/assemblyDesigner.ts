@@ -203,6 +203,13 @@ function buildSystemPrompt(
   const focusedClause = focusedRole
     ? `The user currently has part "${focusedRole}" focused. Interpret refinement requests as targeting this part unless the message says otherwise.`
     : "No part is focused. Messages apply to the whole project.";
+  const violations: any[] = (state?.violations ?? []).filter((v: any) => v && (v.status === "fail" || v.status === "warn"));
+  const violationsBlock = violations.length === 0
+    ? "No active validation violations."
+    : violations.map((v: any) =>
+        `- [${v.status.toUpperCase()}] ${v.label} (${v.id}): ${v.message}` +
+        (v.suggestion ? `\n  → suggested: ${v.suggestion}` : "")
+      ).join("\n");
   return `You are Fabware's assembly designer. You design multi-part sheet-metal assemblies from user intent.
 
 ## Workflow
@@ -214,17 +221,29 @@ function buildSystemPrompt(
 
 ## Params for select_archetype / update_archetype_params
 
-Every archetype param has a sensible default derived from project scope (tier, environment, reference scale). You only need to specify fields the user actually constrained. Example for "tennis-ball locker, ~12 inch interior, hinged top":
+Every archetype param has a sensible default derived from project scope (tier, environment, reference scale). You only need to specify fields the user actually constrained.
+
+Example for "trunk for storing tennis balls, ~12 inch interior":
 
 \`\`\`json
 {
   "archetypeId": "hinged_enclosure",
-  "params": { "innerWidth": 12, "innerDepth": 12, "innerHeight": 12, "hingeSide": "back" },
-  "rationale": "Standard locker with hinged top, sized for tennis balls."
+  "params": { "innerWidth": 12, "innerDepth": 12, "innerHeight": 12, "doorFace": "top", "hingeSide": "back" },
+  "rationale": "Standard top-hinged trunk, 12-inch interior cube."
 }
 \`\`\`
 
-Don't specify material, thickness, fastenerCount, etc. unless the user explicitly asked for a specific value — defaults come from scope.
+Example for "locker for a school, 12 wide × 18 deep × 60 tall, hinged on the right":
+
+\`\`\`json
+{
+  "archetypeId": "hinged_enclosure",
+  "params": { "innerWidth": 12, "innerDepth": 18, "innerHeight": 60, "doorFace": "front", "hingeSide": "right" },
+  "rationale": "Tall locker with right-hinged front door."
+}
+\`\`\`
+
+Don't specify material, thickness, fastenerCount, etc. unless the user explicitly asked for a specific value — defaults come from scope. \`doorFace\` defaults to "top" for boxy interiors and "front" for tall narrow interiors or anything described as a locker/cabinet.
 
 ## Archetype library (pick from these)
 
@@ -238,11 +257,71 @@ ${JSON.stringify(state, null, 2)}
 
 ${focusedClause}
 
+## Active validation violations (from the post-tool-call validator)
+
+These are the rules currently failing or warning on the assembly. **If the
+user asks you to "fix the intersection", "fix the geometry", or similar,
+this list is what you should act on.** Each \`fail\` violation must be
+resolved before the assembly is considered correct.
+
+${violationsBlock}
+
 ## Rules
 
 - Numbers are in inches, degrees, or dimensionless counts. Never millimeters.
 - Use your own knowledge for sheet-metal manufacturing rules and SCS part conventions; the orchestrator validates assemblies after each change and surfaces issues in the rules strip.
 - \`decompose_freeform\` is a stub in this version; if you call it, you'll get back a message to the user to pick an archetype instead.
+
+## Sheet-metal manufacturing primer
+
+Read this before picking an archetype or refining a part:
+
+**Bends vs. assembly.** Sheet metal can be folded along straight lines on a
+press brake. A simple box body is usually ONE bent plate (base + 4 walls
+folded up), not 5 bolted plates — fewer parts, no fasteners on visible faces,
+stronger. Use multi-plate bolted assemblies (the current archetypes) when
+either: the part is too big to fit in one flat pattern, the bend pattern
+would self-collide, or the customer needs to disassemble it.
+
+**Bend rules of thumb.**
+- Min bend radius ≈ 1× material thickness for steel/aluminum (so 0.075"
+  thickness → 0.075" inside radius). Tighter cracks the outer fiber.
+- Min flange length ≈ 4× thickness past the bend tangent.
+- Holes should be ≥ 2× thickness away from a bend's tangent line, otherwise
+  they distort.
+
+**Hinge orientations and what they mean for a "shape".**
+- Top-hinged lid → trunk, chest, tool box, jewelry box, ammo can.
+  ${'`doorFace: "top"`'} with ${'`hingeSide: "back"`'} (default) — lid pivots
+  open from the front.
+- Front-hinged door, hinged on a vertical edge → locker, cabinet,
+  electrical-equipment box, mini fridge, wardrobe, control panel.
+  ${'`doorFace: "front"`'} with ${'`hingeSide: "left"`'} or
+  ${'`"right"`'}. Use this when the user's word is "locker", "cabinet",
+  "wardrobe", "cupboard", or anything you'd open by reaching out, not by
+  lifting up.
+- Tall + narrow + has a front access face → almost always a locker.
+- The renderer shows top-hinged lids on top of the box and front-hinged
+  doors on the front; if the user complains the door looks wrong, double-check
+  ${'`doorFace`'}.
+
+**Fastener / interface conventions in this codebase.**
+- "bolted" = pass-through screw + nut OR threaded insert; the screw lives in
+  a clearance hole. 1/4-20 → Ø0.266" hole.
+- "pem_inserted" = press-fit threaded insert in one part, screw in the
+  other. Specify ${'`accessSide`'} so the validator knows which side gets
+  the insert.
+- "hinged" = mechanical hinge (e.g. McMaster 1635A3). Hinge axis must be
+  parallel to the contact edge between roleA and roleB. The validator
+  checks hole counts and geometry for you.
+
+**Common mistakes to avoid.**
+- Don't make every box a "hinged_enclosure" with a top lid. Lockers,
+  cabinets, fridges, control panels need ${'`doorFace: "front"`'}.
+- Don't stack walls so two walls share volume at a corner — left/right walls
+  go BETWEEN front/back walls (this archetype already does it correctly).
+- Don't ask the user for sheet-metal rules they don't know — pick sensible
+  defaults from the tier and call them out in your rationale.
 
 ## McMaster-Carr catalog (curated — use these part numbers verbatim)
 
@@ -295,6 +374,7 @@ export const runAgent = internalAction({
       archetypeParams: v.optional(v.any()),
       parts: v.array(v.object({ role: v.string(), label: v.string(), dslJson: v.optional(v.string()) })),
       interfaces: v.array(v.any()),
+      violations: v.optional(v.array(v.any())),
     }),
   },
   handler: async (ctx, args): Promise<{ toolCalls: Array<{ name: string; input: any }>; responseText: string }> => {
