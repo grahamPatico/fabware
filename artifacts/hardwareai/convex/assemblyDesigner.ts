@@ -191,6 +191,20 @@ const TOOLS = [
     },
   },
   {
+    name: "check_manufacturing",
+    description: "Pull the current per-part manufacturability report (sheet-metal validators + bend simulator) for this project. Returns a compact summary keyed by part role: total failures/warnings, per-step status from the simulator (cut / each bend / interference), and a short list of the top failing rules with suggestions. Call this between tool calls when the user asks to fix a manufacturability issue, or proactively after a refine_part / select_archetype to see what the latest validators flagged. The result is text you should surface to the user as a brief summary, then act on by calling refine_part / update_archetype_params with the suggested fix.",
+    input_schema: {
+      type: "object",
+      properties: {
+        intent: {
+          type: "string",
+          description: "Why you're calling this — 'preflight after archetype switch', 'investigating user complaint about bends', etc. One sentence.",
+        },
+      },
+      required: ["intent"],
+    },
+  },
+  {
     name: "gather_inspiration",
     description: "Before picking an archetype or designing a custom part, call this to think out loud about reference designs that match the user's intent — what does a typical [thing] look like in McMaster, IKEA, Grainger, Home Depot, or industrial catalogs? What are the common dimensions, hinge orientations, latch styles, vent patterns, fastener patterns? Use the returned guidance to inform select_archetype / refine_part / add_freeform_2d_part calls. The result is your own structured reasoning — surface the highlights to the user in your rationale.",
     input_schema: {

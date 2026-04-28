@@ -280,6 +280,32 @@ async function applyToolCall(
       return `Added 3D-printed part: ${call.input.label}.`;
     }
 
+    case "check_manufacturing": {
+      const summary: any = await ctx.runQuery(api.manufacturing.summarizeForProject, { projectId });
+      const totals = summary?.totals ?? { sheetMetalParts: 0, failures: 0, warnings: 0 };
+      const lines: string[] = [];
+      lines.push(
+        `🛠 Manufacturability check (${summary?.perPart?.length ?? 0} sheet-metal parts): ` +
+        `${totals.failures} fail · ${totals.warnings} warn.`,
+      );
+      const failedParts = (summary?.perPart ?? []).filter((p: any) => p.failures > 0 || p.warnings > 0).slice(0, 6);
+      for (const p of failedParts) {
+        const stepBits = (p.steps ?? []).filter((s: any) => s.failures > 0 || s.warnings > 0)
+          .map((s: any) => `${s.label} (${s.failures}F/${s.warnings}W)`)
+          .join(", ");
+        lines.push(`  • ${p.label} (${p.role}): ${p.failures}F / ${p.warnings}W` + (stepBits ? ` — ${stepBits}` : ""));
+        const top = (p.rules ?? []).filter((r: any) => r.status === "fail").slice(0, 2);
+        for (const r of top) {
+          const suggestion = r.suggestion ? ` → ${r.suggestion}` : "";
+          lines.push(`    - ${r.label}: ${r.message}${suggestion}`);
+        }
+      }
+      if (failedParts.length === 0) {
+        lines.push("  All parts pass current manufacturability checks. (Intent: " + (call.input.intent ?? "n/a") + ")");
+      }
+      return lines.join("\n");
+    }
+
     case "gather_inspiration": {
       const refs = Array.isArray(call.input.references) ? call.input.references : [];
       const recs = Array.isArray(call.input.recommendations) ? call.input.recommendations : [];

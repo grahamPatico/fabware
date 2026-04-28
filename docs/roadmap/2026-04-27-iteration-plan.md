@@ -147,12 +147,21 @@ agent should pick the right construction for the user's tier and use case.
   with 2 bends shows 3 simulation steps, each with its own validation
   output; switching material to Acrylic Clear surfaces a "cannot bend"
   failure on the first bend step.
-- [ ] **2.6 Manufacturing primer in agent's per-call context.** Currently
-  the primer is in the system prompt (static). Add a tool
-  `check_manufacturing` the agent can call to get a tailored summary of
-  rules that apply to the current parts (their materials, thicknesses,
-  bends). Result is the active validator output filtered to manufacturing
-  rules — closes the feedback loop.
+- [x] **2.6 Manufacturing primer in agent's per-call context.** _Done
+  2026-04-27._ New query `manufacturing:summarizeForProject(projectId)`
+  walks every sheet-metal part, runs `validatePartByKind` (which already
+  merges sheet-metal rules + bend simulator rules), and returns a compact
+  structured report: per-part failures/warnings, per-step status from the
+  simulator, and the full rules array. New `check_manufacturing` tool in
+  `assemblyDesigner` lets the agent call this between tool turns and get
+  back a formatted text summary keyed by part role. Closes the agent
+  self-repair loop — instead of waiting for the user to flag a bend issue,
+  the agent can pull the same numbers the rules-status strip shows and
+  act on them.
+  **Verify**: `npx convex run manufacturing:summarizeForProject
+  '{"projectId":"…"}'` on a default locker returns
+  `{"totals":{"failures":0,"warnings":0,"sheetMetalParts":6,"parts":6}}`
+  with full per-part rule breakdown.
 
 ## Tier 3 — Visual fidelity
 
@@ -301,3 +310,4 @@ but render it as a box" gaps to close.
 | 2026-04-27 | delete + hinge slider + McMaster geom | Trash icon on parts (two-click confirm), 0–150° hinge open slider with proper edge-pivot animation, purchased parts render as category-aware geometry instead of placeholder cubes. |
 | 2026-04-27 | 2.2 weld_joint | New `tab` feature + `weld_joint` interface kind. Validator checks tab/slot pairing, count match, fit, and clearance slack; surfaces amber Tab+Weld badge in InterfaceList. `_audit:auditWeldJoint` smoke covers pass / fail-size / warn-sloppy / fail-count. |
 | 2026-04-27 | 2.3 hinge classes | `hingeStyle` (butt/piano/concealed) plumbed through hingedEnclosure params + tier-aware default. Per-style validator: butt counts holes per leaf, piano enforces hole-every-3", concealed checks for cup bore + bracket mounts. Style encoded in role string as pivot:STYLE. Smoke `_audit:auditHingeStyle` covers all seven scenarios. |
+| 2026-04-27 | 2.6 mfg primer tool | `manufacturing:summarizeForProject` query + `check_manufacturing` agent tool. Aggregates per-part rules + simulator step status into a compact summary the agent surfaces between turns. Closes the self-repair loop. |
