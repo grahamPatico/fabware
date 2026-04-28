@@ -228,6 +228,29 @@ but render it as a box" gaps to close.
   rows have no `userId`. Add Clerk or Convex Auth, scope rows, expose a
   spend dashboard. Foundation for usage-based billing.
 
+## User-asked chunks shipped 2026-04-27 (out-of-tier)
+
+- [x] **Delete part button.** PartList rows now have a Trash icon. Two-click
+  to confirm (first click flips the button red; second triggers
+  `parts:removePart`, which already cascades interface deletion). Focus
+  clears if the deleted part was selected.
+- [x] **Hinge open slider + animated swing.** When the project's archetype
+  is `hinged_enclosure`, a slider appears in the canvas chrome (0–150°).
+  Pivots the lid (top-door) or `door_front` (locker) around the actual
+  hinge edge — derived from `archetypeParams.doorFace` + `hingeSide` +
+  inner dimensions — so the swing motion is geometrically correct, not a
+  fake spin around the part center. Implemented via two-group composition:
+  outer translates to pivot + applies axis-aligned Euler rotation; inner
+  translates back so zero-degree pose matches the static layout exactly.
+- [x] **Render purchased parts with category-aware geometry.** Replaces the
+  placeholder 0.5" wireframe cube. Looks up `purchasedPartNumber` in
+  `MCMASTER_SEED` (or infers category from label as a fallback). Per
+  category: fastener = shaft cylinder + cap-head puck; nut = hex prism;
+  washer = torus; bearing = larger torus; spring = wireframe cylinder;
+  magnet = grey block; hinge = two leaves + barrel; default = cube.
+  Supports the bounding-box wireframe overlay + selection highlight just
+  like sheet-metal parts.
+
 ## Backlog (caught while iterating; sized later)
 
 - Add more archetypes: `pcb_enclosure`, `wall_panel`, `nested_dividers`,
@@ -256,3 +279,4 @@ but render it as a box" gaps to close.
 | 2026-04-27 | 2.4 + 2.5 + 2.7a | Backend simulator shipped: cut step + per-bend rules (radius / flange / hole clearance) + interference. Wired into part validator + new `simulation:simulatePartById` query. UI scrubber stays as 2.7b. |
 | 2026-04-27 | 2.7b simulator UI | `BendSimulatorPanel` under the 3D view: step strip + per-step rules card. Visible the moment a sheet-metal part is focused. |
 | 2026-04-27 | 3.2 polygon extrude | `ExtrudedPartMesh` renders star / circle / polygon / regular_polygon outlines via `THREE.Shape` + `ExtrudeGeometry`; rectangle parts still go through the cheaper boxGeometry path. |
+| 2026-04-27 | delete + hinge slider + McMaster geom | Trash icon on parts (two-click confirm), 0–150° hinge open slider with proper edge-pivot animation, purchased parts render as category-aware geometry instead of placeholder cubes. |

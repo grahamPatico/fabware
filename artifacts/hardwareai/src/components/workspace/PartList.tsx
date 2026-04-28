@@ -1,5 +1,6 @@
-import { useQuery } from "convex/react";
-import { Eye, EyeOff } from "lucide-react";
+import { useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { Eye, EyeOff, Trash2 } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { PartKindBadge } from "./PartKindBadge";
@@ -14,6 +15,21 @@ interface Props {
 
 export default function PartList({ projectId, focusedPartId, onFocusPart, hiddenPartIds, onTogglePart }: Props) {
   const parts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
+  const removePart = useMutation(api.parts.removePart);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async (id: Id<"parts">) => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      if (id === focusedPartId) onFocusPart(null);
+      await removePart({ partId: id });
+    } finally {
+      setConfirmingId(null);
+      setDeleting(false);
+    }
+  };
   return (
     <div className="flex flex-col min-h-0">
       <div className="p-3 border-b border-border">
@@ -55,6 +71,28 @@ export default function PartList({ projectId, focusedPartId, onFocusPart, hidden
                   {hidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
               )}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirmingId === p._id) {
+                    handleDelete(p._id);
+                  } else {
+                    setConfirmingId(p._id as unknown as string);
+                  }
+                }}
+                onBlur={() => { if (confirmingId === p._id) setConfirmingId(null); }}
+                className={`px-2.5 transition-colors ${
+                  confirmingId === p._id
+                    ? "bg-rose-500/30 text-rose-200 hover:bg-rose-500/50"
+                    : "hover:bg-rose-500/15 text-muted-foreground hover:text-rose-300"
+                }`}
+                title={confirmingId === p._id ? "Click again to confirm delete" : "Delete part"}
+                aria-label="Delete part"
+                disabled={deleting}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
             </div>
           );
         })}

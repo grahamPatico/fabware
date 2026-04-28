@@ -8,6 +8,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { holeWorldPositions } from "../../../convex/lib/featuresInWorld";
 import { PartDslSchema } from "../../../convex/lib/dsl";
+import { MCMASTER_SEED } from "../../../convex/lib/mcmasterSeed";
 
 type Pose = { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number };
 
@@ -410,6 +411,149 @@ function BoltMeshes({ parts, interfaces }: BoltMeshesProps) {
   );
 }
 
+/**
+ * Render a purchased McMaster part with category-aware geometry instead of a
+ * generic placeholder cube. We look up the part number in the curated seed
+ * catalog; failing that, infer category from the label string (handles the
+ * common case of hinges and brand-new entries).
+ */
+function purchasedCategory(part: { purchasedPartNumber?: string | null; label?: string | null }): string {
+  const num = (part.purchasedPartNumber ?? "").trim().toUpperCase();
+  const seed = MCMASTER_SEED.find((s: any) => s.partNumber.toUpperCase() === num);
+  if (seed) return seed.category;
+  const lab = (part.label ?? "").toLowerCase();
+  if (/hinge|pivot/.test(lab)) return "hinge";
+  if (/screw|bolt|cap screw|machine screw/.test(lab)) return "fastener";
+  if (/nut/.test(lab)) return "nut";
+  if (/washer/.test(lab)) return "washer";
+  if (/spring/.test(lab)) return "spring";
+  if (/bearing/.test(lab)) return "bearing";
+  if (/magnet/.test(lab)) return "magnet";
+  return "other";
+}
+
+interface PurchasedMeshProps {
+  position: Pose;
+  selected: boolean;
+  showBounds: boolean;
+  onClick: (e: ThreeEvent<MouseEvent>) => void;
+  category: string;
+}
+
+function PurchasedMesh({ position, selected, showBounds, onClick, category }: PurchasedMeshProps) {
+  const baseColor = selected ? "#7dd3fc" : "#cdb380";
+  const common = {
+    castShadow: true,
+    onClick: (e: ThreeEvent<MouseEvent>) => { e.stopPropagation(); onClick(e); },
+    onPointerOver: (e: ThreeEvent<MouseEvent>) => { e.stopPropagation(); document.body.style.cursor = "pointer"; },
+    onPointerOut: () => { document.body.style.cursor = ""; },
+  } as const;
+  const mat = (
+    <meshStandardMaterial
+      color={baseColor}
+      metalness={0.6}
+      roughness={0.35}
+      emissive={selected ? "#0ea5e9" : "#000000"}
+      emissiveIntensity={selected ? 0.25 : 0}
+    />
+  );
+  const wrap = (children: React.ReactNode, sizeForBounds: [number, number, number]) => (
+    <group
+      position={[position.x, position.z, position.y]}
+      rotation={[position.rotX, position.rotZ, position.rotY]}
+    >
+      {children}
+      {(showBounds || selected) && (
+        <mesh>
+          <boxGeometry args={sizeForBounds} />
+          <meshBasicMaterial visible={false} />
+          <Edges color={selected ? "#38bdf8" : "#666666"} lineWidth={selected ? 2 : 1} threshold={1} />
+        </mesh>
+      )}
+    </group>
+  );
+  if (category === "fastener") {
+    // 1/4-20 cap screw approximation: shaft Ø0.25" × 0.75" + head Ø0.4" × 0.16".
+    return wrap(
+      <>
+        <mesh {...common} position={[0, 0, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.125, 0.125, 0.75, 16]} />{mat}
+        </mesh>
+        <mesh {...common} position={[0, 0.45, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.2, 0.2, 0.16, 16]} />{mat}
+        </mesh>
+      </>,
+      [0.4, 0.91, 0.4],
+    );
+  }
+  if (category === "nut") {
+    return wrap(
+      <mesh {...common} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.22, 0.22, 0.18, 6]} />{mat}
+      </mesh>,
+      [0.44, 0.18, 0.44],
+    );
+  }
+  if (category === "washer") {
+    return wrap(
+      <mesh {...common} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.22, 0.05, 12, 32]} />{mat}
+      </mesh>,
+      [0.54, 0.1, 0.54],
+    );
+  }
+  if (category === "bearing") {
+    return wrap(
+      <mesh {...common}>
+        <torusGeometry args={[0.5, 0.18, 16, 32]} />{mat}
+      </mesh>,
+      [1.36, 0.36, 1.36],
+    );
+  }
+  if (category === "spring") {
+    return wrap(
+      <mesh {...common} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.18, 0.18, 1.2, 8]} />
+        <meshStandardMaterial color={baseColor} metalness={0.5} roughness={0.4} wireframe />
+      </mesh>,
+      [0.36, 1.2, 0.36],
+    );
+  }
+  if (category === "magnet") {
+    return wrap(
+      <mesh {...common}>
+        <boxGeometry args={[0.5, 0.25, 0.5]} />
+        <meshStandardMaterial color={selected ? "#7dd3fc" : "#7c7d80"} metalness={0.4} roughness={0.5} />
+      </mesh>,
+      [0.5, 0.25, 0.5],
+    );
+  }
+  if (category === "hinge") {
+    // Two leaf plates joined by a barrel along the hinge axis.
+    return wrap(
+      <>
+        <mesh {...common} position={[-0.6, 0, 0]}>
+          <boxGeometry args={[1.2, 0.06, 1.6]} />{mat}
+        </mesh>
+        <mesh {...common} position={[0.6, 0, 0]}>
+          <boxGeometry args={[1.2, 0.06, 1.6]} />{mat}
+        </mesh>
+        <mesh {...common} position={[0, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.08, 0.08, 1.6, 16]} />{mat}
+        </mesh>
+      </>,
+      [2.4, 0.16, 1.6],
+    );
+  }
+  // default — small cube
+  return wrap(
+    <mesh {...common}>
+      <boxGeometry args={[0.5, 0.5, 0.5]} />{mat}
+    </mesh>,
+    [0.5, 0.5, 0.5],
+  );
+}
+
 function printedBoundingBox(p: { dslJson?: string | null }): { w: number; d: number; h: number } {
   if (!p.dslJson) return { w: 25, d: 25, h: 5 };
   try {
@@ -465,6 +609,61 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
   const [homeSignal, setHomeSignal] = useState(0);
   const [showBounds, setShowBounds] = useState(false);
   const [showBolts, setShowBolts] = useState(true);
+  const [hingeOpenDeg, setHingeOpenDeg] = useState(0);
+
+  // Compute the hinge pivot + axis from archetype params, when present. Used
+  // to wrap the lid / door part in a group whose rotation animates the open
+  // angle around the actual hinge edge — not the part center.
+  const hingeRig: null | {
+    role: string;
+    pivotThree: [number, number, number]; // three.js coords
+    axisThree: [number, number, number];  // unit, three.js coords
+    sign: 1 | -1;                          // direction the door swings open
+  } = useMemo(() => {
+    if (!project || project.archetypeId !== "hinged_enclosure") return null;
+    const p: any = project.archetypeParams;
+    if (!p) return null;
+    const t = p.thickness ?? 0.075;
+    const innerW = p.innerWidth, innerD = p.innerDepth, innerH = p.innerHeight;
+    if (typeof innerW !== "number" || typeof innerD !== "number" || typeof innerH !== "number") return null;
+    if (p.doorFace === "front") {
+      // Door swings around a vertical axis at one of the front-vertical edges.
+      // Three.js: vertical = +Y. Pivot in three.js coords = (data.x, data.z, data.y)
+      // for the vertical line at the hinge edge of the front face (y_data = -t/2).
+      if (p.hingeSide === "left") {
+        return {
+          role: "door_front",
+          pivotThree: [-t / 2, innerH / 2, -t / 2],
+          axisThree: [0, 1, 0],
+          sign: 1,
+        };
+      }
+      // default right
+      return {
+        role: "door_front",
+        pivotThree: [innerW + t / 2, innerH / 2, -t / 2],
+        axisThree: [0, 1, 0],
+        sign: -1,
+      };
+    }
+    // doorFace === "top". Lid pivots around a horizontal axis at the top edge
+    // of the named hinge wall. Three.js Y = vertical, lid at three.js Y =
+    // innerH + t/2. Hinge edge for hingeSide=back is the back-top edge.
+    if (p.hingeSide === "back") {
+      return { role: "lid", pivotThree: [innerW / 2, innerH + t / 2, innerD + t / 2], axisThree: [1, 0, 0], sign: -1 };
+    }
+    if (p.hingeSide === "front") {
+      return { role: "lid", pivotThree: [innerW / 2, innerH + t / 2, -t / 2], axisThree: [1, 0, 0], sign: 1 };
+    }
+    if (p.hingeSide === "left") {
+      return { role: "lid", pivotThree: [-t / 2, innerH + t / 2, innerD / 2], axisThree: [0, 0, 1], sign: 1 };
+    }
+    if (p.hingeSide === "right") {
+      return { role: "lid", pivotThree: [innerW + t / 2, innerH + t / 2, innerD / 2], axisThree: [0, 0, 1], sign: -1 };
+    }
+    return null;
+  }, [project]);
+  const hingedRoleId = hingeRig?.role ?? null;
 
   const partBounds = useMemo(() => {
     if (!parts) return [];
@@ -535,6 +734,21 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
           />
           Bolts
         </label>
+        {hingeRig && (
+          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-card/80 backdrop-blur border border-border shadow-lg shadow-black/40 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            <span>Open</span>
+            <input
+              type="range"
+              min={0}
+              max={150}
+              step={1}
+              value={hingeOpenDeg}
+              onChange={(e) => setHingeOpenDeg(parseInt(e.target.value, 10))}
+              className="w-28 accent-primary"
+            />
+            <span className="tabular-nums w-7 text-right text-foreground">{hingeOpenDeg}°</span>
+          </div>
+        )}
       </div>
       {focusedPart && (
         <div className="absolute top-3 left-3 z-10 px-3 py-1.5 rounded-md bg-primary/15 backdrop-blur border border-primary/40 shadow-lg shadow-black/40 font-mono text-[11px] flex items-center gap-2">
@@ -571,9 +785,33 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
           const kind = p.kind ?? "sheet_metal";
           const selected = p._id === focusedPartId;
           if (hiddenPartIds?.has(p._id as unknown as string)) return null;
+          const isHinged = hingeRig && p.role === hingeRig.role;
+          const wrapWithHinge = (mesh: React.ReactNode) => {
+            if (!isHinged || hingeOpenDeg === 0 || !hingeRig) return mesh;
+            const angleRad = (hingeOpenDeg * Math.PI) / 180 * hingeRig.sign;
+            // Pivot the part around the hinge edge by composing two groups:
+            // outer translates to pivot, applies rotation around axis,
+            // inner translates back so the part's world position is preserved
+            // when angle == 0.
+            const [ax, ay, az] = hingeRig.axisThree;
+            // Build Euler from axis + angle. Three.js group accepts rotation
+            // as Euler XYZ — for our axes (unit X, Y, or Z) we can map directly.
+            const eul: [number, number, number] = ax !== 0
+              ? [angleRad * ax, 0, 0]
+              : ay !== 0
+                ? [0, angleRad * ay, 0]
+                : [0, 0, angleRad * az];
+            return (
+              <group position={hingeRig.pivotThree} rotation={eul}>
+                <group position={[-hingeRig.pivotThree[0], -hingeRig.pivotThree[1], -hingeRig.pivotThree[2]]}>
+                  {mesh}
+                </group>
+              </group>
+            );
+          };
           if (kind === "printed") {
             const bb = printedBoundingBox(p);
-            return (
+            return wrapWithHinge(
               <PartMesh
                 key={p._id}
                 size={[bb.w / 25.4, bb.h / 25.4, bb.d / 25.4]}
@@ -588,16 +826,14 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
             );
           }
           if (kind === "purchased") {
-            return (
-              <PartMesh
+            return wrapWithHinge(
+              <PurchasedMesh
                 key={p._id}
-                size={[0.5, 0.5, 0.5]}
                 position={p.position}
                 selected={selected}
                 showBounds={showBounds}
                 onClick={() => handlePartClick(p._id)}
-                color="#f5b647"
-                wireframe
+                category={purchasedCategory(p)}
               />
             );
           }
@@ -612,7 +848,7 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
             } catch { /* ignore */ }
           }
           if (outline) {
-            return (
+            return wrapWithHinge(
               <ExtrudedPartMesh
                 key={p._id}
                 outline={outline}
@@ -630,7 +866,7 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
               />
             );
           }
-          return (
+          return wrapWithHinge(
             <PartMesh
               key={p._id}
               size={[p.width ?? 1, p.thickness ?? 0.075, p.height ?? 1]}
