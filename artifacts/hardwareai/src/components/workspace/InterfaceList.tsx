@@ -1,5 +1,5 @@
 import { useQuery } from "convex/react";
-import { Bolt, Hammer, MoveDiagonal, Cog } from "lucide-react";
+import { Bolt, Hammer, MoveDiagonal, Cog, Flame } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
@@ -8,6 +8,7 @@ const KIND_META: Record<string, { label: string; icon: typeof Bolt; tone: string
   pem_inserted:  { label: "PEM",      icon: Cog,          tone: "border-sky-500/40   bg-sky-500/5   text-sky-200",     verb: "PEM-inserted into" },
   riveted:       { label: "Riveted",  icon: Hammer,       tone: "border-rose-500/40  bg-rose-500/5  text-rose-200",    verb: "riveted to" },
   hinged:        { label: "Hinged",   icon: MoveDiagonal, tone: "border-emerald-500/40 bg-emerald-500/5 text-emerald-200", verb: "hinged to" },
+  weld_seam:     { label: "Welded",   icon: Flame,        tone: "border-orange-500/40 bg-orange-500/5 text-orange-200",  verb: "welded to" },
 };
 
 export default function InterfaceList({ projectId }: { projectId: Id<"projects"> }) {

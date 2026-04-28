@@ -344,10 +344,14 @@ Read this before picking an archetype or refining a part:
 
 **Bends vs. assembly.** Sheet metal can be folded along straight lines on a
 press brake. A simple box body is usually ONE bent plate (base + 4 walls
-folded up), not 5 bolted plates — fewer parts, no fasteners on visible faces,
-stronger. Use multi-plate bolted assemblies (the current archetypes) when
-either: the part is too big to fit in one flat pattern, the bend pattern
-would self-collide, or the customer needs to disassemble it.
+folded up) joined by **welds**, not 5 bolted plates — fewer parts, no
+fasteners on visible faces, stronger. The \`hinged_enclosure\` archetype's
+\`bodyConstruction\` param controls this: \`"single_bend"\` (default for
+jerry-rigged + mvp) emits weld-seam interfaces between body parts and zero
+body fasteners; \`"bolted_plates"\` (default for commercial / serviceable
+boxes) keeps the four base↔wall joints as bolted. Use bolted plates when:
+the part is too big to fit in one flat pattern, the bend pattern would
+self-collide, or the customer needs to disassemble it.
 
 **Bend rules of thumb.**
 - Min bend radius ≈ 1× material thickness for steel/aluminum (so 0.075"
@@ -380,6 +384,9 @@ would self-collide, or the customer needs to disassemble it.
 - "hinged" = mechanical hinge (e.g. McMaster 1635A3). Hinge axis must be
   parallel to the contact edge between roleA and roleB. The validator
   checks hole counts and geometry for you.
+- "weld_seam" = continuous weld along a shared edge. No hardware. Use for
+  body-to-body joints when the assembly is built from a single bent plate
+  or welded together post-cut. Default for jerry-rigged + mvp body joints.
 
 **Common mistakes to avoid.**
 - Don't make every box a "hinged_enclosure" with a top lid. Lockers,

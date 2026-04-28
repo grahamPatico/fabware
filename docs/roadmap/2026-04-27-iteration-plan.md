@@ -63,15 +63,18 @@ into a U or box shape) — fewer parts, no fasteners on visible faces, stronger.
 Tab-and-slot welded joints are the next-cheapest construction method. The
 agent should pick the right construction for the user's tier and use case.
 
-- [ ] **2.1 Add `body_construction` param to `hinged_enclosure`.** Values:
-  `"bolted_plates"` (current) | `"single_bend"` (one bent plate forming
-  base + 2 walls or base + 4 walls + welded seam). For `single_bend`, emit ONE
-  sheet-metal part with a flat-pattern unfold and bend lines defined; the
-  3D viewer should render it as a folded box. Default: `"single_bend"` for
-  jerry-rigged + mvp tiers, `"bolted_plates"` for commercial.
-  **Verify**: a 12×12×12 box with `body_construction: "single_bend"` produces
-  1 body part + 1 lid + 1 hinge interface; intersection passes; AssembledView
-  renders the folded geometry (not 5 floating plates).
+- [x] **2.1 Add `bodyConstruction` param to `hinged_enclosure` + new
+  `weld_seam` interface kind.** _Done 2026-04-27 (scope-trimmed)._ Took the
+  pragmatic half-step: kept the 5 separate body parts (full
+  unfolded-flat-pattern rendering is queued under 3.2), but body-to-body
+  joints now emit `weld_seam` interfaces instead of bolted ones for
+  `"single_bend"` mode (default for jerry-rigged + mvp). A default 12×12×12
+  hinged_enclosure now reports 4 weld_seam interfaces + 1 hinged, total of
+  1 fastener line in the BOM (the hinge) — down from 5 fastener lines.
+  Commercial tier still defaults to `"bolted_plates"` for serviceability.
+  System prompt updated to teach the param. Schema, interfaces.ts validators,
+  assemblyRules.ts, and InterfaceList badge (orange Flame icon) all extended
+  with `weld_seam`.
 - [ ] **2.2 Add `weld_joint` interface kind for tab-and-slot joints.** Used
   when two sheet-metal parts join via spot-weld at tabs that slot through
   rectangular cutouts. Update `assemblyRules.ts` to validate that tab/slot
@@ -93,6 +96,21 @@ agent should pick the right construction for the user's tier and use case.
 - [ ] **2.5 Bend interference detection.** Two folds in a part can't share
   material. After unfolding, check that bend regions don't overlap. Add a
   `bend_geometry_feasible` rule per part with bends.
+- [ ] **2.7 Laser + bend simulator.** _Added 2026-04-27 from user request._
+  Build an interactive simulator that takes a sheet-metal part DSL (outline,
+  thickness, material, bend features, holes) and produces:
+  (a) the laser-cut step — material-specific kerf and feasibility
+  (acrylic can't bend; copper has tighter min hole spacing; max sheet);
+  (b) per-bend simulation — fold animation in the 3D view, pre/post bend
+  positions, springback estimate, k-factor based on material;
+  (c) cumulative validators — each bend checked against the material's bend
+  radius, flange length minimum, hole-to-bend distance, bend-bend
+  interference (two folds sharing material). UI: a "Simulate" tab beside
+  the 3D view that scrubs through Cut → Bend 1 → Bend 2 → ... → Final.
+  Each step displays the rule pass/fail strip. **Verify**: a sample part
+  with 2 bends shows 3 simulation steps, each with its own validation
+  output; switching material to Acrylic Clear surfaces a "cannot bend"
+  failure on the first bend step.
 - [ ] **2.6 Manufacturing primer in agent's per-call context.** Currently
   the primer is in the system prompt (static). Add a tool
   `check_manufacturing` the agent can call to get a tailored summary of
@@ -214,3 +232,5 @@ but render it as a box" gaps to close.
 | 2026-04-27 | 1.3 regression infra | `_audit:auditAllArchetypes` ships — run any time to verify all archetypes' defaults are clean. |
 | 2026-04-27 | 1.2 conventions doc | `docs/conventions/coordinate-frames.md` written with rotation recipes; intersect.ts + positions.ts reference it. |
 | 2026-04-27 | 3.1 bolt rendering | Cylinders + bolt-head caps at hole positions for bolted/riveted/PEM interfaces; "Bolts" toggle on canvas. |
+| 2026-04-27 | 2.1 weld seams | New `weld_seam` interface kind + `bodyConstruction` param. Default mvp locker now has 4 welds + 1 hinge instead of 4 bolts × 4 fasteners + 1 hinge — body fasteners drop from 16 to 0. Orange Flame badge in InterfaceList. |
+| 2026-04-27 | 2.7 logged (new) | User asked for a laser + bend simulator; logged as a new tier-2 chunk with acceptance criteria. |

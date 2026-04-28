@@ -58,7 +58,7 @@ export const send = action({
       parts: parts.map(p => ({ role: p.role, label: p.label, dslJson: p.dslJson ?? undefined })),
       interfaces: interfaces.map(i => ({
         kind: i.kind, partA: i.partA, partB: i.partB,
-        featureRefs: i.featureRefs, hardwareRefs: i.hardwareRefs,
+        featureRefs: i.featureRefs, hardwareRefs: i.hardwareRefs ?? [],
       })),
       violations,
     };

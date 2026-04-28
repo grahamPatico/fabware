@@ -14,6 +14,11 @@ const paramSchema = z.object({
   // left or right vertical edge).
   doorFace: z.enum(["top", "front"]).default("top"),
   hingeSide: z.enum(["back", "front", "left", "right"]),
+  // bodyConstruction = "single_bend" → real fabricators bend a single sheet
+  // and weld the seams; no fasteners on the body. "bolted_plates" → 5 plates
+  // bolted together (serviceable but more parts + visible fasteners).
+  // Default flips with tier (jerry-rigged + mvp → single_bend; commercial → bolted).
+  bodyConstruction: z.enum(["single_bend", "bolted_plates"]).default("single_bend"),
   powderCoat: z.boolean(),
   powderCoatColor: z.string(),
   fastenerPartNumber: z.string(),
@@ -47,6 +52,7 @@ function paramDefaults(scope: ProjectScope): Params {
     thickness: tier.thickness!,
     doorFace: isLocker ? "front" : "top",
     hingeSide: isLocker ? "right" : "back",
+    bodyConstruction: scope.tier === "commercial" ? "bolted_plates" : "single_bend",
     powderCoat: tier.powderCoat!,
     powderCoatColor: tier.powderCoatColor!,
     fastenerPartNumber: tier.fastenerPartNumber!,
@@ -106,6 +112,14 @@ function generate(params: Params, _scope: ProjectScope) {
     position: { x: params.innerWidth + t / 2, y: cy, z: cz, rotX: Math.PI / 2, rotY: Math.PI / 2, rotZ: 0 },
   };
 
+  // Body joints become weld seams (no fasteners) when the body is one bent
+  // plate; otherwise traditional bolted plates with fasteners.
+  const isWelded = params.bodyConstruction === "single_bend";
+  const bodyJoint = (roleA: string, roleB: string) =>
+    isWelded
+      ? { kind: "weld_seam" as const, roleA, roleB, featureA: "edge", featureB: "edge", hardwareRefs: [] as Array<{ mcmasterPartNumber: string; quantity: number; role?: string }> }
+      : { kind: "bolted" as const, roleA, roleB, featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }] };
+
   if (params.doorFace === "top") {
     const wallFront = {
       role: "wall_front", label: "Wall — Front",
@@ -118,13 +132,13 @@ function generate(params: Params, _scope: ProjectScope) {
       position: { x: cx, y: cy, z: innerH + t / 2, rotX: 0, rotY: 0, rotZ: 0 },
     };
     const parts = [base, wallFront, wallBack, wallLeft, wallRight, lid];
-    // hingeSide for top-door must be one of the four wall edges.
     const hingeRole = `wall_${params.hingeSide}`;
     const interfaces = [
-      { kind: "bolted" as const, roleA: "base", roleB: "wall_front", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }] },
-      { kind: "bolted" as const, roleA: "base", roleB: "wall_back",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }] },
-      { kind: "bolted" as const, roleA: "base", roleB: "wall_left",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }] },
-      { kind: "bolted" as const, roleA: "base", roleB: "wall_right", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }] },
+      bodyJoint("base", "wall_front"),
+      bodyJoint("base", "wall_back"),
+      bodyJoint("base", "wall_left"),
+      bodyJoint("base", "wall_right"),
+      // Lid always hinges (must be removable), so this stays a hinge interface.
       { kind: "hinged" as const, roleA: "lid", roleB: hingeRole, featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.hingePartNumber, quantity: 2, role: "pivot" }] },
     ];
     return { parts, interfaces };
@@ -150,12 +164,13 @@ function generate(params: Params, _scope: ProjectScope) {
     : params.hingeSide === "right" ? "wall_right"
     : "wall_right";
   const interfaces = [
-    { kind: "bolted" as const, roleA: "base",     roleB: "wall_back",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }] },
-    { kind: "bolted" as const, roleA: "base",     roleB: "wall_left",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }] },
-    { kind: "bolted" as const, roleA: "base",     roleB: "wall_right", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }] },
-    { kind: "bolted" as const, roleA: "wall_top", roleB: "wall_back",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }] },
-    { kind: "bolted" as const, roleA: "wall_top", roleB: "wall_left",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }] },
-    { kind: "bolted" as const, roleA: "wall_top", roleB: "wall_right", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }] },
+    bodyJoint("base", "wall_back"),
+    bodyJoint("base", "wall_left"),
+    bodyJoint("base", "wall_right"),
+    bodyJoint("wall_top", "wall_back"),
+    bodyJoint("wall_top", "wall_left"),
+    bodyJoint("wall_top", "wall_right"),
+    // Door always hinges (must swing open).
     { kind: "hinged" as const, roleA: "door_front", roleB: hingeWall, featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.hingePartNumber, quantity: 2, role: "pivot" }] },
   ];
   return { parts, interfaces };

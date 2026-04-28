@@ -7,7 +7,7 @@ import { threadFromPartNumber } from "./fastenerSpecs";
 export interface AssemblyInput {
   parts: Array<{ id: string; role: string; pose: Pose; dsl: PartDsl }>;
   interfaces: Array<{
-    kind: "bolted" | "pem_inserted" | "riveted" | "hinged";
+    kind: "bolted" | "pem_inserted" | "riveted" | "hinged" | "weld_seam";
     partA: string; partB: string;
     featureRefs: Array<{ partId: string; featureName: string }>;
     hardwareRefs: Array<{ mcmasterPartNumber: string; quantity: number; role?: string }>;
@@ -45,6 +45,14 @@ export function validateAssembly(input: AssemblyInput): { rules: RuleResult[]; h
     }
     if (iface.kind === "pem_inserted") {
       rules.push(checkPemInstallSide(iface));
+    }
+    if (iface.kind === "weld_seam") {
+      rules.push({
+        id: "weld_seam_ok",
+        label: "Weld seam",
+        status: "pass",
+        message: `Continuous weld between ${iface.partA} and ${iface.partB}.`,
+      });
     }
   }
 
