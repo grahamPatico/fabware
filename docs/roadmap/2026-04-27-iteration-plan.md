@@ -466,6 +466,11 @@ failures.
 - True hole cutouts (carved off 3.5): use `THREE.Shape.holes` so the
   ExtrudeGeometry actually subtracts the hole instead of just covering it
   with a black cylinder. Required for accurate DXF + flat-pattern PDF.
+- Real AP203 STEP export (carved off 5.5): the OBJ shipped today
+  satisfies the customer-preview use case, but a customer or fabricator
+  who specifically asks for STEP needs CARTESIAN_POINT /
+  MANIFOLD_SOLID_BREP / AXIS2_PLACEMENT_3D wiring. ~50-line entity table
+  per part, sit on it until requested.
 - Agent self-repair when max-sheet fails (carved off audit 2026-04-28):
   on `assembly_max_sheet` fail, the agent should auto-split walls into
   stacked panels joined by a weld seam OR call `update_archetype_params`
@@ -503,3 +508,4 @@ failures.
 | 2026-04-28 | 5.3 BOM CSV | `bom:projectCsv` query + Download BOM button on the AssemblyPartsPanel. Sheet-metal groups by (material, thickness) with area/weight/cost, hardware rolls up across assemblyParts + interfaces + purchased parts. |
 | 2026-04-28 | 5.4 SCS bundle zip | Hand-rolled PKZIP-2.0 emitter (no compression); `bundle:projectZip` returns base64 zip with cuts/, drawings/, bom.csv, README.md. SCS bundle Archive button next to BOM. Python zipfile extracts the artifact cleanly. |
 | 2026-04-28 | 2.8 generic build (user pivot) | New tools `add_sheet_metal_part` / `add_interface` / `remove_part` let the agent compose any assembly from primitives — no archetype required. Verified by building a 3-part soldering-iron stand end-to-end on prod with zero validation failures. |
+| 2026-04-28 | 5.5 OBJ (in lieu of STEP) | `obj:projectObj` query + Download OBJ button on AssemblyPartsPanel. Hand-rolled OBJ emitter — one group per part, world-space box mesh. **Tier 5 fully complete.** Real AP203 STEP logged as a backlog item. |

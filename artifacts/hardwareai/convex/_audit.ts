@@ -137,6 +137,33 @@ export const _bomFor = internalQuery({
 });
 
 /**
+ * Synthetic smoke for the OBJ exporter (chunk 5.5).
+ */
+export const auditObj = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ bytes: number; lines: number; groups: number; vertices: number; faces: number; head: string }> => {
+    const pid: any = await ctx.runMutation(internal._audit.createAuditProject, {});
+    await ctx.runMutation(internal._audit.generateArchetypeDeterministic, {
+      projectId: pid, archetypeId: "hinged_enclosure",
+    });
+    const result: any = await ctx.runQuery(internal.obj.projectObj, { projectId: pid });
+    const lines: string[] = result.obj.split("\n");
+    let groups = 0, verts = 0, faces = 0;
+    for (const l of lines) {
+      if (l.startsWith("g ")) groups += 1;
+      else if (l.startsWith("v ")) verts += 1;
+      else if (l.startsWith("f ")) faces += 1;
+    }
+    return {
+      bytes: result.obj.length,
+      lines: lines.length,
+      groups, vertices: verts, faces,
+      head: lines.slice(0, 6).join(" | "),
+    };
+  },
+});
+
+/**
  * Synthetic smoke for the SCS upload bundle (chunk 5.4). Generates a default
  * archetype, builds the zip, and reports structural details (entry count,
  * total size, signature presence).

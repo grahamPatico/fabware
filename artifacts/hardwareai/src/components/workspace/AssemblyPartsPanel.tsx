@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useConvex } from "convex/react";
-import { ExternalLink, Plus, Trash2, Package, FileSpreadsheet, Archive } from "lucide-react";
+import { ExternalLink, Plus, Trash2, Package, FileSpreadsheet, Archive, Box } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +41,42 @@ function BomDownloadButton({ projectId }: { projectId: Id<"projects"> }) {
     >
       <FileSpreadsheet className="w-3 h-3" />
       BOM
+    </Button>
+  );
+}
+
+function ObjDownloadButton({ projectId }: { projectId: Id<"projects"> }) {
+  const convex = useConvex();
+  const [busy, setBusy] = useState(false);
+  const onDownload = async () => {
+    setBusy(true);
+    try {
+      const result = await convex.query(api.obj.projectObj, { projectId });
+      const blob = new Blob([result.obj], { type: "model/obj" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={onDownload}
+      disabled={busy}
+      className="font-mono uppercase tracking-wider text-[10px] gap-1 h-7"
+      title="Download 3D assembly as OBJ — viewable in Preview, MeshLab, Blender, SolidWorks"
+    >
+      <Box className="w-3 h-3" />
+      OBJ
     </Button>
   );
 }
@@ -163,6 +199,7 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
         </div>
         <div className="flex items-center gap-2">
           <BomDownloadButton projectId={projectId} />
+          <ObjDownloadButton projectId={projectId} />
           <BundleDownloadButton projectId={projectId} />
           <Badge variant="outline" className="font-mono text-[10px]">
             {(parts ?? []).length + interfaceHardware.length + purchasedParts.length} item{(parts ?? []).length + interfaceHardware.length + purchasedParts.length === 1 ? "" : "s"}
