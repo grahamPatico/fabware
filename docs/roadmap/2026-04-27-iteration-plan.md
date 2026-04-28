@@ -264,9 +264,20 @@ but render it as a box" gaps to close.
   **Verify**: `_audit:auditCost` returns $10.64 for a plain 12×12 mild
   steel plate, $22.14 with a bend + powder coat, $45.20 for stainless
   304 0.125", $3 (min charge) for a 1×1 plate.
-- [ ] **4.5 Bounding-box check.** Each sheet-metal part's flat pattern
-  must fit within the material's max sheet (e.g. 43"×43" for steel, 32"×32"
-  for acrylic). Already in scsRules but not enforced as a hard fail.
+- [x] **4.5 Bounding-box check.** _Done 2026-04-28._ New top-level
+  `assembly_max_sheet` rule in `validateAssembly`. Walks every
+  sheet-metal part and looks up the material's `maxSheet`; if any
+  part's `width × height` exceeds it, emits a project-level fail with
+  the offending part's role + dimensions + first offender's material
+  ("+N more" if multiple). Pass case shows the count of parts checked.
+  Per-part `sheet_size` rule from the bend simulator and the
+  `validateSpec` `sheet` rule remain — this one surfaces the failure at
+  the project rules-status strip without needing the user to focus the
+  offending part.
+  **Verify**: `_audit:auditMaxSheet` returns fail for 50×50 mild steel
+  (max 43×43), pass for 12×12, fail for 35×35 acrylic (max 32×32), pass
+  for 30×30 acrylic. Archetype regression: 6/6 clean. **Tier 4 fully
+  complete.**
 
 ## Tier 5 — Real outputs
 
@@ -383,3 +394,4 @@ but render it as a box" gaps to close.
 | 2026-04-28 | 4.2 material compat | `material_compat` rule aggregates powder-coat / bend / radius-multiplier feasibility per material. 5-case smoke covers acrylic+bend, copper+powdercoat, stainless 304 R≥1.5t warn, 6061 fail, mild-steel pass. |
 | 2026-04-28 | 4.3 weight estimate | `weight.ts` + `manufacturing:weightSummary` + PartList row-level lb display. Density per category, area subtraction for holes / slots, polygon-aware shoelace for non-rectangle outlines. |
 | 2026-04-28 | 4.4 cost estimate | `cost.ts` + `manufacturing:costSummary`. Material × thickness scale + perimeter cuts + bends + powder-coat finish + min-per-part. PartList header shows project SCS total. ±30% of actual quote. |
+| 2026-04-28 | 4.5 max sheet hard fail | Project-level `assembly_max_sheet` rule in validateAssembly flags any part exceeding its material's max sheet. **Tier 4 fully complete.** |

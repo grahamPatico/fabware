@@ -3,6 +3,7 @@ import type { Pose } from "./positions";
 import { holeWorldPositions, type HoleInstance } from "./featuresInWorld";
 import { distance } from "./positions";
 import { threadFromPartNumber } from "./fastenerSpecs";
+import { SCS_MATERIALS } from "./scsRules";
 
 export interface AssemblyInput {
   parts: Array<{ id: string; role: string; pose: Pose; dsl: PartDsl }>;
@@ -64,7 +65,38 @@ export function validateAssembly(input: AssemblyInput): { rules: RuleResult[]; h
     rules.push(checkScopeTierFastener(input));
   }
 
+  // Project-level hard fail: any sheet-metal part whose flat pattern exceeds
+  // its material's max sheet. The per-part validators already flag this, but
+  // this rule makes it visible in the project rules-status strip without the
+  // user having to focus the offending part.
+  rules.push(checkAllPartsWithinMaxSheet(input));
+
   return { rules, hasFailures: rules.some(r => r.status === "fail") };
+}
+
+function checkAllPartsWithinMaxSheet(input: AssemblyInput): RuleResult {
+  const offenders: Array<{ role: string; w: number; h: number; mw: number; mh: number; mat: string }> = [];
+  for (const p of input.parts) {
+    const mat = SCS_MATERIALS[p.dsl.material];
+    if (!mat) continue;
+    if (p.dsl.width > mat.maxSheet.width || p.dsl.height > mat.maxSheet.height) {
+      offenders.push({
+        role: p.role,
+        w: p.dsl.width, h: p.dsl.height,
+        mw: mat.maxSheet.width, mh: mat.maxSheet.height,
+        mat: mat.name,
+      });
+    }
+  }
+  if (offenders.length === 0) {
+    return { id: "assembly_max_sheet", label: "All parts within max sheet", status: "pass",
+      message: `Checked ${input.parts.length} part${input.parts.length === 1 ? "" : "s"}; all flat patterns fit their material's sheet.` };
+  }
+  const head = offenders[0];
+  const more = offenders.length > 1 ? ` (+${offenders.length - 1} more)` : "";
+  return { id: "assembly_max_sheet", label: "Part exceeds max sheet", status: "fail",
+    message: `${head.role} (${head.mat}): ${head.w.toFixed(2)}"×${head.h.toFixed(2)}" exceeds ${head.mw}"×${head.mh}"${more}.`,
+    suggestion: "Split the part into smaller pieces or pick a material with a larger sheet." };
 }
 
 function partHoles(part: { dsl: PartDsl; pose: Pose }, featureName: string): HoleInstance[] {

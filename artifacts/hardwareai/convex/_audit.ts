@@ -125,6 +125,37 @@ export const auditWeldJoint = internalAction({
 });
 
 /**
+ * Synthetic smoke for the project-level max-sheet rule (chunk 4.5).
+ */
+export const auditMaxSheet = internalAction({
+  args: {
+    material: v.optional(v.string()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+  },
+  handler: async (_ctx, args): Promise<{ status: string; message: string; suggestion?: string }> => {
+    const dsl: PartDsl = {
+      version: 1, partType: "plate",
+      material: args.material ?? "Mild Steel (CRS)",
+      thickness: 0.075,
+      width: args.width ?? 50, height: args.height ?? 50, depth: null,
+      features: [], finish: null, assemblyRefs: [],
+    };
+    const result = validateAssembly({
+      parts: [{ id: "A", role: "panel", pose: { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 }, dsl }],
+      interfaces: [],
+      scope: null,
+    });
+    const r = result.rules.find(rr => rr.id === "assembly_max_sheet");
+    if (!r) return { status: "missing", message: "assembly_max_sheet rule not emitted." };
+    return {
+      status: r.status, message: r.message,
+      suggestion: typeof r.suggestion === "string" ? r.suggestion : undefined,
+    };
+  },
+});
+
+/**
  * Synthetic smoke for the cost estimator (chunk 4.4).
  */
 export const auditCost = internalAction({
