@@ -12,6 +12,42 @@ import { v } from "convex/values";
 import { PartDslSchema } from "./lib/dsl";
 import { validatePartByKind } from "./lib/partValidator";
 import { simulatePart } from "./lib/bendSim";
+import { estimatePartWeight } from "./lib/weight";
+
+export const weightSummary = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, { projectId }): Promise<{
+    perPart: Array<{ partId: string; role: string; label: string; material: string | null; thickness: number | null; pounds: number; kg: number; areaIn2: number }>;
+    totals: { pounds: number; kg: number; sheetMetalParts: number };
+  }> => {
+    const parts = await ctx.db
+      .query("parts")
+      .withIndex("by_project", q => q.eq("projectId", projectId))
+      .collect();
+    const perPart: Array<{ partId: string; role: string; label: string; material: string | null; thickness: number | null; pounds: number; kg: number; areaIn2: number }> = [];
+    let totalLb = 0;
+    let sheetCount = 0;
+    for (const p of parts) {
+      if ((p.kind ?? "sheet_metal") !== "sheet_metal" || !p.dslJson) continue;
+      const parsed = PartDslSchema.safeParse(JSON.parse(p.dslJson));
+      if (!parsed.success) continue;
+      sheetCount += 1;
+      const w = estimatePartWeight(parsed.data);
+      totalLb += w.pounds;
+      perPart.push({
+        partId: p._id as unknown as string,
+        role: p.role, label: p.label,
+        material: p.material ?? null,
+        thickness: p.thickness ?? null,
+        pounds: w.pounds, kg: w.kg, areaIn2: w.area,
+      });
+    }
+    return {
+      perPart,
+      totals: { pounds: totalLb, kg: totalLb / 2.2046, sheetMetalParts: sheetCount },
+    };
+  },
+});
 
 export interface PartManufacturingReport {
   partId: string;

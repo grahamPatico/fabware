@@ -239,8 +239,17 @@ but render it as a box" gaps to close.
   `_audit:auditMaterialCompat` covers five scenarios: pass / acrylic+bend
   fail / copper+powdercoat fail / stainless 304+bend warn / 6061+bend
   fail. All matching expected status.
-- [ ] **4.3 Weight estimate per part.** `area × thickness × density`.
-  Surface in part list and as a project total.
+- [x] **4.3 Weight estimate per part.** _Done 2026-04-28._ New
+  `convex/lib/weight.ts` with `estimatePartWeight(dsl)` and
+  `outlineArea(outline, w, h)` that handles rectangle / polygon (shoelace)
+  / circle / regular_polygon / star (per-triangle). Subtracts hole and
+  slot areas. Density per material category in scsRules.ts
+  (`MATERIAL_DENSITY`) with a `densityFor(material)` resolver. New
+  `manufacturing:weightSummary` query returns per-part + total weight.
+  PartList shows total at the top right and per-part lb below each row.
+  **Verify**: `_audit:auditWeight` returns 3.07 lb for 12×12×0.075"
+  mild steel, 0.46 lb for acrylic, 3.13 lb for stainless 304, 7.06 lb
+  for 24×24×0.125" 5052 — all within ±0.01 lb of expected.
 - [ ] **4.4 Cost estimate.** SCS pricing: roughly $X/in² for cuts + $Y for
   bends + material cost. Build a starter table from public SCS pricing.
 - [ ] **4.5 Bounding-box check.** Each sheet-metal part's flat pattern
@@ -360,3 +369,4 @@ but render it as a box" gaps to close.
 | 2026-04-28 | 3.5 hole rendering | `<HoleMarks>` mounts thin black cylinders at every DSL hole position, mounted in both PartMesh + ExtrudedPartMesh. True cutouts queued in backlog. **Tier 3 fully complete.** |
 | 2026-04-28 | 4.1 hole-to-edge | `hole_to_edge` rule in the cut step: fail when rim crosses outline, warn when within 2×t of edge, pass otherwise. `_audit:auditHoleToEdge` smoke covers pass / warn / fail. |
 | 2026-04-28 | 4.2 material compat | `material_compat` rule aggregates powder-coat / bend / radius-multiplier feasibility per material. 5-case smoke covers acrylic+bend, copper+powdercoat, stainless 304 R≥1.5t warn, 6061 fail, mild-steel pass. |
+| 2026-04-28 | 4.3 weight estimate | `weight.ts` + `manufacturing:weightSummary` + PartList row-level lb display. Density per category, area subtraction for holes / slots, polygon-aware shoelace for non-rectangle outlines. |

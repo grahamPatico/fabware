@@ -2,7 +2,7 @@ import { threadFromPartNumber, type ThreadSpec } from "./fastenerSpecs";
 
 export interface MaterialRule {
   name: string;
-  category: "steel" | "aluminum" | "stainless" | "copper" | "brass";
+  category: "steel" | "aluminum" | "stainless" | "copper" | "brass" | "acrylic";
   thicknesses: number[];
   canBend: boolean;
   canPowderCoat: boolean;
@@ -10,6 +10,30 @@ export interface MaterialRule {
   bendRadiusMultiplier: number;
   minHoleMultiplier: number;
   textureKey: string;
+}
+
+/** Density in lb/in³ by SCS material category. */
+export const MATERIAL_DENSITY: Record<MaterialRule["category"], number> = {
+  steel: 0.284,
+  stainless: 0.290,
+  aluminum: 0.098,
+  copper: 0.323,
+  brass: 0.305,
+  acrylic: 0.043,
+};
+
+export function densityFor(material: string | undefined): number {
+  if (!material) return MATERIAL_DENSITY.steel;
+  const m = SCS_MATERIALS[material];
+  if (m) return MATERIAL_DENSITY[m.category];
+  // Fallback heuristic by name
+  const lower = material.toLowerCase();
+  if (lower.includes("acrylic")) return MATERIAL_DENSITY.acrylic;
+  if (lower.includes("aluminum")) return MATERIAL_DENSITY.aluminum;
+  if (lower.includes("stainless")) return MATERIAL_DENSITY.stainless;
+  if (lower.includes("copper")) return MATERIAL_DENSITY.copper;
+  if (lower.includes("brass")) return MATERIAL_DENSITY.brass;
+  return MATERIAL_DENSITY.steel;
 }
 
 export const POWDER_COAT_COLORS = [

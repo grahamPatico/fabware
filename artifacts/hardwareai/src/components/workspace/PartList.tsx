@@ -15,6 +15,8 @@ interface Props {
 
 export default function PartList({ projectId, focusedPartId, onFocusPart, hiddenPartIds, onTogglePart }: Props) {
   const parts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
+  const weights = useQuery(api.manufacturing.weightSummary, projectId ? { projectId } : "skip");
+  const weightByPart = new Map((weights?.perPart ?? []).map(w => [w.partId, w]));
   const removePart = useMutation(api.parts.removePart);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -32,8 +34,13 @@ export default function PartList({ projectId, focusedPartId, onFocusPart, hidden
   };
   return (
     <div className="flex flex-col min-h-0">
-      <div className="p-3 border-b border-border">
+      <div className="p-3 border-b border-border flex items-baseline justify-between gap-2">
         <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Parts</h3>
+        {weights && weights.totals.pounds > 0 && (
+          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+            ≈ {weights.totals.pounds.toFixed(2)} lb · {weights.totals.kg.toFixed(2)} kg
+          </span>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto">
         {parts === undefined && <div className="p-3 text-xs font-mono text-muted-foreground">Loading…</div>}
@@ -56,8 +63,20 @@ export default function PartList({ projectId, focusedPartId, onFocusPart, hidden
                   <span className="font-bold">{p.label}</span>
                   <PartKindBadge kind={p.kind} />
                 </div>
-                <div className="text-[10px] text-muted-foreground mt-0.5">
-                  {p.partType} · {p.material ?? "—"} · {p.thickness ?? "—"}"
+                <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
+                  <span>{p.partType}</span>
+                  <span>·</span>
+                  <span>{p.material ?? "—"}</span>
+                  <span>·</span>
+                  <span>{p.thickness ?? "—"}"</span>
+                  {weightByPart.has(p._id) && (
+                    <>
+                      <span>·</span>
+                      <span className="tabular-nums">
+                        {weightByPart.get(p._id)!.pounds.toFixed(2)} lb
+                      </span>
+                    </>
+                  )}
                 </div>
               </button>
               {onTogglePart && (

@@ -125,6 +125,30 @@ export const auditWeldJoint = internalAction({
 });
 
 /**
+ * Synthetic smoke for the weight estimator (chunk 4.3).
+ */
+export const auditWeight = internalAction({
+  args: {
+    material: v.optional(v.string()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    thickness: v.optional(v.number()),
+  },
+  handler: async (_ctx, args): Promise<{ pounds: number; kg: number; area: number }> => {
+    const dsl: PartDsl = {
+      version: 1, partType: "plate",
+      material: args.material ?? "Mild Steel (CRS)",
+      thickness: args.thickness ?? 0.075,
+      width: args.width ?? 12, height: args.height ?? 12, depth: null,
+      features: [], finish: null, assemblyRefs: [],
+    };
+    const { estimatePartWeight } = await import("./lib/weight");
+    const w = estimatePartWeight(dsl);
+    return { pounds: w.pounds, kg: w.kg, area: w.area };
+  },
+});
+
+/**
  * Synthetic smoke for the material vs feature compat rule (chunk 4.2).
  * Builds a one-part DSL with optional bend feature + finish, then reports
  * the `material_compat` rule from the cut step.
