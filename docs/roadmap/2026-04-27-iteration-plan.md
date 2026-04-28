@@ -57,6 +57,10 @@ audited.
 
 ## Tier 2 — Manufacturing realism (the user's open ask)
 
+> User redirect 2026-04-28: pause output-format work (5.5 STEP) and prove
+> we can build *anything* from primitives first — chunk 2.8 below is the
+> response.
+
 The current archetypes produce multi-plate bolted assemblies. For most simple
 boxes a real fabricator would build a single-bend body (one flat pattern folded
 into a U or box shape) — fewer parts, no fasteners on visible faces, stronger.
@@ -498,3 +502,4 @@ failures.
 | 2026-04-28 | 5.2 PDF drawing | `pdf:partPdf` query + FileText button per part. Hand-rolled PDF 1.4 emitter, US Letter, title block + outline + Bezier holes + dashed bends + dimension callouts. ~2 KB per default part. |
 | 2026-04-28 | 5.3 BOM CSV | `bom:projectCsv` query + Download BOM button on the AssemblyPartsPanel. Sheet-metal groups by (material, thickness) with area/weight/cost, hardware rolls up across assemblyParts + interfaces + purchased parts. |
 | 2026-04-28 | 5.4 SCS bundle zip | Hand-rolled PKZIP-2.0 emitter (no compression); `bundle:projectZip` returns base64 zip with cuts/, drawings/, bom.csv, README.md. SCS bundle Archive button next to BOM. Python zipfile extracts the artifact cleanly. |
+| 2026-04-28 | 2.8 generic build (user pivot) | New tools `add_sheet_metal_part` / `add_interface` / `remove_part` let the agent compose any assembly from primitives — no archetype required. Verified by building a 3-part soldering-iron stand end-to-end on prod with zero validation failures. |

@@ -317,6 +317,100 @@ async function applyToolCall(
       return lines.join("\n");
     }
 
+    case "add_sheet_metal_part": {
+      const TWO_PI = 2 * Math.PI;
+      const pos = call.input.position;
+      const looksDegrees = ["rotX", "rotY", "rotZ"].some(k => Math.abs(pos?.[k] ?? 0) > TWO_PI);
+      if (looksDegrees) {
+        pos.rotX = (pos.rotX ?? 0) * (Math.PI / 180);
+        pos.rotY = (pos.rotY ?? 0) * (Math.PI / 180);
+        pos.rotZ = (pos.rotZ ?? 0) * (Math.PI / 180);
+      }
+      // Coerce common feature-field synonyms to canonical enum values so the
+      // agent doesn't trip the Zod validator on near-misses.
+      const features = (Array.isArray(call.input.features) ? call.input.features : []).map((f: any) => {
+        const out = { ...f };
+        if (out.kind === "bend") {
+          if (typeof out.axis === "string") {
+            const a = out.axis.toLowerCase();
+            if (a === "x" || a === "horiz" || a === "h" || a.startsWith("horiz")) out.axis = "horizontal";
+            else if (a === "y" || a === "vert" || a === "v" || a.startsWith("vert")) out.axis = "vertical";
+          }
+        }
+        if ((out.kind === "hole" || out.kind === "slot" || out.kind === "tab") && typeof out.pattern === "string") {
+          const p = out.pattern.toLowerCase().replace(/-/g, "_");
+          if (p === "corners") out.pattern = "corner";
+          if (p === "centre") out.pattern = "center";
+          if (p === "top") out.pattern = "top_row";
+          if (p === "bottom") out.pattern = "bottom_row";
+        }
+        if (out.kind === "tab" && typeof out.edge === "string") {
+          const e = out.edge.toLowerCase();
+          if (["top", "bottom", "left", "right"].includes(e)) out.edge = e;
+        }
+        return out;
+      });
+      const dsl = {
+        version: 1,
+        partType: "plate" as const,
+        material: call.input.material,
+        thickness: call.input.thickness,
+        width: call.input.width,
+        height: call.input.height,
+        depth: null,
+        outline: call.input.outline ?? { kind: "rectangle" },
+        features,
+        finish: call.input.powderCoat
+          ? { type: "powder_coat", color: call.input.powderCoatColor ?? "Black" }
+          : null,
+        assemblyRefs: [],
+      };
+      try {
+        await ctx.runMutation(internal.parts.addPartInternal, {
+          projectId, role: call.input.role, label: call.input.label, position: pos,
+          dslJson: JSON.stringify(dsl),
+        });
+      } catch (err: any) {
+        return `Couldn't add ${call.input.role}: ${err?.message?.slice(0, 200) ?? "validation failed"}`;
+      }
+      return `🟦 Added sheet-metal part ${call.input.role} (${call.input.label}) — ${dsl.material} ${dsl.thickness}", ${dsl.width}" × ${dsl.height}".`;
+    }
+
+    case "add_interface": {
+      const all = await ctx.runQuery(api.parts.listForProject, { projectId });
+      const partA = all.find(p => p.role === call.input.roleA);
+      const partB = all.find(p => p.role === call.input.roleB);
+      if (!partA || !partB) {
+        return `Couldn't add interface: role not found (${!partA ? call.input.roleA : call.input.roleB}).`;
+      }
+      try {
+        await ctx.runMutation(internal.interfaces.addInterfaceInternal, {
+          projectId,
+          kind: call.input.kind,
+          partA: partA._id,
+          partB: partB._id,
+          featureRefs: [
+            { partId: partA._id, featureName: call.input.featureA },
+            { partId: partB._id, featureName: call.input.featureB },
+          ],
+          hardwareRefs: Array.isArray(call.input.hardwareRefs) ? call.input.hardwareRefs : [],
+          accessSide: call.input.accessSide,
+        });
+      } catch (err: any) {
+        return `Couldn't add interface: ${err?.message?.slice(0, 200) ?? "validation failed"}`;
+      }
+      const hwTotal = (call.input.hardwareRefs ?? []).reduce((acc: number, h: any) => acc + (h.quantity ?? 0), 0);
+      return `🔗 ${call.input.kind} interface: ${call.input.roleA} ↔ ${call.input.roleB}${hwTotal > 0 ? ` (${hwTotal}× hardware)` : ""}.`;
+    }
+
+    case "remove_part": {
+      const all = await ctx.runQuery(api.parts.listForProject, { projectId });
+      const target = all.find(p => p.role === call.input.role);
+      if (!target) return `No part with role ${call.input.role}.`;
+      await ctx.runMutation(api.parts.removePart, { partId: target._id });
+      return `🗑 Removed ${call.input.role}.`;
+    }
+
     case "add_freeform_2d_part": {
       const TWO_PI = 2 * Math.PI;
       const fpos = call.input.position;

@@ -157,6 +157,79 @@ const TOOLS = [
     },
   },
   {
+    name: "add_sheet_metal_part",
+    description: "Add a sheet-metal part with full control over its DSL — outline, thickness, material, holes/bends/slots/tabs/fillets, and pose. Use this when no archetype fits and you need to build piece-by-piece. All dimensions in INCHES. Pose `position` is in the assembly frame; rotation is Euler XYZ in radians (use π/2 for a 90° rotation). The part is inserted directly into the project's parts table; subsequent calls to `add_interface` connect it to other parts.",
+    input_schema: {
+      type: "object",
+      properties: {
+        role: { type: "string", description: "Snake-case role like 'side_panel_left' — must be unique within the project." },
+        label: { type: "string" },
+        material: { type: "string", description: "One of the SCS materials: Mild Steel (CRS), Galvanized Steel, Stainless Steel 304, Stainless Steel 316, Aluminum 5052, Aluminum 6061, Copper, Brass, Acrylic Clear, Acrylic Black." },
+        thickness: { type: "number", description: "Inches. Pick from the material's stocked gauges." },
+        width: { type: "number", description: "Bounding-box width in inches. Used as fallback for non-polygon outlines." },
+        height: { type: "number", description: "Bounding-box height in inches." },
+        outline: {
+          type: "object",
+          description: "Optional outline; defaults to rectangle of width × height when omitted. Same shape as add_freeform_2d_part.",
+          oneOf: [
+            { type: "object", properties: { kind: { const: "rectangle" } }, required: ["kind"] },
+            { type: "object", properties: { kind: { const: "polygon" }, points: { type: "array", items: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, required: ["x", "y"] }, minItems: 3 } }, required: ["kind", "points"] },
+            { type: "object", properties: { kind: { const: "star" }, numPoints: { type: "integer" }, outerRadius: { type: "number" }, innerRadius: { type: "number" } }, required: ["kind", "numPoints", "outerRadius", "innerRadius"] },
+            { type: "object", properties: { kind: { const: "circle" }, radius: { type: "number" } }, required: ["kind", "radius"] },
+            { type: "object", properties: { kind: { const: "regular_polygon" }, sides: { type: "integer" }, radius: { type: "number" } }, required: ["kind", "sides", "radius"] },
+          ],
+        },
+        features: {
+          type: "array",
+          description: "Holes / bends / slots / tabs / fillets. Each entry must have a `kind` and a `name`; other fields per kind.",
+          items: { type: "object" },
+        },
+        powderCoat: { type: "boolean" },
+        powderCoatColor: { type: "string" },
+        position: {
+          type: "object",
+          properties: { x: { type: "number" }, y: { type: "number" }, z: { type: "number" }, rotX: { type: "number" }, rotY: { type: "number" }, rotZ: { type: "number" } },
+          required: ["x", "y", "z", "rotX", "rotY", "rotZ"],
+        },
+      },
+      required: ["role", "label", "material", "thickness", "width", "height", "position"],
+    },
+  },
+  {
+    name: "add_interface",
+    description: "Connect two existing parts. Call after `add_sheet_metal_part` to declare how the parts join. The validator checks the connection per-kind: bolted/riveted/PEM check holes; hinged checks per-style hole counts; weld_seam is just informational; weld_joint validates tab+slot pairing.",
+    input_schema: {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["bolted", "pem_inserted", "riveted", "hinged", "weld_seam", "weld_joint"] },
+        roleA: { type: "string", description: "First part's role." },
+        roleB: { type: "string", description: "Second part's role." },
+        featureA: { type: "string", description: "Feature on roleA that anchors the joint (e.g. 'mounting_hole', 'edge', 'tab')." },
+        featureB: { type: "string", description: "Feature on roleB." },
+        hardwareRefs: {
+          type: "array",
+          description: "McMaster hardware. Empty for weld_seam. For 'hinged', encode style as role 'pivot:butt' / 'pivot:piano' / 'pivot:concealed'.",
+          items: {
+            type: "object",
+            properties: { mcmasterPartNumber: { type: "string" }, quantity: { type: "integer" }, role: { type: "string" } },
+            required: ["mcmasterPartNumber", "quantity"],
+          },
+        },
+        accessSide: { type: "string", enum: ["A-to-B", "B-to-A", "either"], description: "For pem_inserted only." },
+      },
+      required: ["kind", "roleA", "roleB", "featureA", "featureB", "hardwareRefs"],
+    },
+  },
+  {
+    name: "remove_part",
+    description: "Delete a part by role. Cascades to its interfaces. Use to prune a part the user changed their mind about.",
+    input_schema: {
+      type: "object",
+      properties: { role: { type: "string" } },
+      required: ["role"],
+    },
+  },
+  {
     name: "add_freeform_2d_part",
     description: "Add a sheet-metal part with a non-rectangular laser-cut outline (star, polygon, circle, regular polygon, or arbitrary polygon). Use this when the user asks for shapes a press brake can't bend into existence — sheet metal lasers cut ANY 2D outline from a flat sheet. All dimensions in INCHES.",
     input_schema: {
@@ -296,6 +369,14 @@ function buildSystemPrompt(
 2. If the project has no archetype yet and the user is describing a new thing: call \`gather_inspiration\` → \`capture_scope\` (if scope is missing) → \`select_archetype\` with the closest-matching archetype.
 3. If the project already has an archetype and the user is refining: call \`refine_part\`, \`add_feature_to_part\`, or \`update_archetype_params\`.
 4. If the user asks for a shape that isn't a rectangle (star, hexagon, disc, logo, custom outline): use \`add_freeform_2d_part\`. Lasers cut **any** 2D outline from a flat sheet — there is no shape constraint as long as the outline is a single closed polygon.
+5. **If no archetype fits at all** (custom multi-part assembly, weird geometry, novel category like a kayak rack or a soldering-iron stand): build piece-by-piece with \`add_sheet_metal_part\` for each plate, then call \`add_interface\` to connect them. After each batch of \`add_sheet_metal_part\` + \`add_interface\` calls, call \`check_manufacturing\` to surface any rule failures and refine. \`remove_part\` cleans up if you change your mind. Use this path when "select an archetype" feels like jamming a square peg into a round hole — the agent should reach for primitives, not stretch the existing archetypes.
+
+   **Feature vocabulary** (to avoid Zod rejections):
+   - \`hole\`: \`{ kind: "hole", name, count, diameter, pattern: "corner"|"center"|"top_row"|"bottom_row", inset?: number }\`
+   - \`bend\`: \`{ kind: "bend", name, axis: "horizontal"|"vertical", positionRatio: 0..1, angle, radius }\`
+   - \`slot\`: \`{ kind: "slot", name, count, length, width, pattern: same as hole }\`
+   - \`tab\`:  \`{ kind: "tab", name, count, length, width, edge: "top"|"bottom"|"left"|"right" }\`
+   - \`fillet\`: \`{ kind: "fillet", name, radius, corners: "all"|"top"|"bottom" }\`
 5. If the user asks something you can't do (e.g., "add an electromagnetic lock", "switch to 3D printing"): explain politely what's not yet supported.
 6. Never output a final assistant message summarizing what you did — tools carry the rationale. Keep spoken output short.
 
