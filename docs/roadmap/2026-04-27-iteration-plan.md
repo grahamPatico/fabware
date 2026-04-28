@@ -357,9 +357,20 @@ but render it as a box" gaps to close.
 
 ## Tier 6 — UX
 
-- [ ] **6.1 Project list / dashboard at `/studio`.** Replace the
-  current "creates one project on click" flow with a list of recent
-  projects + a "new project" CTA.
+- [x] **6.1 Project list / dashboard at `/studio`.** _Done 2026-04-28._
+  `Home.tsx` already mounts at `/studio` with `api.projects.list`
+  (sorted desc by `updatedAt`), card grid, status badges, empty state,
+  and `NewProjectWizard` two-step CTA — that part shipped earlier as
+  part of the studio scaffolding. Closed out the dashboard story by
+  wiring the existing `projects:remove` cascading-delete mutation to a
+  hover-revealed Trash icon on every project card. Two-click confirm
+  (first click flips the button red, second triggers the mutation;
+  mouse-leave cancels), matches the PartList delete affordance. The
+  card click → workspace navigation still works (button uses
+  preventDefault + stopPropagation outside the wouter `<Link>`).
+  **Verify**: `npx convex run projects:list '{}'` returns the project
+  list; `_audit:auditAllArchetypes` reports 0 failures across all 6
+  archetypes.
 - [ ] **6.2 Undo/redo.** Each tool call already lands a part revision
   (the `partRevisions` table exists). Wire up keyboard shortcuts and a
   visible undo/redo affordance in the canvas toolbar.
@@ -520,3 +531,5 @@ failures.
 | 2026-04-28 | 5.4 SCS bundle zip | Hand-rolled PKZIP-2.0 emitter (no compression); `bundle:projectZip` returns base64 zip with cuts/, drawings/, bom.csv, README.md. SCS bundle Archive button next to BOM. Python zipfile extracts the artifact cleanly. |
 | 2026-04-28 | 2.8 generic build (user pivot) | New tools `add_sheet_metal_part` / `add_interface` / `remove_part` let the agent compose any assembly from primitives — no archetype required. Verified by building a 3-part soldering-iron stand end-to-end on prod with zero validation failures. |
 | 2026-04-28 | 5.5 OBJ (in lieu of STEP) | `obj:projectObj` query + Download OBJ button on AssemblyPartsPanel. Hand-rolled OBJ emitter — one group per part, world-space box mesh. **Tier 5 fully complete.** Real AP203 STEP logged as a backlog item. |
+| 2026-04-28 | refactor: transform3d module | Two callers had inline Euler→axis matrices encoding different XYZ conventions. Extracted `eulerAxesThreeJs` (renderer/SAT) and `eulerAxesDataFrame` (positions.ts pipeline) into `convex/lib/transform3d.ts`. 6/6 archetype regression + every smoke byte-identical post-migration. |
+| 2026-04-28 | 6.1 studio dashboard delete | `Home.tsx` was already a project list with NewProjectWizard CTA; closed the chunk by wiring `projects:remove` to a hover-revealed two-click trash icon on every card. **Tier 6 starts.** |
