@@ -577,3 +577,87 @@ export const generateArchetypeDeterministic = internalMutation({
     return { partsGenerated: gen.length, interfacesGenerated: genInterfaces.length };
   },
 });
+
+/**
+ * Synthetic smoke for the project-level undo/redo system (chunk 6.2).
+ * Creates a temp project, generates an archetype (snap A), regenerates with
+ * different params (snap B), undoes (must restore A's archetypeId/parts),
+ * redoes (must restore B), then deletes the project.
+ */
+export const auditUndoRedo = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{
+    snapshots: number;
+    afterUndo: { archetypeId: string | null; parts: number; canUndo: boolean; canRedo: boolean };
+    afterRedo: { archetypeId: string | null; parts: number; canUndo: boolean; canRedo: boolean };
+  }> => {
+    const projectId: any = await ctx.runMutation(internal._audit.createTempProjectInternal, {});
+    try {
+      // Snap A — initial empty
+      await ctx.runMutation(internal.assemblySnapshots.captureInternal, {
+        projectId, label: "before A",
+      });
+      // Generate hinged_enclosure
+      await ctx.runMutation(internal._audit.generateArchetypeDeterministic, {
+        projectId, archetypeId: "hinged_enclosure",
+      });
+      await ctx.runMutation(internal.assemblySnapshots.captureInternal, {
+        projectId, label: "after hinged",
+      });
+      // Generate box_with_lid (replaces parts)
+      await ctx.runMutation(internal._audit.generateArchetypeDeterministic, {
+        projectId, archetypeId: "box_with_lid",
+      });
+      await ctx.runMutation(internal.assemblySnapshots.captureInternal, {
+        projectId, label: "after box",
+      });
+
+      const before: any = await ctx.runQuery((await import("./_generated/api")).api.assemblySnapshots.status, { projectId });
+
+      // Undo — should land on hinged_enclosure
+      await ctx.runMutation((await import("./_generated/api")).api.assemblySnapshots.undo, { projectId });
+      const projAfterUndo: any = await ctx.runQuery((await import("./_generated/api")).api.projects.get, { projectId });
+      const partsAfterUndo: any[] = await ctx.runQuery((await import("./_generated/api")).api.parts.listForProject, { projectId });
+      const statusAfterUndo: any = await ctx.runQuery((await import("./_generated/api")).api.assemblySnapshots.status, { projectId });
+
+      // Redo — should land back on box_with_lid
+      await ctx.runMutation((await import("./_generated/api")).api.assemblySnapshots.redo, { projectId });
+      const projAfterRedo: any = await ctx.runQuery((await import("./_generated/api")).api.projects.get, { projectId });
+      const partsAfterRedo: any[] = await ctx.runQuery((await import("./_generated/api")).api.parts.listForProject, { projectId });
+      const statusAfterRedo: any = await ctx.runQuery((await import("./_generated/api")).api.assemblySnapshots.status, { projectId });
+
+      return {
+        snapshots: before.total,
+        afterUndo: {
+          archetypeId: projAfterUndo?.archetypeId ?? null,
+          parts: partsAfterUndo.length,
+          canUndo: statusAfterUndo.canUndo,
+          canRedo: statusAfterUndo.canRedo,
+        },
+        afterRedo: {
+          archetypeId: projAfterRedo?.archetypeId ?? null,
+          parts: partsAfterRedo.length,
+          canUndo: statusAfterRedo.canUndo,
+          canRedo: statusAfterRedo.canRedo,
+        },
+      };
+    } finally {
+      await ctx.runMutation((await import("./_generated/api")).api.projects.remove, { projectId });
+    }
+  },
+});
+
+export const createTempProjectInternal = internalMutation({
+  args: {},
+  handler: async (ctx): Promise<any> => {
+    const now = Date.now();
+    return await ctx.db.insert("projects", {
+      name: "audit-undo-redo",
+      status: "active",
+      scope: CANONICAL_SCOPE,
+      isMultiPart: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});

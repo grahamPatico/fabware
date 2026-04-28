@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link } from "wouter";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { useRef } from "react";
 import {
@@ -8,6 +8,8 @@ import {
   ArrowLeft,
   History,
   Sliders,
+  Undo2,
+  Redo2,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -57,6 +59,36 @@ export default function Workspace() {
 
   const parts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
   const focusedPart = parts?.find(p => p._id === focusedPartId) ?? null;
+
+  const snapshotStatus = useQuery(api.assemblySnapshots.status, projectId ? { projectId } : "skip");
+  const undoMut = useMutation(api.assemblySnapshots.undo);
+  const redoMut = useMutation(api.assemblySnapshots.redo);
+  const canUndo = !!snapshotStatus?.canUndo;
+  const canRedo = !!snapshotStatus?.canRedo;
+
+  useEffect(() => {
+    if (!projectId) return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const editable =
+        tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" ||
+        target?.isContentEditable === true;
+      if (editable) return;
+      const meta = e.metaKey || e.ctrlKey;
+      if (!meta) return;
+      const key = e.key.toLowerCase();
+      if (key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo) undoMut({ projectId });
+      } else if ((key === "z" && e.shiftKey) || key === "y") {
+        e.preventDefault();
+        if (canRedo) redoMut({ projectId });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [projectId, canUndo, canRedo, undoMut, redoMut]);
 
   if (!projectId) return <div>Invalid project ID</div>;
   const shortId = projectId.slice(-4).toUpperCase();
@@ -114,6 +146,32 @@ export default function Workspace() {
           >
             {assemblyCollapsed ? <PanelBottomOpen className="w-4 h-4" /> : <PanelBottomClose className="w-4 h-4" />}
           </Button>
+          <div className="w-px h-6 bg-border mx-2" />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => undoMut({ projectId })}
+            disabled={!canUndo}
+            className="h-8 w-8"
+            title={canUndo ? `Undo (⌘Z) — ${snapshotStatus?.label ?? ""}` : "Nothing to undo"}
+          >
+            <Undo2 className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => redoMut({ projectId })}
+            disabled={!canRedo}
+            className="h-8 w-8"
+            title={canRedo ? "Redo (⌘⇧Z)" : "Nothing to redo"}
+          >
+            <Redo2 className="w-4 h-4" />
+          </Button>
+          {snapshotStatus && snapshotStatus.total > 0 && (
+            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground px-1">
+              {snapshotStatus.current}/{snapshotStatus.total}
+            </span>
+          )}
           <div className="w-px h-6 bg-border mx-2" />
           <Button variant="outline" size="sm" onClick={() => setScopeOpen(true)} className="font-mono text-xs uppercase tracking-widest">
             <Sliders className="w-3.5 h-3.5 mr-2" />Scope

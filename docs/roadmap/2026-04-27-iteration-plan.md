@@ -371,9 +371,25 @@ but render it as a box" gaps to close.
   **Verify**: `npx convex run projects:list '{}'` returns the project
   list; `_audit:auditAllArchetypes` reports 0 failures across all 6
   archetypes.
-- [ ] **6.2 Undo/redo.** Each tool call already lands a part revision
-  (the `partRevisions` table exists). Wire up keyboard shortcuts and a
-  visible undo/redo affordance in the canvas toolbar.
+- [x] **6.2 Undo/redo.** _Done 2026-04-28._ The legacy `partRevisions`
+  table only covered the single-spec path — multi-part assembly state was
+  unprotected. Shipped a project-level snapshot system instead:
+  new `assemblySnapshots` table (parts + interfaces + archetypeId +
+  archetypeParams as JSON, role-keyed for stable restore), capped at 50
+  snapshots/project, with redo-future pruning when a new snapshot lands
+  on a non-tip pointer. Hooked into `projectChat:send`: captures
+  "Initial state" if no snapshots exist, captures one snapshot per agent
+  turn that lands a state-changing tool call (excludes pure-info tools
+  like `check_manufacturing` and `gather_inspiration`). Restore wipes
+  current parts/interfaces and re-inserts from snapshot, remapping
+  `featureRefs`/`partA`/`partB` from old role → new partId. Workspace
+  header gains hover-revealed Undo/Redo icons + REV count badge;
+  keyboard shortcuts ⌘Z / ⌘⇧Z (and Ctrl+Y) wired at the page level,
+  guarded against typing-into-input contexts.
+  **Verify**: `npx convex run _audit:auditUndoRedo '{}'` → captures 3
+  snapshots, after undo: `archetypeId=hinged_enclosure, parts=6,
+  canUndo=true, canRedo=true`; after redo: `archetypeId=box_with_lid,
+  parts=6, canUndo=true, canRedo=false`. Archetype regression: 6/6 clean.
 - [ ] **6.3 Read-only share link.** Public URL that shows the assembly
   view + parts + BOM but disables editing.
 - [ ] **6.4 Commenting on parts.** Click a part → leave a comment →
@@ -533,3 +549,4 @@ failures.
 | 2026-04-28 | 5.5 OBJ (in lieu of STEP) | `obj:projectObj` query + Download OBJ button on AssemblyPartsPanel. Hand-rolled OBJ emitter — one group per part, world-space box mesh. **Tier 5 fully complete.** Real AP203 STEP logged as a backlog item. |
 | 2026-04-28 | refactor: transform3d module | Two callers had inline Euler→axis matrices encoding different XYZ conventions. Extracted `eulerAxesThreeJs` (renderer/SAT) and `eulerAxesDataFrame` (positions.ts pipeline) into `convex/lib/transform3d.ts`. 6/6 archetype regression + every smoke byte-identical post-migration. |
 | 2026-04-28 | 6.1 studio dashboard delete | `Home.tsx` was already a project list with NewProjectWizard CTA; closed the chunk by wiring `projects:remove` to a hover-revealed two-click trash icon on every card. **Tier 6 starts.** |
+| 2026-04-28 | 6.2 project-level undo/redo | New `assemblySnapshots` table (role-keyed parts + interfaces + archetype state JSON, 50-cap, redo-future pruning). Hooked into `projectChat:send` — one snapshot per agent turn that lands state-changing tools. Workspace header gains Undo/Redo buttons + REV count + ⌘Z / ⌘⇧Z / Ctrl+Y shortcuts. `_audit:auditUndoRedo` smoke verifies capture → undo → redo correctly restores archetypeId + parts on prod. Legacy `partRevisions`/`revisions:undo` left in place for the unused single-spec canvas. |

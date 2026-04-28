@@ -125,6 +125,10 @@ export const remove = mutation({
       .withIndex("by_project", q => q.eq("projectId", projectId)).collect();
     for (const i of ifacesToDelete) await ctx.db.delete(i._id);
 
+    const snapshotsToDelete = await ctx.db.query("assemblySnapshots")
+      .withIndex("by_project_seq", q => q.eq("projectId", projectId)).collect();
+    for (const s of snapshotsToDelete) await ctx.db.delete(s._id);
+
     await ctx.db.delete(projectId);
   },
 });

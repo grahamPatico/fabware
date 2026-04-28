@@ -30,6 +30,15 @@ export const send = action({
 
     const project = await ctx.runQuery(api.projects.get, { projectId: a.projectId });
     if (!project) throw new Error("Project not found");
+
+    // Snapshot the project's pre-turn state so the user can undo back to it
+    // even if this is the first turn. Only captures when no snapshot exists yet.
+    if (!project.currentSnapshotId) {
+      await ctx.runMutation(internal.assemblySnapshots.captureInternal, {
+        projectId: a.projectId,
+        label: "Initial state",
+      });
+    }
     const parts = await ctx.runQuery(api.parts.listForProject, { projectId: a.projectId });
     const interfaces = await ctx.runQuery(api.interfaces.listForProject, { projectId: a.projectId });
     const history = await ctx.runQuery(internal.messages.listForProjectInternal, { projectId: a.projectId });
@@ -94,6 +103,23 @@ export const send = action({
       ) {
         livePartsSnapshot = await ctx.runQuery(api.parts.listForProject, { projectId: a.projectId });
       }
+    }
+
+    // Capture a post-turn snapshot if any tool call landed state changes —
+    // gives the user one undo step per agent turn.
+    const STATE_CHANGING_TOOLS = new Set([
+      "select_archetype", "update_archetype_params",
+      "add_sheet_metal_part", "add_printed_part", "add_purchased_part",
+      "add_freeform_2d_part", "add_interface", "remove_part",
+      "refine_part", "add_feature_to_part", "break_out", "capture_scope",
+    ]);
+    const stateChanged = agentResult.toolCalls.some(c => STATE_CHANGING_TOOLS.has(c.name));
+    if (stateChanged) {
+      const summary = a.content.length > 60 ? a.content.slice(0, 57) + "…" : a.content;
+      await ctx.runMutation(internal.assemblySnapshots.captureInternal, {
+        projectId: a.projectId,
+        label: summary,
+      });
     }
 
     const assistantText = agentResult.responseText.trim();

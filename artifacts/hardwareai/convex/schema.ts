@@ -43,9 +43,23 @@ export default defineSchema({
     )),
     archetypeParams: v.optional(v.any()),
     isMultiPart: v.optional(v.boolean()),
+    currentSnapshotId: v.optional(v.id("assemblySnapshots")),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_updated", ["updatedAt"]),
+
+  // --- Assembly snapshots (project-level undo/redo history) ---
+  assemblySnapshots: defineTable({
+    projectId: v.id("projects"),
+    sequence: v.number(),
+    label: v.string(),
+    archetypeId: v.optional(v.any()),
+    archetypeParams: v.optional(v.any()),
+    isMultiPart: v.optional(v.boolean()),
+    partsJson: v.string(),
+    interfacesJson: v.string(),
+    createdAt: v.number(),
+  }).index("by_project_seq", ["projectId", "sequence"]),
 
   // --- Parts (individual components within a multi-part project) ---
   parts: defineTable({
