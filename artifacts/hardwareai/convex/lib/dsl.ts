@@ -69,6 +69,37 @@ const AssemblyRefSchema = z.object({
 });
 export type AssemblyRef = z.infer<typeof AssemblyRefSchema>;
 
+/**
+ * Outline shape for a sheet-metal part. Lasers cut any 2D outline from a flat
+ * sheet, so the part doesn't have to be a rectangle. `width` / `height` always
+ * reflect the AABB of the outline so downstream code (validators, intersection
+ * check, BOM, McMaster sizing) stays correct.
+ */
+const OutlineSchema = z.union([
+  z.object({ kind: z.literal("rectangle") }),
+  z.object({
+    kind: z.literal("polygon"),
+    // Points in inches, relative to the part's local origin (bottom-left of AABB).
+    points: z.array(z.object({ x: z.number(), y: z.number() })).min(3),
+  }),
+  z.object({
+    kind: z.literal("star"),
+    numPoints: z.number().int().min(3).max(64),
+    outerRadius: z.number().positive(),
+    innerRadius: z.number().positive(),
+  }),
+  z.object({
+    kind: z.literal("circle"),
+    radius: z.number().positive(),
+  }),
+  z.object({
+    kind: z.literal("regular_polygon"),
+    sides: z.number().int().min(3).max(64),
+    radius: z.number().positive(),
+  }),
+]);
+export type Outline = z.infer<typeof OutlineSchema>;
+
 export const PartDslSchema = z.object({
   version: z.literal(DSL_VERSION),
   partType: z.enum(["bracket", "plate", "enclosure", "angle", "channel", "tab", "gusset"]),
@@ -77,6 +108,7 @@ export const PartDslSchema = z.object({
   width: z.number().positive(),
   height: z.number().positive(),
   depth: z.number().positive().nullish(),
+  outline: OutlineSchema.optional(),
   features: z.array(FeatureSchema).default([]),
   finish: z
     .object({
@@ -87,6 +119,24 @@ export const PartDslSchema = z.object({
   assemblyRefs: z.array(AssemblyRefSchema).default([]).optional(),
 });
 export type PartDsl = z.infer<typeof PartDslSchema>;
+
+/**
+ * Compute the AABB (width, height) of an outline. For rectangles, returns the
+ * fallback width/height passed in.
+ */
+export function outlineAabb(outline: Outline | undefined, fallbackW: number, fallbackH: number): { width: number; height: number } {
+  if (!outline || outline.kind === "rectangle") return { width: fallbackW, height: fallbackH };
+  if (outline.kind === "circle") return { width: outline.radius * 2, height: outline.radius * 2 };
+  if (outline.kind === "star") return { width: outline.outerRadius * 2, height: outline.outerRadius * 2 };
+  if (outline.kind === "regular_polygon") return { width: outline.radius * 2, height: outline.radius * 2 };
+  // polygon
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of outline.points) {
+    if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+  }
+  return { width: Math.max(maxX - minX, 0.001), height: Math.max(maxY - minY, 0.001) };
+}
 
 export function emptyDsl(partType: PartDsl["partType"] = "bracket"): PartDsl {
   return {

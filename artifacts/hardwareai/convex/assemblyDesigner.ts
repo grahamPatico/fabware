@@ -157,6 +157,70 @@ const TOOLS = [
     },
   },
   {
+    name: "add_freeform_2d_part",
+    description: "Add a sheet-metal part with a non-rectangular laser-cut outline (star, polygon, circle, regular polygon, or arbitrary polygon). Use this when the user asks for shapes a press brake can't bend into existence — sheet metal lasers cut ANY 2D outline from a flat sheet. All dimensions in INCHES.",
+    input_schema: {
+      type: "object",
+      properties: {
+        role: { type: "string", description: "Snake-case role like 'gusset_star' or 'logo_plate'." },
+        label: { type: "string", description: "Human label." },
+        material: { type: "string", description: "e.g. 'Mild Steel (CRS)', 'Aluminum 5052', 'Stainless Steel 304'." },
+        thickness: { type: "number", description: "Sheet thickness in inches." },
+        outline: {
+          type: "object",
+          description: "Outline shape. Use 'star' for n-pointed stars; 'circle' for disks; 'regular_polygon' for hexagons/octagons/etc.; 'polygon' for arbitrary outlines (xy points in inches relative to outline AABB origin).",
+          oneOf: [
+            { type: "object", properties: { kind: { const: "star" }, numPoints: { type: "integer", minimum: 3, maximum: 64 }, outerRadius: { type: "number" }, innerRadius: { type: "number" } }, required: ["kind", "numPoints", "outerRadius", "innerRadius"] },
+            { type: "object", properties: { kind: { const: "circle" }, radius: { type: "number" } }, required: ["kind", "radius"] },
+            { type: "object", properties: { kind: { const: "regular_polygon" }, sides: { type: "integer", minimum: 3, maximum: 64 }, radius: { type: "number" } }, required: ["kind", "sides", "radius"] },
+            { type: "object", properties: { kind: { const: "polygon" }, points: { type: "array", items: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, required: ["x", "y"] }, minItems: 3 } }, required: ["kind", "points"] },
+          ],
+        },
+        features: {
+          type: "array",
+          description: "Optional holes/slots/etc. (same schema as other sheet-metal parts).",
+          items: { type: "object" },
+        },
+        position: {
+          type: "object",
+          properties: { x: { type: "number" }, y: { type: "number" }, z: { type: "number" }, rotX: { type: "number" }, rotY: { type: "number" }, rotZ: { type: "number" } },
+          required: ["x", "y", "z", "rotX", "rotY", "rotZ"],
+        },
+      },
+      required: ["role", "label", "material", "thickness", "outline", "position"],
+    },
+  },
+  {
+    name: "gather_inspiration",
+    description: "Before picking an archetype or designing a custom part, call this to think out loud about reference designs that match the user's intent — what does a typical [thing] look like in McMaster, IKEA, Grainger, Home Depot, or industrial catalogs? What are the common dimensions, hinge orientations, latch styles, vent patterns, fastener patterns? Use the returned guidance to inform select_archetype / refine_part / add_freeform_2d_part calls. The result is your own structured reasoning — surface the highlights to the user in your rationale.",
+    input_schema: {
+      type: "object",
+      properties: {
+        topic: { type: "string", description: "What you're researching, e.g. 'tennis-ball vending machine', 'school locker', 'control panel for outdoor pump', 'hex-pattern speaker grille'." },
+        references: {
+          type: "array",
+          description: "Reference products / designs you're recalling. Each entry: name, where you'd find it, key dimensional ranges, distinctive design features. Aim for 3–5.",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              source: { type: "string", description: "e.g. 'McMaster 1812K12', 'IKEA HEMNES wardrobe', 'Pelican 1500 case'." },
+              dimensions: { type: "string", description: "Typical range, e.g. '12-14\" wide × 18-24\" deep × 60-72\" tall'." },
+              features: { type: "string", description: "Distinctive features: 'piano hinge full height', 'louvered vents top/bottom', 'recessed handle', etc." },
+            },
+            required: ["name", "source", "features"],
+          },
+        },
+        recommendations: {
+          type: "array",
+          description: "Concrete design choices for THIS project drawn from the references above. e.g. 'Use front-hinged door with piano hinge; vent the top with 6 louvered slots; use recessed pull handle.'",
+          items: { type: "string" },
+        },
+      },
+      required: ["topic", "references", "recommendations"],
+    },
+  },
+  {
     name: "add_purchased_part",
     description: "Add a purchased part referencing a McMaster part number. Use for fasteners, bearings, hinges, rubber feet, and other off-the-shelf hardware that's cheaper to buy than to make.",
     input_schema: {
@@ -214,10 +278,12 @@ function buildSystemPrompt(
 
 ## Workflow
 
-1. If the project has no archetype yet and the user is describing a new thing: call \`capture_scope\` first (if scope is missing), then \`select_archetype\` with the closest-matching archetype from the library.
-2. If the project already has an archetype and the user is refining: call \`refine_part\`, \`add_feature_to_part\`, or \`update_archetype_params\`.
-3. If the user asks something you can't do (e.g., "add an electromagnetic lock", "switch to 3D printing"): explain politely what's not yet supported.
-4. Never output a final assistant message summarizing what you did — tools carry the rationale. Keep spoken output short.
+1. **Gather inspiration FIRST** when the user describes a new thing (or a meaningful redesign). Before \`select_archetype\` or any \`add_*\` call, invoke \`gather_inspiration\` with the topic — recall 3–5 reference products / designs (McMaster, IKEA, Grainger, Pelican, industrial catalogs, common consumer items), the dimensional ranges they live in, and their distinctive features (hinge style, vent pattern, latch, handle). The recommendations you produce should drive the archetype + param choices and any custom shapes.
+2. If the project has no archetype yet and the user is describing a new thing: call \`gather_inspiration\` → \`capture_scope\` (if scope is missing) → \`select_archetype\` with the closest-matching archetype.
+3. If the project already has an archetype and the user is refining: call \`refine_part\`, \`add_feature_to_part\`, or \`update_archetype_params\`.
+4. If the user asks for a shape that isn't a rectangle (star, hexagon, disc, logo, custom outline): use \`add_freeform_2d_part\`. Lasers cut **any** 2D outline from a flat sheet — there is no shape constraint as long as the outline is a single closed polygon.
+5. If the user asks something you can't do (e.g., "add an electromagnetic lock", "switch to 3D printing"): explain politely what's not yet supported.
+6. Never output a final assistant message summarizing what you did — tools carry the rationale. Keep spoken output short.
 
 ## Params for select_archetype / update_archetype_params
 
@@ -344,7 +410,7 @@ If the user asks for an item the catalog doesn't have (e.g. a specific 3" OD alu
 
 Every custom part you add is one of three kinds:
 
-- **sheet_metal** — flat-pattern parts laser-cut by Send Cut Send. Use for panels, brackets, enclosures, anything dominated by 2D geometry with optional bends. Already covered by archetypes.
+- **sheet_metal** — flat-pattern parts laser-cut by Send Cut Send. Use for panels, brackets, enclosures, anything dominated by 2D geometry with optional bends. Multi-part bolted assemblies come from archetypes; single non-rectangular parts (star, disc, hex, logo, custom polygon) come from \`add_freeform_2d_part\`. Lasers can cut any closed 2D outline — don't tell the user "we can't make that shape" just because it's not a rectangle.
 - **printed** — 3D-printed parts (FDM/resin). Use for small custom shapes with complex 3D geometry: bezels, knobs, cable grommets, snap-fit clips, mounting standoffs. Add via \`add_printed_part\`.
 - **purchased** — off-the-shelf parts from McMaster. Use for fasteners, bearings, hinges, rubber feet, springs, magnets — anything where buying is cheaper, faster, and higher quality than making. Add via \`add_purchased_part\`.
 

@@ -266,6 +266,62 @@ async function applyToolCall(
       return `Added 3D-printed part: ${call.input.label}.`;
     }
 
+    case "gather_inspiration": {
+      const refs = Array.isArray(call.input.references) ? call.input.references : [];
+      const recs = Array.isArray(call.input.recommendations) ? call.input.recommendations : [];
+      const lines = [
+        `🔍 Researched **${call.input.topic ?? "design"}** — ${refs.length} reference${refs.length === 1 ? "" : "s"}, ${recs.length} recommendation${recs.length === 1 ? "" : "s"}.`,
+        ...refs.slice(0, 5).map((r: any) => `  • ${r.name} (${r.source}): ${r.features}${r.dimensions ? ` · ${r.dimensions}` : ""}`),
+        ...(recs.length > 0 ? ["Will apply:", ...recs.slice(0, 5).map((r: string) => `  → ${r}`)] : []),
+      ];
+      return lines.join("\n");
+    }
+
+    case "add_freeform_2d_part": {
+      const TWO_PI = 2 * Math.PI;
+      const fpos = call.input.position;
+      const fLooksDegrees = ["rotX", "rotY", "rotZ"].some(k => Math.abs(fpos?.[k] ?? 0) > TWO_PI);
+      if (fLooksDegrees) {
+        fpos.rotX = (fpos.rotX ?? 0) * (Math.PI / 180);
+        fpos.rotY = (fpos.rotY ?? 0) * (Math.PI / 180);
+        fpos.rotZ = (fpos.rotZ ?? 0) * (Math.PI / 180);
+      }
+      const outline = call.input.outline;
+      const { outlineAabb: aabb } = await import("./lib/dsl");
+      const { width: aabbW, height: aabbH } = aabb(outline, 1, 1);
+      const dsl = {
+        version: 1,
+        partType: "plate" as const,
+        material: call.input.material ?? "Mild Steel (CRS)",
+        thickness: call.input.thickness ?? 0.075,
+        width: aabbW,
+        height: aabbH,
+        depth: null,
+        outline,
+        features: Array.isArray(call.input.features) ? call.input.features : [],
+        finish: null,
+        assemblyRefs: [],
+      };
+      try {
+        await ctx.runMutation(internal.parts.addPartInternal, {
+          projectId,
+          role: call.input.role,
+          label: call.input.label,
+          position: fpos,
+          dslJson: JSON.stringify(dsl),
+        });
+      } catch (err: any) {
+        return `Couldn't add freeform part ${call.input.role}: ${err?.message?.slice(0, 200) ?? "validation failed"}`;
+      }
+      const shapeDesc =
+        outline?.kind === "star" ? `${outline.numPoints}-point star, OR ${outline.outerRadius}", IR ${outline.innerRadius}"` :
+        outline?.kind === "circle" ? `Ø${outline.radius * 2}" disk` :
+        outline?.kind === "regular_polygon" ? `${outline.sides}-sided polygon, R ${outline.radius}"` :
+        outline?.kind === "polygon" ? `${outline.points?.length}-point polygon` :
+        "rectangle";
+      return `🟦 Added laser-cut: ${call.input.label} (${shapeDesc}) in ${dsl.material} ${dsl.thickness}".`;
+    }
+
     case "add_purchased_part": {
       // Coerce degree-rotations same as add_printed_part.
       const TWO_PI2 = 2 * Math.PI;
