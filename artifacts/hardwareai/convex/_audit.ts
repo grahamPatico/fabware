@@ -125,6 +125,42 @@ export const auditWeldJoint = internalAction({
 });
 
 /**
+ * Synthetic smoke for the material vs feature compat rule (chunk 4.2).
+ * Builds a one-part DSL with optional bend feature + finish, then reports
+ * the `material_compat` rule from the cut step.
+ */
+export const auditMaterialCompat = internalAction({
+  args: {
+    material: v.optional(v.string()),
+    addBend: v.optional(v.boolean()),
+    addPowderCoat: v.optional(v.boolean()),
+  },
+  handler: async (_ctx, args): Promise<{ status: string; message: string; suggestion?: string }> => {
+    const features: any[] = [];
+    if (args.addBend) {
+      features.push({ kind: "bend", name: "main_bend", axis: "horizontal", positionRatio: 0.5, angle: 90, radius: 0.1 });
+    }
+    const dsl: PartDsl = {
+      version: 1, partType: "plate",
+      material: args.material ?? "Mild Steel (CRS)",
+      thickness: 0.075,
+      width: 6, height: 6, depth: null,
+      features,
+      finish: args.addPowderCoat ? { type: "powder_coat", color: "Black" } : null,
+      assemblyRefs: [],
+    };
+    const { simulatePart } = await import("./lib/bendSim");
+    const cutStep = simulatePart(dsl).find(s => s.kind === "cut");
+    const rule = cutStep?.rules.find(r => r.id === "material_compat");
+    if (!rule) return { status: "missing", message: "material_compat rule not emitted." };
+    return {
+      status: rule.status, message: rule.message,
+      suggestion: typeof rule.suggestion === "string" ? rule.suggestion : undefined,
+    };
+  },
+});
+
+/**
  * Synthetic smoke for the hole-to-edge distance check (chunk 4.1). Builds a
  * one-part flat pattern with a hole pattern at a given inset and reports the
  * `hole_to_edge` rule from the simulator's cut step.

@@ -231,9 +231,14 @@ but render it as a box" gaps to close.
   2 × thickness, `pass` otherwise. Surfaced through `validatePartByKind`
   alongside the bend rules. New `_audit:auditHoleToEdge` covers pass /
   warn / fail-rim-on-edge / fail-rim-past-edge.
-- [ ] **4.2 Material vs feature compatibility.** E.g. acrylic can't bend,
-  6061 has minimum bend radius 2× thickness. Already in scsRules.ts but not
-  surfaced as a top-level rule.
+- [x] **4.2 Material vs feature compatibility.** _Done 2026-04-28._ New
+  `material_compat` rule on the cut step. Aggregates: requested powder
+  coat × `mat.canPowderCoat` (fail when mismatch), requested bend ×
+  `mat.canBend` (fail), and unusual `bendRadiusMultiplier` >1 (warn,
+  e.g. Stainless 304 needs R ≥ 1.5×t, 6061 needs R ≥ 2×t). Smoke
+  `_audit:auditMaterialCompat` covers five scenarios: pass / acrylic+bend
+  fail / copper+powdercoat fail / stainless 304+bend warn / 6061+bend
+  fail. All matching expected status.
 - [ ] **4.3 Weight estimate per part.** `area × thickness × density`.
   Surface in part list and as a project total.
 - [ ] **4.4 Cost estimate.** SCS pricing: roughly $X/in² for cuts + $Y for
@@ -354,3 +359,4 @@ but render it as a box" gaps to close.
 | 2026-04-28 | 3.4 material textures | Procedural normal + roughness maps per material (brushed-aluminum striations, mild-steel grain, galvanized blobs, copper/brass soft grain, stainless fine grain). Cached at module level, applied via `normalMap` + `roughnessMap` on both PartMesh and ExtrudedPartMesh. |
 | 2026-04-28 | 3.5 hole rendering | `<HoleMarks>` mounts thin black cylinders at every DSL hole position, mounted in both PartMesh + ExtrudedPartMesh. True cutouts queued in backlog. **Tier 3 fully complete.** |
 | 2026-04-28 | 4.1 hole-to-edge | `hole_to_edge` rule in the cut step: fail when rim crosses outline, warn when within 2×t of edge, pass otherwise. `_audit:auditHoleToEdge` smoke covers pass / warn / fail. |
+| 2026-04-28 | 4.2 material compat | `material_compat` rule aggregates powder-coat / bend / radius-multiplier feasibility per material. 5-case smoke covers acrylic+bend, copper+powdercoat, stainless 304 R≥1.5t warn, 6061 fail, mild-steel pass. |

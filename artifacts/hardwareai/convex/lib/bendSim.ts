@@ -137,6 +137,37 @@ export function simulatePart(dsl: PartDsl): SimStep[] {
     }
   }
 
+  // Top-level material compatibility — surfaces gotchas (powder coat on a
+  // non-coatable material, requested bend on a non-bendable material,
+  // unusual bend-radius multiplier) once at the cut step. Per-bend rules
+  // still fire for individual bend feasibility.
+  const hasBendFeature = dsl.features.some(f => f.kind === "bend");
+  const wantsPowderCoat = dsl.finish?.type === "powder_coat";
+  const compatNotes: string[] = [];
+  let compatStatus: SimStatus = "pass";
+  if (wantsPowderCoat && !mat.canPowderCoat) {
+    compatStatus = "fail";
+    compatNotes.push(`${mat.name} can't be powder coated.`);
+  }
+  if (hasBendFeature && !mat.canBend) {
+    compatStatus = "fail";
+    compatNotes.push(`${mat.name} can't be press-brake bent.`);
+  }
+  if (mat.bendRadiusMultiplier > 1.001 && mat.bendRadiusMultiplier < 90) {
+    if (compatStatus !== "fail") compatStatus = compatStatus === "warn" ? "warn" : "warn";
+    compatNotes.push(`${mat.name} requires bend radius ≥ ${mat.bendRadiusMultiplier.toFixed(1)} × thickness (${(mat.bendRadiusMultiplier * t).toFixed(3)}" at ${t}").`);
+  }
+  if (compatStatus === "pass") {
+    cutRules.push(pass("material_compat", "Material vs features",
+      `${mat.name} supports the requested features (${hasBendFeature ? "bend, " : ""}${wantsPowderCoat ? "powder coat, " : ""}cut).`));
+  } else if (compatStatus === "warn") {
+    cutRules.push(warn("material_compat", "Material caveat", compatNotes.join(" ")));
+  } else {
+    cutRules.push(fail("material_compat", "Material incompatible with requested features",
+      compatNotes.join(" "),
+      "Switch material or remove the incompatible feature (bend / powder coat)."));
+  }
+
   steps.push({ id: "step_cut", kind: "cut", label: "Laser cut flat pattern", rules: cutRules });
 
   // ============================================================
