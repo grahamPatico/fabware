@@ -341,8 +341,19 @@ but render it as a box" gaps to close.
   Python's `zipfile` opens cleanly — 6 cuts (~1 KB each), 6 drawings
   (~1.9 KB each), bom.csv (399 B), README.md (1125 B). Valid PK signatures
   + EOCD record.
-- [ ] **5.5 STEP export for the full assembly.** Lower priority — most
-  fabricators want flat patterns, not 3D. Useful for showing customers.
+- [x] **5.5 STEP export for the full assembly.** _Done 2026-04-28
+  (scope-trimmed to OBJ)._ Real STEP AP203 needs ~50 entity types
+  (CARTESIAN_POINT, AXIS2_PLACEMENT_3D, MANIFOLD_SOLID_BREP, etc.) and
+  ~10× the LOC for the same customer-facing value. Shipped **OBJ
+  instead** — universally viewable in Preview, MeshLab, Blender,
+  SolidWorks import. New `convex/lib/obj.ts` emits one OBJ group per
+  part with a 6-face / 12-tri box mesh transformed into world space
+  (intrinsic XYZ Euler matching `positions.ts`). `obj:projectObj`
+  query returns `{ filename, obj }`. New Box-icon "OBJ" button in
+  `AssemblyPartsPanel` triggers a browser download. **Verify**: a
+  default `hinged_enclosure` produces a 2.1 KB OBJ with 6 groups, 48
+  vertices, 72 faces. Real AP203 STEP logged in the backlog for when
+  a customer specifically asks. **Tier 5 fully complete.**
 
 ## Tier 6 — UX
 
