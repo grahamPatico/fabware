@@ -98,12 +98,12 @@ function generate(params: Params, _scope: ProjectScope) {
   const wallLeft = {
     role: "wall_left", label: "Wall — Left",
     dsl: makePlate("wall_left", params.innerDepth, innerH, params, hole(params.fastenerCount)),
-    position: { x: -t / 2, y: cy, z: cz, rotX: Math.PI / 2, rotY: 0, rotZ: Math.PI / 2 },
+    position: { x: -t / 2, y: cy, z: cz, rotX: Math.PI / 2, rotY: Math.PI / 2, rotZ: 0 },
   };
   const wallRight = {
     role: "wall_right", label: "Wall — Right",
     dsl: makePlate("wall_right", params.innerDepth, innerH, params, hole(params.fastenerCount)),
-    position: { x: params.innerWidth + t / 2, y: cy, z: cz, rotX: Math.PI / 2, rotY: 0, rotZ: Math.PI / 2 },
+    position: { x: params.innerWidth + t / 2, y: cy, z: cz, rotX: Math.PI / 2, rotY: Math.PI / 2, rotZ: 0 },
   };
 
   if (params.doorFace === "top") {
