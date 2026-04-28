@@ -9,6 +9,7 @@ const KIND_META: Record<string, { label: string; icon: typeof Bolt; tone: string
   riveted:       { label: "Riveted",  icon: Hammer,       tone: "border-rose-500/40  bg-rose-500/5  text-rose-200",    verb: "riveted to" },
   hinged:        { label: "Hinged",   icon: MoveDiagonal, tone: "border-emerald-500/40 bg-emerald-500/5 text-emerald-200", verb: "hinged to" },
   weld_seam:     { label: "Welded",   icon: Flame,        tone: "border-orange-500/40 bg-orange-500/5 text-orange-200",  verb: "welded to" },
+  weld_joint:    { label: "Tab+Weld", icon: Flame,        tone: "border-amber-600/40 bg-amber-600/5 text-amber-200",     verb: "tab-welded to" },
 };
 
 export default function InterfaceList({ projectId }: { projectId: Id<"projects"> }) {

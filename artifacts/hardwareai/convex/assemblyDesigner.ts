@@ -387,6 +387,14 @@ self-collide, or the customer needs to disassemble it.
 - "weld_seam" = continuous weld along a shared edge. No hardware. Use for
   body-to-body joints when the assembly is built from a single bent plate
   or welded together post-cut. Default for jerry-rigged + mvp body joints.
+- "weld_joint" = tab-and-slot mechanical interlock plus spot-welds. The
+  male part has a \`tab\` feature; the female part has a \`slot\` feature
+  with the same count and slightly larger length × width (typical
+  clearance: +0.010" each axis). Use when you want a self-jigging joint
+  that holds itself in alignment before welding — production-volume
+  enclosures, panel-to-frame joins, and anywhere you'd otherwise need
+  fixturing. Validator checks tab/slot pairing, count match, and
+  clearance.
 
 **Common mistakes to avoid.**
 - Don't make every box a "hinged_enclosure" with a top lid. Lockers,

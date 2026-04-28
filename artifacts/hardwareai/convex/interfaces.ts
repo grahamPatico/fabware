@@ -24,7 +24,7 @@ const interfaceInsertArgs = {
   kind: v.union(
     v.literal("bolted"), v.literal("pem_inserted"),
     v.literal("riveted"), v.literal("hinged"),
-    v.literal("weld_seam"),
+    v.literal("weld_seam"), v.literal("weld_joint"),
   ),
   partA: v.id("parts"),
   partB: v.id("parts"),
@@ -58,7 +58,7 @@ export const replaceAll = internalMutation({
   args: {
     projectId: v.id("projects"),
     interfaces: v.array(v.object({
-      kind: v.union(v.literal("bolted"), v.literal("pem_inserted"), v.literal("riveted"), v.literal("hinged"), v.literal("weld_seam")),
+      kind: v.union(v.literal("bolted"), v.literal("pem_inserted"), v.literal("riveted"), v.literal("hinged"), v.literal("weld_seam"), v.literal("weld_joint")),
       roleA: v.string(), roleB: v.string(),
       featureA: v.string(), featureB: v.string(),
       hardwareRefs: v.array(v.object({

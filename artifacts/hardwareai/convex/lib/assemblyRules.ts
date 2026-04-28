@@ -7,7 +7,7 @@ import { threadFromPartNumber } from "./fastenerSpecs";
 export interface AssemblyInput {
   parts: Array<{ id: string; role: string; pose: Pose; dsl: PartDsl }>;
   interfaces: Array<{
-    kind: "bolted" | "pem_inserted" | "riveted" | "hinged" | "weld_seam";
+    kind: "bolted" | "pem_inserted" | "riveted" | "hinged" | "weld_seam" | "weld_joint";
     partA: string; partB: string;
     featureRefs: Array<{ partId: string; featureName: string }>;
     hardwareRefs: Array<{ mcmasterPartNumber: string; quantity: number; role?: string }>;
@@ -53,6 +53,9 @@ export function validateAssembly(input: AssemblyInput): { rules: RuleResult[]; h
         status: "pass",
         message: `Continuous weld between ${iface.partA} and ${iface.partB}.`,
       });
+    }
+    if (iface.kind === "weld_joint") {
+      rules.push(checkWeldJointTabSlot(iface, partsById));
     }
   }
 
@@ -179,6 +182,64 @@ function checkHingeGeometry(
   parts: Map<string, AssemblyInput["parts"][number]>,
 ): RuleResult {
   return { ...checkHolePatternMatch(iface, parts), id: "hinge_geometry_ok", label: "Hinge geometry" };
+}
+
+function checkWeldJointTabSlot(
+  iface: AssemblyInput["interfaces"][number],
+  parts: Map<string, AssemblyInput["parts"][number]>,
+): RuleResult {
+  const partA = parts.get(iface.partA);
+  const partB = parts.get(iface.partB);
+  if (!partA || !partB) {
+    return { id: "weld_joint_tab_slot", label: "Weld joint tab/slot", status: "warn",
+      message: "Can't check tab/slot alignment — missing part." };
+  }
+
+  const tabsA = partA.dsl.features.filter((f: any) => f.kind === "tab") as Array<{ name: string; count: number; length: number; width: number; edge: string }>;
+  const tabsB = partB.dsl.features.filter((f: any) => f.kind === "tab") as Array<{ name: string; count: number; length: number; width: number; edge: string }>;
+  const slotsA = partA.dsl.features.filter((f: any) => f.kind === "slot") as Array<{ name: string; count: number; length: number; width: number }>;
+  const slotsB = partB.dsl.features.filter((f: any) => f.kind === "slot") as Array<{ name: string; count: number; length: number; width: number }>;
+
+  // Resolve which side is the tab and which is the slot from feature refs.
+  const refByPart = new Map<string, string>();
+  for (const r of iface.featureRefs ?? []) refByPart.set(r.partId, r.featureName);
+  const featA = refByPart.get(iface.partA);
+  const featB = refByPart.get(iface.partB);
+
+  const tab =
+    (featA && tabsA.find(t => t.name === featA)) ||
+    (featB && tabsB.find(t => t.name === featB)) ||
+    tabsA[0] || tabsB[0];
+  const slot =
+    (featA && slotsA.find(s => s.name === featA)) ||
+    (featB && slotsB.find(s => s.name === featB)) ||
+    slotsA[0] || slotsB[0];
+
+  if (!tab || !slot) {
+    return { id: "weld_joint_tab_slot", label: "Weld joint tab/slot", status: "fail",
+      message: `Need a tab on one side and a slot on the other; found tab=${tab?.name ?? "—"}, slot=${slot?.name ?? "—"}.`,
+      suggestion: "Add a tab feature to one part and a matching slot to the other before joining as weld_joint." };
+  }
+  if (tab.count !== slot.count) {
+    return { id: "weld_joint_tab_slot", label: "Weld joint tab/slot", status: "fail",
+      message: `Tab count ${tab.count} ≠ slot count ${slot.count}.`,
+      suggestion: "Match tab and slot counts so each tab passes through one slot." };
+  }
+  // Slot must be larger than tab on each axis for the tab to pass through with a small clearance.
+  const lenSlack = slot.length - tab.length;
+  const widSlack = slot.width - tab.width;
+  if (lenSlack < 0 || widSlack < 0) {
+    return { id: "weld_joint_tab_slot", label: "Weld joint tab/slot", status: "fail",
+      message: `Slot ${slot.length}"×${slot.width}" is smaller than tab ${tab.length}"×${tab.width}" — won't fit.`,
+      suggestion: "Slot must be ≥ tab dimensions plus clearance (recommend +0.010\" each axis)." };
+  }
+  if (lenSlack > 0.060 || widSlack > 0.060) {
+    return { id: "weld_joint_tab_slot", label: "Weld joint tab/slot", status: "warn",
+      message: `Slot is ${lenSlack.toFixed(3)}"×${widSlack.toFixed(3)}" larger than tab — joint will be sloppy until welded.`,
+      suggestion: "Tighten slot to tab + 0.010\" clearance on each axis." };
+  }
+  return { id: "weld_joint_tab_slot", label: "Weld joint tab/slot", status: "pass",
+    message: `Tab ${tab.length}"×${tab.width}" passes through slot ${slot.length}"×${slot.width}" with ${lenSlack.toFixed(3)}"/${widSlack.toFixed(3)}" clearance.` };
 }
 
 function checkPemInstallSide(iface: AssemblyInput["interfaces"][number]): RuleResult {

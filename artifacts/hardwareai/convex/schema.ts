@@ -97,6 +97,7 @@ export default defineSchema({
       v.literal("riveted"),
       v.literal("hinged"),
       v.literal("weld_seam"),
+      v.literal("weld_joint"),
     ),
     partA: v.id("parts"),
     partB: v.id("parts"),

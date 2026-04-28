@@ -7,7 +7,9 @@ import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { listArchetypes } from "./archetypes";
 import { computeIntersectionRules } from "./lib/intersectRules";
+import { validateAssembly } from "./lib/assemblyRules";
 import type { Doc } from "./_generated/dataModel";
+import type { PartDsl } from "./lib/dsl";
 
 const CANONICAL_SCOPE = {
   tier: "mvp" as const,
@@ -60,6 +62,65 @@ export const auditAllArchetypes = internalAction({
       out.push({ archetypeId: arch.id, parts: gen.length, failures });
     }
     return out;
+  },
+});
+
+/**
+ * Synthetic smoke for the weld_joint validator (chunk 2.2). Builds two parts
+ * — one with a tab feature, one with a slot feature — and a single
+ * weld_joint interface, then runs validateAssembly and returns the
+ * weld_joint_tab_slot rule. Each scenario is a separate call.
+ */
+export const auditWeldJoint = internalAction({
+  args: {
+    tabLength: v.optional(v.number()),
+    tabWidth: v.optional(v.number()),
+    tabCount: v.optional(v.number()),
+    slotLength: v.optional(v.number()),
+    slotWidth: v.optional(v.number()),
+    slotCount: v.optional(v.number()),
+  },
+  handler: async (_ctx, args): Promise<{ status: string; message: string; suggestion?: string }> => {
+    const tabLen = args.tabLength ?? 0.5;
+    const tabWid = args.tabWidth ?? 0.075;
+    const tabCnt = args.tabCount ?? 4;
+    const slotLen = args.slotLength ?? tabLen + 0.01;
+    const slotWid = args.slotWidth ?? tabWid + 0.01;
+    const slotCnt = args.slotCount ?? tabCnt;
+
+    const dslA: PartDsl = {
+      version: 1, partType: "plate", material: "Mild Steel (CRS)", thickness: 0.075,
+      width: 6, height: 4, depth: null,
+      features: [{ kind: "tab", name: "tab", count: tabCnt, length: tabLen, width: tabWid, edge: "right" }],
+      finish: null, assemblyRefs: [],
+    };
+    const dslB: PartDsl = {
+      version: 1, partType: "plate", material: "Mild Steel (CRS)", thickness: 0.075,
+      width: 6, height: 4, depth: null,
+      features: [{ kind: "slot", name: "slot", count: slotCnt, length: slotLen, width: slotWid, pattern: "top_row" }],
+      finish: null, assemblyRefs: [],
+    };
+
+    const result = validateAssembly({
+      parts: [
+        { id: "A", role: "panel_a", pose: { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 }, dsl: dslA },
+        { id: "B", role: "panel_b", pose: { x: 6, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 }, dsl: dslB },
+      ],
+      interfaces: [{
+        kind: "weld_joint", partA: "A", partB: "B",
+        featureRefs: [{ partId: "A", featureName: "tab" }, { partId: "B", featureName: "slot" }],
+        hardwareRefs: [],
+      }],
+      scope: null,
+    });
+
+    const r = result.rules.find(rr => rr.id === "weld_joint_tab_slot");
+    if (!r) return { status: "missing", message: "Validator didn't emit weld_joint_tab_slot rule." };
+    return {
+      status: r.status,
+      message: r.message,
+      suggestion: typeof r.suggestion === "string" ? r.suggestion : undefined,
+    };
   },
 });
 

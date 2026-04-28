@@ -41,6 +41,18 @@ const SlotSchema = z.object({
   pattern: z.enum(["corner", "center", "top_row", "bottom_row"]),
 });
 
+// Tab features extend the part outline — small rectangular protrusions on a
+// named edge that pass through matching slots on the mating part. Used as the
+// male side of a weld_joint (tab-and-slot) interface.
+const TabSchema = z.object({
+  kind: z.literal("tab"),
+  name: SafeName,
+  count: z.number().int().min(1).max(16),
+  length: z.number().positive(), // length along the edge
+  width: z.number().positive(),  // protrusion depth out of the edge
+  edge: z.enum(["top", "bottom", "left", "right"]),
+});
+
 const FilletSchema = z.object({
   kind: z.literal("fillet"),
   name: SafeName,
@@ -52,11 +64,14 @@ export const FeatureSchema = z.discriminatedUnion("kind", [
   HoleSchema,
   BendSchema,
   SlotSchema,
+  TabSchema,
   FilletSchema,
 ]);
 export type Feature = z.infer<typeof FeatureSchema>;
 export type HoleFeature = z.infer<typeof HoleSchema>;
 export type BendFeature = z.infer<typeof BendSchema>;
+export type SlotFeatureT = z.infer<typeof SlotSchema>;
+export type TabFeature = z.infer<typeof TabSchema>;
 export type SlotFeature = z.infer<typeof SlotSchema>;
 export type FilletFeature = z.infer<typeof FilletSchema>;
 
@@ -250,6 +265,7 @@ export function summarizeDsl(dsl: PartDsl): string {
     if (f.kind === "hole") parts.push(`${f.count}× Ø${f.diameter}" ${f.pattern} holes`);
     else if (f.kind === "bend") parts.push(`${f.angle}° ${f.axis} bend R${f.radius}"`);
     else if (f.kind === "slot") parts.push(`${f.count}× ${f.length}"×${f.width}" slots`);
+    else if (f.kind === "tab") parts.push(`${f.count}× ${f.length}"×${f.width}" tabs on ${f.edge}`);
     else if (f.kind === "fillet") parts.push(`R${f.radius}" fillets (${f.corners})`);
   }
   if (dsl.finish) parts.push(`powder coat ${dsl.finish.color}`);

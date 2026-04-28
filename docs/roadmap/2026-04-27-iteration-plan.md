@@ -75,12 +75,20 @@ agent should pick the right construction for the user's tier and use case.
   System prompt updated to teach the param. Schema, interfaces.ts validators,
   assemblyRules.ts, and InterfaceList badge (orange Flame icon) all extended
   with `weld_seam`.
-- [ ] **2.2 Add `weld_joint` interface kind for tab-and-slot joints.** Used
-  when two sheet-metal parts join via spot-weld at tabs that slot through
-  rectangular cutouts. Update `assemblyRules.ts` to validate that tab/slot
-  features align across the joint. Update system prompt to teach the agent
-  when to prefer welded joints over bolted (high-volume, sealed enclosures,
-  non-serviceable assemblies).
+- [x] **2.2 Add `weld_joint` interface kind for tab-and-slot joints.** _Done
+  2026-04-27._ New `tab` feature in `PartDsl` (count, length, width, edge);
+  new `weld_joint` interface kind across schema, interfaces.ts mutators,
+  assemblyRules. Validator `checkWeldJointTabSlot` resolves tab on one side
+  + slot on the other from `featureRefs`, then enforces: (a) both features
+  exist, (b) `tab.count === slot.count`, (c) slot ≥ tab on both axes (fail
+  if not), (d) ≤ 0.060" slack on either axis (warn beyond — sloppy until
+  welded). New `_audit:auditWeldJoint` smoke verified pass / fail (size) /
+  warn (slop) / fail (count mismatch). System prompt teaches the agent
+  when to use weld_joint vs weld_seam vs bolted. New "Tab+Weld" amber
+  badge in InterfaceList.
+  **Verify**: `npx convex run _audit:auditWeldJoint '{}'` → status pass.
+  Archetype regression: `npx convex run _audit:auditAllArchetypes '{}'`
+  still shows zero failures.
 - [ ] **2.3 Hinge geometry classes.** Today every hinge is a generic
   `1635A3`. Real options: piano (continuous, full edge length), butt
   (discrete, 2–3 hinges spaced along edge), concealed (cup-and-bracket,
@@ -280,3 +288,4 @@ but render it as a box" gaps to close.
 | 2026-04-27 | 2.7b simulator UI | `BendSimulatorPanel` under the 3D view: step strip + per-step rules card. Visible the moment a sheet-metal part is focused. |
 | 2026-04-27 | 3.2 polygon extrude | `ExtrudedPartMesh` renders star / circle / polygon / regular_polygon outlines via `THREE.Shape` + `ExtrudeGeometry`; rectangle parts still go through the cheaper boxGeometry path. |
 | 2026-04-27 | delete + hinge slider + McMaster geom | Trash icon on parts (two-click confirm), 0–150° hinge open slider with proper edge-pivot animation, purchased parts render as category-aware geometry instead of placeholder cubes. |
+| 2026-04-27 | 2.2 weld_joint | New `tab` feature + `weld_joint` interface kind. Validator checks tab/slot pairing, count match, fit, and clearance slack; surfaces amber Tab+Weld badge in InterfaceList. `_audit:auditWeldJoint` smoke covers pass / fail-size / warn-sloppy / fail-count. |
