@@ -17,8 +17,13 @@ const paramSchema = z.object({
   // bodyConstruction = "single_bend" → real fabricators bend a single sheet
   // and weld the seams; no fasteners on the body. "bolted_plates" → 5 plates
   // bolted together (serviceable but more parts + visible fasteners).
-  // Default flips with tier (jerry-rigged + mvp → single_bend; commercial → bolted).
-  bodyConstruction: z.enum(["single_bend", "bolted_plates"]).default("single_bend"),
+  // "solvent_welded" → flat panels chemically fused at the edges (Weld-On 4/16
+  // capillary cement); standard for acrylic display cases. No fasteners, no
+  // through-holes on walls except where the lid hinges. Acrylic can't bend
+  // and shouldn't be bolted around its perimeter, so this is its default.
+  // Default flips with material + tier (acrylic → solvent_welded;
+  // jerry-rigged + mvp → single_bend; commercial → bolted).
+  bodyConstruction: z.enum(["single_bend", "bolted_plates", "solvent_welded"]).default("single_bend"),
   // hingeStyle: "butt" → 2–3 discrete leaves bolted on the outside (cheap,
   // serviceable). "piano" → continuous hinge along the full edge length
   // (clean look, more rigidity). "concealed" → Euro cup hinge hidden inside
@@ -89,7 +94,10 @@ function paramDefaults(scope: ProjectScope): Params {
     thickness: tThick,
     doorFace,
     hingeSide,
-    bodyConstruction: scope.tier === "commercial" ? "bolted_plates" : "single_bend",
+    bodyConstruction:
+      material.toLowerCase().includes("acrylic")
+        ? "solvent_welded"
+        : scope.tier === "commercial" ? "bolted_plates" : "single_bend",
     hingeStyle: styleHint,
     powderCoat: tier.powderCoat!,
     powderCoatColor: tier.powderCoatColor!,
@@ -136,30 +144,47 @@ function generate(params: Params, _scope: ProjectScope) {
   const cy = params.innerDepth / 2;
   const cz = innerH / 2;
 
+  // Welded construction (single-bend folded steel OR solvent-welded acrylic)
+  // joins panels along their edges with no fasteners — so the body parts
+  // themselves don't need mounting-hole patterns. The lid + hinge wall still
+  // get hinge mounting holes regardless, since the hinge always uses real
+  // hardware. For bolted_plates construction every body part keeps its
+  // perimeter mounting holes for the through-bolts.
+  // Coercion: acrylic can't bend, so single_bend is physically impossible —
+  // when the user (or a stale paramDefaults) leaves bodyConstruction as
+  // single_bend on an acrylic enclosure, we promote it to solvent_welded.
+  // bolted_plates is left alone (user explicitly chose through-bolted corners).
+  const isAcrylic = params.material.toLowerCase().includes("acrylic");
+  const effectiveBody =
+    isAcrylic && params.bodyConstruction === "single_bend"
+      ? "solvent_welded"
+      : params.bodyConstruction;
+  const isWelded = effectiveBody === "single_bend" || effectiveBody === "solvent_welded";
+  const bodyJointFastener = (count: number) =>
+    isWelded ? undefined : hole(count);
+
   const base = {
     role: "base", label: "Base",
-    dsl: makePlate("base", outerW, outerD, params, { ...hole(params.fastenerCount), pattern: "corner" as const }),
+    dsl: makePlate("base", outerW, outerD, params,
+      isWelded ? undefined : { ...hole(params.fastenerCount), pattern: "corner" as const }),
     position: { x: cx, y: cy, z: -t / 2, rotX: 0, rotY: 0, rotZ: 0 },
   };
   const wallBack = {
     role: "wall_back", label: "Wall — Back",
-    dsl: makePlate("wall_back", outerW, innerH, params, hole(params.fastenerCount)),
+    dsl: makePlate("wall_back", outerW, innerH, params, bodyJointFastener(params.fastenerCount)),
     position: { x: cx, y: params.innerDepth + t / 2, z: cz, rotX: Math.PI / 2, rotY: 0, rotZ: 0 },
   };
   const wallLeft = {
     role: "wall_left", label: "Wall — Left",
-    dsl: makePlate("wall_left", params.innerDepth, innerH, params, hole(params.fastenerCount)),
+    dsl: makePlate("wall_left", params.innerDepth, innerH, params, bodyJointFastener(params.fastenerCount)),
     position: { x: -t / 2, y: cy, z: cz, rotX: Math.PI / 2, rotY: Math.PI / 2, rotZ: 0 },
   };
   const wallRight = {
     role: "wall_right", label: "Wall — Right",
-    dsl: makePlate("wall_right", params.innerDepth, innerH, params, hole(params.fastenerCount)),
+    dsl: makePlate("wall_right", params.innerDepth, innerH, params, bodyJointFastener(params.fastenerCount)),
     position: { x: params.innerWidth + t / 2, y: cy, z: cz, rotX: Math.PI / 2, rotY: Math.PI / 2, rotZ: 0 },
   };
 
-  // Body joints become weld seams (no fasteners) when the body is one bent
-  // plate; otherwise traditional bolted plates with fasteners.
-  const isWelded = params.bodyConstruction === "single_bend";
   const bodyJoint = (roleA: string, roleB: string) =>
     isWelded
       ? { kind: "weld_seam" as const, roleA, roleB, featureA: "edge", featureB: "edge", hardwareRefs: [] as Array<{ mcmasterPartNumber: string; quantity: number; role?: string }> }
@@ -168,16 +193,28 @@ function generate(params: Params, _scope: ProjectScope) {
   if (params.doorFace === "top") {
     const wallFront = {
       role: "wall_front", label: "Wall — Front",
-      dsl: makePlate("wall_front", outerW, innerH, params, hole(params.fastenerCount)),
+      dsl: makePlate("wall_front", outerW, innerH, params, bodyJointFastener(params.fastenerCount)),
       position: { x: cx, y: -t / 2, z: cz, rotX: Math.PI / 2, rotY: 0, rotZ: 0 },
     };
+    // Lid + hinge wall keep hinge-mounting holes (the hinge is real hardware
+    // regardless of body construction). All other walls had their body-joint
+    // holes stripped above when welded.
+    const hingeRole = `wall_${params.hingeSide}`;
     const lid = {
       role: "lid", label: "Lid",
       dsl: makePlate("lid", outerW, outerD, params, { ...hole(params.fastenerCount), pattern: "bottom_row" as const }),
       position: { x: cx, y: cy, z: innerH + t / 2, rotX: 0, rotY: 0, rotZ: 0 },
     };
+    if (isWelded) {
+      // Re-attach hinge holes to the hinge wall (we stripped them above).
+      const hingeWallObj =
+        hingeRole === "wall_back" ? wallBack
+        : hingeRole === "wall_front" ? wallFront
+        : hingeRole === "wall_left" ? wallLeft
+        : wallRight;
+      hingeWallObj.dsl = makePlate(hingeRole, hingeWallObj.dsl.width, hingeWallObj.dsl.height, params, hole(params.fastenerCount));
+    }
     const parts = [base, wallFront, wallBack, wallLeft, wallRight, lid];
-    const hingeRole = `wall_${params.hingeSide}`;
     const interfaces = [
       bodyJoint("base", "wall_front"),
       bodyJoint("base", "wall_back"),
@@ -191,6 +228,8 @@ function generate(params: Params, _scope: ProjectScope) {
 
   // doorFace === "front" — locker/cabinet style. Front opening becomes the
   // door, top is closed solid, hinge is on left or right vertical edge.
+  // Door always keeps hinge mounting holes; top keeps corner holes only when
+  // bolted (drops them on welded acrylic / single-bend steel).
   const door = {
     role: "door_front", label: "Door — Front",
     dsl: makePlate("door_front", outerW, innerH, params, hole(params.fastenerCount)),
@@ -198,16 +237,22 @@ function generate(params: Params, _scope: ProjectScope) {
   };
   const top = {
     role: "wall_top", label: "Top",
-    dsl: makePlate("wall_top", outerW, outerD, params, { ...hole(params.fastenerCount), pattern: "corner" as const }),
+    dsl: makePlate("wall_top", outerW, outerD, params,
+      isWelded ? undefined : { ...hole(params.fastenerCount), pattern: "corner" as const }),
     position: { x: cx, y: cy, z: innerH + t / 2, rotX: 0, rotY: 0, rotZ: 0 },
   };
-  const parts = [base, top, wallBack, wallLeft, wallRight, door];
   // hingeSide for front-door defaults to right; left allowed too. Map other
   // values to "right" so we always produce valid geometry.
   const hingeWall =
     params.hingeSide === "left" ? "wall_left"
     : params.hingeSide === "right" ? "wall_right"
     : "wall_right";
+  if (isWelded) {
+    // Re-attach hinge holes to whichever side wall the door pivots on.
+    const hingeWallObj = hingeWall === "wall_left" ? wallLeft : wallRight;
+    hingeWallObj.dsl = makePlate(hingeWall, hingeWallObj.dsl.width, hingeWallObj.dsl.height, params, hole(params.fastenerCount));
+  }
+  const parts = [base, top, wallBack, wallLeft, wallRight, door];
   const interfaces = [
     bodyJoint("base", "wall_back"),
     bodyJoint("base", "wall_left"),

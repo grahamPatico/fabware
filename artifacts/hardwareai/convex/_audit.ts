@@ -503,6 +503,45 @@ export const auditHingeStyle = internalAction({
   },
 });
 
+/**
+ * Acrylic enclosure construction smoke. Generates a hinged_enclosure with
+ * Acrylic Clear and reports per-part mounting-hole counts + interface kinds.
+ * Acceptance: body parts (non-hinge walls + base) should have 0 mounting
+ * holes; lid + hinge wall keep their hinge holes; body joints are weld_seam.
+ */
+export const auditAcrylicEnclosure = internalAction({
+  args: { material: v.optional(v.string()) },
+  handler: async (
+    _ctx,
+    { material },
+  ): Promise<{
+    bodyConstruction: string;
+    holesByRole: Array<{ role: string; mountingHoles: number }>;
+    interfaceKinds: Array<{ kind: string; count: number }>;
+  }> => {
+    const arch = listArchetypes().find(a => a.id === "hinged_enclosure")!;
+    const defaults = arch.paramDefaults(CANONICAL_SCOPE);
+    const params = arch.paramSchema.parse({
+      ...defaults,
+      material: material ?? "Acrylic Clear",
+      thickness: 0.236, // 1/4" cast acrylic
+    });
+    const { parts, interfaces } = arch.generate(params, CANONICAL_SCOPE);
+    const holesByRole = parts.map((p: any) => {
+      const mh = p.dsl.features.filter((f: any) => f.kind === "hole" && f.name === "mounting_hole");
+      const total = mh.reduce((acc: number, h: any) => acc + (h.count ?? 0), 0);
+      return { role: p.role, mountingHoles: total };
+    });
+    const kindCounts = new Map<string, number>();
+    for (const i of interfaces) kindCounts.set(i.kind, (kindCounts.get(i.kind) ?? 0) + 1);
+    return {
+      bodyConstruction: (params as any).bodyConstruction,
+      holesByRole,
+      interfaceKinds: Array.from(kindCounts, ([kind, count]) => ({ kind, count })),
+    };
+  },
+});
+
 // Convenience: generate an archetype's default geometry into a real project so
 // it can be inspected in the UI. Used during iterative audit sessions.
 export const generateArchetypeDeterministic = internalMutation({
