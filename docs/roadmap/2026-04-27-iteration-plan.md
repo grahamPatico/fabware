@@ -148,11 +148,13 @@ but render it as a box" gaps to close.
   kind: bolted=zinc, riveted=brass, PEM=sky-blue. New "Bolts" toggle in
   the canvas chrome alongside Home / Bounds. Length = sum of part
   thicknesses + 0.25" so bolt-heads sit visibly above the surface._
-- [ ] **3.2 Render polygon outlines for non-rectangle sheet-metal parts.**
-  Today `add_freeform_2d_part` produces parts with `outline:
-  {kind: "star"|"polygon"|...}` but AssembledView still renders the AABB.
-  Switch to `THREE.Shape` + `ExtrudeGeometry` so a 5-pointed star part
-  actually looks like a star.
+- [x] **3.2 Render polygon outlines for non-rectangle sheet-metal parts.**
+  _Done 2026-04-27._ New `ExtrudedPartMesh` builds a `THREE.Shape` from the
+  `outline` field on the DSL and renders via `ExtrudeGeometry`, falling
+  back to `PartMesh` (boxGeometry) for rectangles. Supports `polygon`
+  (centers on AABB), `star`, `circle`, `regular_polygon`. Geometry is
+  rotated −π/2 around X after extrude so its thickness axis matches the
+  existing box convention; rest of the pose math is unchanged.
 - [ ] **3.3 Render bend lines.** Each `bend` feature should appear as a
   dashed line on the part surface in the unfolded preview AND show as the
   fold edge in the assembled view. Currently bends are invisible.
@@ -253,3 +255,4 @@ but render it as a box" gaps to close.
 | 2026-04-27 | 2.7 logged (new) | User asked for a laser + bend simulator; logged as a new tier-2 chunk with acceptance criteria. |
 | 2026-04-27 | 2.4 + 2.5 + 2.7a | Backend simulator shipped: cut step + per-bend rules (radius / flange / hole clearance) + interference. Wired into part validator + new `simulation:simulatePartById` query. UI scrubber stays as 2.7b. |
 | 2026-04-27 | 2.7b simulator UI | `BendSimulatorPanel` under the 3D view: step strip + per-step rules card. Visible the moment a sheet-metal part is focused. |
+| 2026-04-27 | 3.2 polygon extrude | `ExtrudedPartMesh` renders star / circle / polygon / regular_polygon outlines via `THREE.Shape` + `ExtrudeGeometry`; rectangle parts still go through the cheaper boxGeometry path. |

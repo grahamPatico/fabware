@@ -11,6 +11,126 @@ import { PartDslSchema } from "../../../convex/lib/dsl";
 
 type Pose = { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number };
 
+type Outline =
+  | { kind: "rectangle" }
+  | { kind: "polygon"; points: Array<{ x: number; y: number }> }
+  | { kind: "star"; numPoints: number; outerRadius: number; innerRadius: number }
+  | { kind: "circle"; radius: number }
+  | { kind: "regular_polygon"; sides: number; radius: number };
+
+function buildShape(outline: Outline, fallbackW: number, fallbackH: number): THREE.Shape {
+  const shape = new THREE.Shape();
+  if (outline.kind === "rectangle") {
+    const w = fallbackW, h = fallbackH;
+    shape.moveTo(-w / 2, -h / 2); shape.lineTo(w / 2, -h / 2);
+    shape.lineTo(w / 2, h / 2); shape.lineTo(-w / 2, h / 2);
+    shape.closePath();
+    return shape;
+  }
+  if (outline.kind === "polygon") {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of outline.points) {
+      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+    }
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    outline.points.forEach((p, i) => {
+      const x = p.x - cx, y = p.y - cy;
+      if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+    });
+    shape.closePath();
+    return shape;
+  }
+  if (outline.kind === "circle") {
+    const r = outline.radius;
+    shape.absarc(0, 0, r, 0, Math.PI * 2, false);
+    return shape;
+  }
+  if (outline.kind === "regular_polygon") {
+    const { sides, radius } = outline;
+    for (let i = 0; i < sides; i++) {
+      const angle = (i / sides) * Math.PI * 2 - Math.PI / 2;
+      const x = Math.cos(angle) * radius, y = Math.sin(angle) * radius;
+      if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+    }
+    shape.closePath();
+    return shape;
+  }
+  // star
+  const { numPoints, outerRadius, innerRadius } = outline;
+  for (let i = 0; i < numPoints * 2; i++) {
+    const r = i % 2 === 0 ? outerRadius : innerRadius;
+    const angle = (i / (numPoints * 2)) * Math.PI * 2 - Math.PI / 2;
+    const x = Math.cos(angle) * r, y = Math.sin(angle) * r;
+    if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+  }
+  shape.closePath();
+  return shape;
+}
+
+interface ExtrudedPartMeshProps {
+  outline: Outline;
+  width: number;
+  height: number;
+  thickness: number;
+  position: Pose;
+  selected: boolean;
+  showBounds: boolean;
+  onClick: (e: ThreeEvent<MouseEvent>) => void;
+  color: string;
+  metalness?: number;
+  roughness?: number;
+  opacity?: number;
+}
+
+function ExtrudedPartMesh({
+  outline, width, height, thickness, position, selected, showBounds, onClick,
+  color, metalness = 0.4, roughness = 0.6, opacity = 1,
+}: ExtrudedPartMeshProps) {
+  const geometry = useMemo(() => {
+    const shape = buildShape(outline, width, height);
+    const geom = new THREE.ExtrudeGeometry(shape, {
+      depth: thickness,
+      bevelEnabled: false,
+      curveSegments: 24,
+    });
+    // Center the extrude along its own thickness so position offsets match box
+    // geometry (which is centered on the part's centroid).
+    geom.translate(0, 0, -thickness / 2);
+    // Rotate -π/2 around X so the extrude's local-Z (thickness) axis becomes
+    // local-Y, matching the existing box convention used by sheet-metal
+    // pose math (size = [width, thickness, height] along three.js x,y,z).
+    geom.rotateX(-Math.PI / 2);
+    return geom;
+  }, [outline, width, height, thickness]);
+
+  return (
+    <mesh
+      position={[position.x, position.z, position.y]}
+      rotation={[position.rotX, position.rotZ, position.rotY]}
+      geometry={geometry}
+      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
+      onPointerOut={() => { document.body.style.cursor = ""; }}
+      castShadow
+      receiveShadow
+    >
+      <meshStandardMaterial
+        color={selected ? "#7dd3fc" : color}
+        metalness={metalness}
+        roughness={roughness}
+        transparent={opacity < 1}
+        opacity={opacity}
+        emissive={selected ? "#0ea5e9" : "#000000"}
+        emissiveIntensity={selected ? 0.25 : 0}
+      />
+      {(showBounds || selected) && (
+        <Edges color={selected ? "#38bdf8" : "#666666"} lineWidth={selected ? 2.5 : 1} threshold={1} />
+      )}
+    </mesh>
+  );
+}
+
 interface MeshProps {
   size: [number, number, number];
   position: Pose;
@@ -482,6 +602,34 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
             );
           }
           const appearance = sheetMetalAppearance(p.material);
+          let outline: Outline | undefined;
+          if (p.dslJson) {
+            try {
+              const parsedDsl = JSON.parse(p.dslJson);
+              if (parsedDsl?.outline?.kind && parsedDsl.outline.kind !== "rectangle") {
+                outline = parsedDsl.outline as Outline;
+              }
+            } catch { /* ignore */ }
+          }
+          if (outline) {
+            return (
+              <ExtrudedPartMesh
+                key={p._id}
+                outline={outline}
+                width={p.width ?? 1}
+                height={p.height ?? 1}
+                thickness={p.thickness ?? 0.075}
+                position={p.position}
+                selected={selected}
+                showBounds={showBounds}
+                onClick={() => handlePartClick(p._id)}
+                color={appearance.color}
+                metalness={appearance.metalness}
+                roughness={appearance.roughness}
+                opacity={appearance.opacity}
+              />
+            );
+          }
           return (
             <PartMesh
               key={p._id}
