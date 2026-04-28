@@ -13,6 +13,37 @@ import { PartDslSchema } from "./lib/dsl";
 import { validatePartByKind } from "./lib/partValidator";
 import { simulatePart } from "./lib/bendSim";
 import { estimatePartWeight } from "./lib/weight";
+import { estimatePartCost } from "./lib/cost";
+
+export const costSummary = query({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, { projectId }): Promise<{
+    perPart: Array<{ partId: string; role: string; label: string; material: number; cuts: number; bends: number; finish: number; totalUsd: number }>;
+    totals: { totalUsd: number; sheetMetalParts: number };
+  }> => {
+    const parts = await ctx.db
+      .query("parts")
+      .withIndex("by_project", q => q.eq("projectId", projectId))
+      .collect();
+    const perPart: Array<{ partId: string; role: string; label: string; material: number; cuts: number; bends: number; finish: number; totalUsd: number }> = [];
+    let total = 0;
+    let sheetCount = 0;
+    for (const p of parts) {
+      if ((p.kind ?? "sheet_metal") !== "sheet_metal" || !p.dslJson) continue;
+      const parsed = PartDslSchema.safeParse(JSON.parse(p.dslJson));
+      if (!parsed.success) continue;
+      sheetCount += 1;
+      const c = estimatePartCost(parsed.data);
+      total += c.totalUsd;
+      perPart.push({
+        partId: p._id as unknown as string,
+        role: p.role, label: p.label,
+        material: c.material, cuts: c.cuts, bends: c.bends, finish: c.finish, totalUsd: c.totalUsd,
+      });
+    }
+    return { perPart, totals: { totalUsd: total, sheetMetalParts: sheetCount } };
+  },
+});
 
 export const weightSummary = query({
   args: { projectId: v.id("projects") },

@@ -16,7 +16,9 @@ interface Props {
 export default function PartList({ projectId, focusedPartId, onFocusPart, hiddenPartIds, onTogglePart }: Props) {
   const parts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
   const weights = useQuery(api.manufacturing.weightSummary, projectId ? { projectId } : "skip");
+  const costs = useQuery(api.manufacturing.costSummary, projectId ? { projectId } : "skip");
   const weightByPart = new Map((weights?.perPart ?? []).map(w => [w.partId, w]));
+  const costByPart = new Map((costs?.perPart ?? []).map(c => [c.partId, c]));
   const removePart = useMutation(api.parts.removePart);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -36,10 +38,17 @@ export default function PartList({ projectId, focusedPartId, onFocusPart, hidden
     <div className="flex flex-col min-h-0">
       <div className="p-3 border-b border-border flex items-baseline justify-between gap-2">
         <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Parts</h3>
-        {weights && weights.totals.pounds > 0 && (
-          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-            ≈ {weights.totals.pounds.toFixed(2)} lb · {weights.totals.kg.toFixed(2)} kg
-          </span>
+        {(weights || costs) && (
+          <div className="font-mono text-[10px] tabular-nums text-muted-foreground flex flex-col items-end gap-0.5">
+            {weights && weights.totals.pounds > 0 && (
+              <span>≈ {weights.totals.pounds.toFixed(2)} lb · {weights.totals.kg.toFixed(2)} kg</span>
+            )}
+            {costs && costs.totals.totalUsd > 0 && (
+              <span title="First-pass SCS cost estimate (±30%)">
+                ≈ ${costs.totals.totalUsd.toFixed(2)} SCS
+              </span>
+            )}
+          </div>
         )}
       </div>
       <div className="flex-1 overflow-y-auto">
@@ -74,6 +83,14 @@ export default function PartList({ projectId, focusedPartId, onFocusPart, hidden
                       <span>·</span>
                       <span className="tabular-nums">
                         {weightByPart.get(p._id)!.pounds.toFixed(2)} lb
+                      </span>
+                    </>
+                  )}
+                  {costByPart.has(p._id) && (
+                    <>
+                      <span>·</span>
+                      <span className="tabular-nums">
+                        ${costByPart.get(p._id)!.totalUsd.toFixed(2)}
                       </span>
                     </>
                   )}

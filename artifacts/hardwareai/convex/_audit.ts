@@ -125,6 +125,35 @@ export const auditWeldJoint = internalAction({
 });
 
 /**
+ * Synthetic smoke for the cost estimator (chunk 4.4).
+ */
+export const auditCost = internalAction({
+  args: {
+    material: v.optional(v.string()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    thickness: v.optional(v.number()),
+    addBend: v.optional(v.boolean()),
+    addPowderCoat: v.optional(v.boolean()),
+  },
+  handler: async (_ctx, args): Promise<{ material: number; cuts: number; bends: number; finish: number; totalUsd: number; perimeterIn: number }> => {
+    const features: any[] = [];
+    if (args.addBend) features.push({ kind: "bend", name: "main", axis: "horizontal", positionRatio: 0.5, angle: 90, radius: 0.1 });
+    const dsl: PartDsl = {
+      version: 1, partType: "plate",
+      material: args.material ?? "Mild Steel (CRS)",
+      thickness: args.thickness ?? 0.075,
+      width: args.width ?? 12, height: args.height ?? 12, depth: null,
+      features,
+      finish: args.addPowderCoat ? { type: "powder_coat", color: "Black" } : null,
+      assemblyRefs: [],
+    };
+    const { estimatePartCost } = await import("./lib/cost");
+    return estimatePartCost(dsl);
+  },
+});
+
+/**
  * Synthetic smoke for the weight estimator (chunk 4.3).
  */
 export const auditWeight = internalAction({

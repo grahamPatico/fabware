@@ -250,8 +250,20 @@ but render it as a box" gaps to close.
   **Verify**: `_audit:auditWeight` returns 3.07 lb for 12×12×0.075"
   mild steel, 0.46 lb for acrylic, 3.13 lb for stainless 304, 7.06 lb
   for 24×24×0.125" 5052 — all within ±0.01 lb of expected.
-- [ ] **4.4 Cost estimate.** SCS pricing: roughly $X/in² for cuts + $Y for
-  bends + material cost. Build a starter table from public SCS pricing.
+- [x] **4.4 Cost estimate.** _Done 2026-04-28._ New `convex/lib/cost.ts`
+  with `estimatePartCost(dsl)` returning `{material, cuts, bends, finish,
+  totalUsd, perimeterIn}`. Pricing constants live in scsRules.ts:
+  `MATERIAL_COST_PER_IN2` per category × thickness scale,
+  `CUT_RATE_PER_FT` $0.50, `BEND_RATE` $1.50, `POWDER_COAT_RATE_PER_FT2`
+  $5, `MIN_CHARGE_PER_PART` $3. Cut perimeter = outline + every hole's
+  circumference + every slot's stadium perimeter. New
+  `manufacturing:costSummary` query mirrors weightSummary.
+  PartList shows project total alongside the weight total in the header,
+  and per-row $-figure beside the per-row weight figure. Treat as
+  ±30% of an actual SCS quote — caveat surfaced in the tooltip.
+  **Verify**: `_audit:auditCost` returns $10.64 for a plain 12×12 mild
+  steel plate, $22.14 with a bend + powder coat, $45.20 for stainless
+  304 0.125", $3 (min charge) for a 1×1 plate.
 - [ ] **4.5 Bounding-box check.** Each sheet-metal part's flat pattern
   must fit within the material's max sheet (e.g. 43"×43" for steel, 32"×32"
   for acrylic). Already in scsRules but not enforced as a hard fail.
@@ -370,3 +382,4 @@ but render it as a box" gaps to close.
 | 2026-04-28 | 4.1 hole-to-edge | `hole_to_edge` rule in the cut step: fail when rim crosses outline, warn when within 2×t of edge, pass otherwise. `_audit:auditHoleToEdge` smoke covers pass / warn / fail. |
 | 2026-04-28 | 4.2 material compat | `material_compat` rule aggregates powder-coat / bend / radius-multiplier feasibility per material. 5-case smoke covers acrylic+bend, copper+powdercoat, stainless 304 R≥1.5t warn, 6061 fail, mild-steel pass. |
 | 2026-04-28 | 4.3 weight estimate | `weight.ts` + `manufacturing:weightSummary` + PartList row-level lb display. Density per category, area subtraction for holes / slots, polygon-aware shoelace for non-rectangle outlines. |
+| 2026-04-28 | 4.4 cost estimate | `cost.ts` + `manufacturing:costSummary`. Material × thickness scale + perimeter cuts + bends + powder-coat finish + min-per-part. PartList header shows project SCS total. ±30% of actual quote. |

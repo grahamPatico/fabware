@@ -22,6 +22,37 @@ export const MATERIAL_DENSITY: Record<MaterialRule["category"], number> = {
   acrylic: 0.043,
 };
 
+/**
+ * Approximate SCS material cost in USD per in² at a "reference" thickness;
+ * scaled linearly by `(thickness / referenceThickness)` for first-order accuracy.
+ * Numbers are derived from public SCS quote checks 2026-Q1; treat them as
+ * order-of-magnitude (±30%). Real quotes always come from SCS itself.
+ */
+export const MATERIAL_COST_PER_IN2: Record<MaterialRule["category"], { rate: number; refThickness: number }> = {
+  steel:     { rate: 0.06, refThickness: 0.075 },
+  stainless: { rate: 0.18, refThickness: 0.075 },
+  aluminum:  { rate: 0.12, refThickness: 0.075 },
+  copper:    { rate: 0.30, refThickness: 0.075 },
+  brass:     { rate: 0.28, refThickness: 0.075 },
+  acrylic:   { rate: 0.05, refThickness: 0.118 },
+};
+
+/** Per-foot of cut perimeter (in USD). */
+export const CUT_RATE_PER_FT = 0.50;
+/** Per-bend (in USD). SCS charges roughly this per bend on small parts. */
+export const BEND_RATE = 1.50;
+/** Powder coat: $/ft² of surface area (one side). */
+export const POWDER_COAT_RATE_PER_FT2 = 5.00;
+/** Minimum charge per part to cover handling. */
+export const MIN_CHARGE_PER_PART = 3.00;
+
+export function costPerIn2(material: string | undefined, thickness: number): number {
+  const m = material ? SCS_MATERIALS[material] : undefined;
+  const cat = m?.category ?? "steel";
+  const { rate, refThickness } = MATERIAL_COST_PER_IN2[cat];
+  return rate * (thickness / refThickness);
+}
+
 export function densityFor(material: string | undefined): number {
   if (!material) return MATERIAL_DENSITY.steel;
   const m = SCS_MATERIALS[material];
