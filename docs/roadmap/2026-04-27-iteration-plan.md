@@ -87,16 +87,26 @@ agent should pick the right construction for the user's tier and use case.
   fully hidden). Each has its own hole pattern. Add `hingeStyle` param to
   hinged_enclosure. Update `checkHingeGeometry` to validate that the named
   pattern is feasible at the chosen edge.
-- [ ] **2.4 Min flange + hole-to-bend distance validators.** From the
-  manufacturing primer in the system prompt: min flange ≈ 4× thickness past
-  the bend tangent, holes must be ≥ 2× thickness from a bend's tangent
-  line. Add `flange_min_length`, `hole_to_bend_clearance` rules to
-  `assemblyRules.ts` for any part that has bends. Surface failures in the
-  validation panel like the existing rules.
-- [ ] **2.5 Bend interference detection.** Two folds in a part can't share
-  material. After unfolding, check that bend regions don't overlap. Add a
-  `bend_geometry_feasible` rule per part with bends.
-- [ ] **2.7 Laser + bend simulator.** _Added 2026-04-27 from user request._
+- [x] **2.4 Min flange + hole-to-bend distance validators.** _Done
+  2026-04-27 as part of 2.7a backend._ Both checks live in
+  `convex/lib/bendSim.ts`: `min_flange` (≥ 4× thickness past bend tangent,
+  fail if shorter) and `hole_to_bend` (≥ 2× thickness + ½ hole-diameter
+  clearance, warn if violated). Per-bend, surfaced through
+  `validatePartByKind` so they appear in the existing rules strip.
+- [x] **2.5 Bend interference detection.** _Done 2026-04-27 as part of
+  2.7a._ The simulator emits an "interference" step that fails when any
+  pair of parallel bends sits closer than 4× thickness apart.
+- [x] **2.7a Laser + bend simulator backend.** _Done 2026-04-27._
+  `convex/lib/bendSim.ts` — `simulatePart(dsl)` walks a sheet-metal DSL and
+  returns ordered `SimStep[]`: a Cut step (max sheet, gauge availability),
+  one Bend step per bend feature (material bendability, min radius, min
+  flange, hole-to-bend), and an Interference step when ≥ 2 parallel bends
+  share material. New query `simulation:simulatePartById(partId)` exposes
+  steps for the UI. Same rules also flow into `validatePartByKind` so
+  bend issues land in the existing assembly-rules panel today. Verified on
+  a base plate (cut-only step) and through `_audit:auditAllArchetypes`.
+  **Next**: 2.7b — UI tab with timeline scrubber + animated fold preview.
+- [ ] **2.7b Laser + bend simulator UI.** _Added 2026-04-27 from user request._
   Build an interactive simulator that takes a sheet-metal part DSL (outline,
   thickness, material, bend features, holes) and produces:
   (a) the laser-cut step — material-specific kerf and feasibility
@@ -234,3 +244,4 @@ but render it as a box" gaps to close.
 | 2026-04-27 | 3.1 bolt rendering | Cylinders + bolt-head caps at hole positions for bolted/riveted/PEM interfaces; "Bolts" toggle on canvas. |
 | 2026-04-27 | 2.1 weld seams | New `weld_seam` interface kind + `bodyConstruction` param. Default mvp locker now has 4 welds + 1 hinge instead of 4 bolts × 4 fasteners + 1 hinge — body fasteners drop from 16 to 0. Orange Flame badge in InterfaceList. |
 | 2026-04-27 | 2.7 logged (new) | User asked for a laser + bend simulator; logged as a new tier-2 chunk with acceptance criteria. |
+| 2026-04-27 | 2.4 + 2.5 + 2.7a | Backend simulator shipped: cut step + per-bend rules (radius / flange / hole clearance) + interference. Wired into part validator + new `simulation:simulatePartById` query. UI scrubber stays as 2.7b. |

@@ -5,6 +5,7 @@ import { validateSpec, type ValidationResult } from "./scsRules";
 import { validatePrinted } from "./printedRules";
 import { validatePurchased } from "./purchasedRules";
 import { readKind, type PartKind } from "./partKind";
+import { bendRulesForPartValidator } from "./bendSim";
 
 export interface UnifiedRuleResult {
   id: string;
@@ -73,9 +74,15 @@ export function validatePartByKind(
     powderCoatColor: legacy.powderCoatColor,
     assemblyRefs: legacy.assemblyRefs ?? [],
   });
+  const sheetRules = sheetResult.rules.map(r => ({
+    id: r.id, label: r.label, status: r.status, message: r.message,
+    suggestion: typeof r.suggestion === "string" ? r.suggestion : undefined,
+  }));
+  const bendRules = bendRulesForPartValidator(parsed.data);
+  const merged = [...sheetRules, ...bendRules];
   return {
     kind: "sheet_metal",
-    rules: sheetResult.rules.map(r => ({ id: r.id, label: r.label, status: r.status, message: r.message, suggestion: r.suggestion })),
-    hasFailures: sheetResult.hasFailures,
+    rules: merged,
+    hasFailures: merged.some(r => r.status === "fail"),
   };
 }
