@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { Eye, EyeOff, Trash2 } from "lucide-react";
+import { useMutation, useQuery, useConvex } from "convex/react";
+import { Eye, EyeOff, Trash2, Download } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { PartKindBadge } from "./PartKindBadge";
@@ -20,6 +20,27 @@ export default function PartList({ projectId, focusedPartId, onFocusPart, hidden
   const weightByPart = new Map((weights?.perPart ?? []).map(w => [w.partId, w]));
   const costByPart = new Map((costs?.perPart ?? []).map(c => [c.partId, c]));
   const removePart = useMutation(api.parts.removePart);
+  const convex = useConvex();
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  const handleDownloadDxf = async (id: Id<"parts">) => {
+    setDownloading(id as unknown as string);
+    try {
+      const result = await convex.query(api.dxf.partDxf, { partId: id });
+      if (!result) return;
+      const blob = new Blob([result.dxf], { type: "application/dxf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(null);
+    }
+  };
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -105,6 +126,18 @@ export default function PartList({ projectId, focusedPartId, onFocusPart, hidden
                   aria-label={hidden ? "Show part" : "Hide part"}
                 >
                   {hidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              )}
+              {(p.kind ?? "sheet_metal") === "sheet_metal" && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleDownloadDxf(p._id); }}
+                  className="px-2.5 hover:bg-muted/40 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  title="Download flat-pattern DXF"
+                  aria-label="Download DXF"
+                  disabled={downloading === (p._id as unknown as string)}
+                >
+                  <Download className="w-3.5 h-3.5" />
                 </button>
               )}
               <button

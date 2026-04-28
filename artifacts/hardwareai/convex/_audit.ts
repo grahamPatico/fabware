@@ -125,6 +125,50 @@ export const auditWeldJoint = internalAction({
 });
 
 /**
+ * Synthetic smoke for DXF generation (chunk 5.1).
+ */
+export const auditDxf = internalAction({
+  args: {
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    holeCount: v.optional(v.number()),
+    addBend: v.optional(v.boolean()),
+  },
+  handler: async (_ctx, args): Promise<{
+    bytes: number; lines: number; entities: { LINE: number; CIRCLE: number }; sections: number; head: string; tail: string;
+  }> => {
+    const features: any[] = [
+      { kind: "hole", name: "mount", count: args.holeCount ?? 4, diameter: 0.266, pattern: "corner", inset: 0.375 },
+    ];
+    if (args.addBend) features.push({ kind: "bend", name: "main", axis: "horizontal", positionRatio: 0.5, angle: 90, radius: 0.1 });
+    const dsl: PartDsl = {
+      version: 1, partType: "plate", material: "Mild Steel (CRS)", thickness: 0.075,
+      width: args.width ?? 6, height: args.height ?? 4, depth: null,
+      features, finish: null, assemblyRefs: [],
+    };
+    const { generatePartDxf } = await import("./lib/dxf");
+    const dxf = generatePartDxf(dsl);
+    const lines = dxf.split("\n");
+    let lineCt = 0, circleCt = 0, sectionCt = 0;
+    for (let i = 0; i < lines.length - 1; i++) {
+      const code = lines[i].trim();
+      const val = lines[i + 1].trim();
+      if (code === "0" && val === "LINE") lineCt += 1;
+      if (code === "0" && val === "CIRCLE") circleCt += 1;
+      if (code === "0" && val === "SECTION") sectionCt += 1;
+    }
+    return {
+      bytes: dxf.length,
+      lines: lines.length,
+      entities: { LINE: lineCt, CIRCLE: circleCt },
+      sections: sectionCt,
+      head: lines.slice(0, 6).join("|"),
+      tail: lines.slice(-3).join("|"),
+    };
+  },
+});
+
+/**
  * Synthetic smoke for the project-level max-sheet rule (chunk 4.5).
  */
 export const auditMaxSheet = internalAction({

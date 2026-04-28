@@ -281,10 +281,18 @@ but render it as a box" gaps to close.
 
 ## Tier 5 — Real outputs
 
-- [ ] **5.1 DXF generation for cuts.** Each sheet-metal part exports a
-  flat-pattern DXF with all cuts, holes, and bend lines on appropriate
-  layers (`CUT`, `HOLE`, `BEND`). Should be uploadable to SCS as-is.
-  Library: `dxf-writer` or hand-rolled.
+- [x] **5.1 DXF generation for cuts.** _Done 2026-04-28._ Hand-rolled
+  R12 ASCII DXF emitter in `convex/lib/dxf.ts` (no library dep — would
+  blow the Convex bundle size). Three layers: `CUT` (red, color 1) for
+  outline + slot perimeters, `HOLE` (yellow, color 2) for circular
+  holes, `BEND` (cyan, color 4) for fold tangent lines. Outline support
+  for rectangle / polygon / star / circle / regular_polygon. Slots
+  emit two parallel LINEs + two cap CIRCLEs (stadium). New
+  `dxf:partDxf(partId)` query returns `{ filename, dxf }`. PartList
+  rows now have a Download icon that fetches via `useConvex().query` →
+  Blob URL → triggers browser download. Verified: a default
+  `hinged_enclosure` base plate emits 4 LINEs + 4 CIRCLEs, 996 bytes,
+  3 sections (HEADER / TABLES / ENTITIES) + EOF.
 - [ ] **5.2 Per-part PDF drawing.** Orthographic projection with dimension
   callouts. `pdfkit` server-side.
 - [ ] **5.3 BOM CSV.** Sheet-metal parts (one row per material/thickness
@@ -449,3 +457,4 @@ failures.
 | 2026-04-28 | 4.4 cost estimate | `cost.ts` + `manufacturing:costSummary`. Material × thickness scale + perimeter cuts + bends + powder-coat finish + min-per-part. PartList header shows project SCS total. ±30% of actual quote. |
 | 2026-04-28 | 4.5 max sheet hard fail | Project-level `assembly_max_sheet` rule in validateAssembly flags any part exceeding its material's max sheet. **Tier 4 fully complete.** |
 | 2026-04-28 | Agent audit + Bug A fix | 4-scenario sweep on prod surfaced piano-hinge fastener-count bug (default 4 < required 20 for tall lockers). Fixed paramDefaults to compute fastenerCount from hinge edge length when style is piano. Locker hinge rule now passes. |
+| 2026-04-28 | 5.1 DXF generation | `dxf:partDxf` query + Download button per part. Hand-rolled R12 ASCII emitter on CUT/HOLE/BEND layers with outline support for all 5 outline kinds. SCS-uploadable. |
