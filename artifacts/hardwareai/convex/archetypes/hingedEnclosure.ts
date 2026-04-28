@@ -81,8 +81,10 @@ function generate(params: Params, _scope: ProjectScope) {
     { role: "base",       label: "Base",         dsl: makePlate("base",       outerW, outerD, params, { ...hole(params.fastenerCount), pattern: "corner" as const }),    position: { x: cx,           y: cy,                z: -t / 2,       rotX: 0,            rotY: 0, rotZ: 0 } },
     { role: "wall_front", label: "Wall — Front", dsl: makePlate("wall_front", outerW, innerH, params, hole(params.fastenerCount)),                                position: { x: cx,           y: -t / 2,            z: cz,           rotX: Math.PI / 2,  rotY: 0, rotZ: 0 } },
     { role: "wall_back",  label: "Wall — Back",  dsl: makePlate("wall_back",  outerW, innerH, params, hole(params.fastenerCount)),                                position: { x: cx,           y: params.innerDepth + t / 2, z: cz,   rotX: Math.PI / 2,  rotY: 0, rotZ: 0 } },
-    { role: "wall_left",  label: "Wall — Left",  dsl: makePlate("wall_left",  outerD, innerH, params, hole(params.fastenerCount)),                                position: { x: -t / 2,       y: cy,                z: cz,           rotX: Math.PI / 2,  rotY: 0, rotZ: Math.PI / 2 } },
-    { role: "wall_right", label: "Wall — Right", dsl: makePlate("wall_right", outerD, innerH, params, hole(params.fastenerCount)),                                position: { x: params.innerWidth + t / 2, y: cy, z: cz,           rotX: Math.PI / 2,  rotY: 0, rotZ: Math.PI / 2 } },
+    // Left/right walls fit BETWEEN the front/back walls, not over them, so the
+    // four vertical corners aren't shared volume. Width = innerDepth (cavity depth).
+    { role: "wall_left",  label: "Wall — Left",  dsl: makePlate("wall_left",  params.innerDepth, innerH, params, hole(params.fastenerCount)),                      position: { x: -t / 2,       y: cy,                z: cz,           rotX: Math.PI / 2,  rotY: 0, rotZ: Math.PI / 2 } },
+    { role: "wall_right", label: "Wall — Right", dsl: makePlate("wall_right", params.innerDepth, innerH, params, hole(params.fastenerCount)),                      position: { x: params.innerWidth + t / 2, y: cy, z: cz,           rotX: Math.PI / 2,  rotY: 0, rotZ: Math.PI / 2 } },
     { role: "lid",        label: "Lid",          dsl: makePlate("lid",        outerW, outerD, params, { ...hole(params.fastenerCount), pattern: "bottom_row" as const }),  position: { x: cx,           y: cy,                z: innerH + t / 2, rotX: 0,            rotY: 0, rotZ: 0 } },
   ];
 
