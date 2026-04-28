@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useConvex } from "convex/react";
-import { ExternalLink, Plus, Trash2, Package, FileSpreadsheet } from "lucide-react";
+import { ExternalLink, Plus, Trash2, Package, FileSpreadsheet, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +41,45 @@ function BomDownloadButton({ projectId }: { projectId: Id<"projects"> }) {
     >
       <FileSpreadsheet className="w-3 h-3" />
       BOM
+    </Button>
+  );
+}
+
+function BundleDownloadButton({ projectId }: { projectId: Id<"projects"> }) {
+  const convex = useConvex();
+  const [busy, setBusy] = useState(false);
+  const onDownload = async () => {
+    setBusy(true);
+    try {
+      const result = await convex.query(api.bundle.projectZip, { projectId });
+      if (!result) return;
+      const bin = atob(result.base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button
+      type="button"
+      size="sm"
+      onClick={onDownload}
+      disabled={busy}
+      className="font-mono uppercase tracking-wider text-[10px] gap-1 h-7"
+      title="Download SCS-ready zip bundle (cuts/*.dxf + drawings/*.pdf + bom.csv + README.md)"
+    >
+      <Archive className="w-3 h-3" />
+      SCS bundle
     </Button>
   );
 }
@@ -124,6 +163,7 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
         </div>
         <div className="flex items-center gap-2">
           <BomDownloadButton projectId={projectId} />
+          <BundleDownloadButton projectId={projectId} />
           <Badge variant="outline" className="font-mono text-[10px]">
             {(parts ?? []).length + interfaceHardware.length + purchasedParts.length} item{(parts ?? []).length + interfaceHardware.length + purchasedParts.length === 1 ? "" : "s"}
           </Badge>

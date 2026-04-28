@@ -322,8 +322,21 @@ but render it as a box" gaps to close.
   395-byte CSV with one sheet-metal group (Mild Steel 0.075", 6 parts,
   873.51 in² total) and one hardware row (McMaster 1635A3 ×2 from the
   lid hinge).
-- [ ] **5.4 SCS upload bundle.** Zip file: `<project>/cuts/*.dxf`,
-  `<project>/bom.csv`, `<project>/README.md`. One-click download.
+- [x] **5.4 SCS upload bundle.** _Done 2026-04-28._ Hand-rolled minimal
+  ZIP (PKZIP 2.0, store method only — DEFLATE in JS would balloon the
+  Convex bundle by ~1 MB and SCS doesn't require compression). Layout:
+    cuts/<role>.dxf       — chunk 5.1 DXF per sheet-metal part
+    drawings/<role>.pdf   — chunk 5.2 PDF per sheet-metal part
+    bom.csv               — chunk 5.3 BOM
+    README.md             — generation date, file index, SCS submission
+                            instructions
+  `bundle:projectZip(projectId)` returns `{ filename, base64,
+  entryCount, bytes }`. New "SCS bundle" Archive button in
+  `AssemblyPartsPanel` next to BOM. **Verify**: a default
+  `hinged_enclosure` produces a 20.5 KB / 14-entry archive that
+  Python's `zipfile` opens cleanly — 6 cuts (~1 KB each), 6 drawings
+  (~1.9 KB each), bom.csv (399 B), README.md (1125 B). Valid PK signatures
+  + EOCD record.
 - [ ] **5.5 STEP export for the full assembly.** Lower priority — most
   fabricators want flat patterns, not 3D. Useful for showing customers.
 
@@ -484,3 +497,4 @@ failures.
 | 2026-04-28 | 5.1 DXF generation | `dxf:partDxf` query + Download button per part. Hand-rolled R12 ASCII emitter on CUT/HOLE/BEND layers with outline support for all 5 outline kinds. SCS-uploadable. |
 | 2026-04-28 | 5.2 PDF drawing | `pdf:partPdf` query + FileText button per part. Hand-rolled PDF 1.4 emitter, US Letter, title block + outline + Bezier holes + dashed bends + dimension callouts. ~2 KB per default part. |
 | 2026-04-28 | 5.3 BOM CSV | `bom:projectCsv` query + Download BOM button on the AssemblyPartsPanel. Sheet-metal groups by (material, thickness) with area/weight/cost, hardware rolls up across assemblyParts + interfaces + purchased parts. |
+| 2026-04-28 | 5.4 SCS bundle zip | Hand-rolled PKZIP-2.0 emitter (no compression); `bundle:projectZip` returns base64 zip with cuts/, drawings/, bom.csv, README.md. SCS bundle Archive button next to BOM. Python zipfile extracts the artifact cleanly. |

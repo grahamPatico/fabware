@@ -137,6 +137,33 @@ export const _bomFor = internalQuery({
 });
 
 /**
+ * Synthetic smoke for the SCS upload bundle (chunk 5.4). Generates a default
+ * archetype, builds the zip, and reports structural details (entry count,
+ * total size, signature presence).
+ */
+export const auditBundle = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ entryCount: number; bytes: number; firstBytes: string; eocdPresent: boolean }> => {
+    const pid: any = await ctx.runMutation(internal._audit.createAuditProject, {});
+    await ctx.runMutation(internal._audit.generateArchetypeDeterministic, {
+      projectId: pid, archetypeId: "hinged_enclosure",
+    });
+    const result: any = await ctx.runQuery(internal.bundle.projectZip, { projectId: pid });
+    if (!result) throw new Error("bundle returned null");
+    const bin = atob(result.base64);
+    const head = bin.slice(0, 4);
+    const sigOk = head === "PK\x03\x04";
+    const eocdOk = bin.includes("PK\x05\x06");
+    return {
+      entryCount: result.entryCount,
+      bytes: result.bytes,
+      firstBytes: sigOk ? "PK<03><04> ✓" : `unexpected: ${head}`,
+      eocdPresent: eocdOk,
+    };
+  },
+});
+
+/**
  * Synthetic smoke for the BOM emitter (chunk 5.3). Generates the default
  * hinged_enclosure deterministically and reports CSV structure.
  */
