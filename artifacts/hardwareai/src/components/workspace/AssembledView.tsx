@@ -144,12 +144,14 @@ interface ExtrudedPartMeshProps {
   roughness?: number;
   opacity?: number;
   bends?: BendLinesProps["bends"];
+  textureKey?: TextureKey;
 }
 
 function ExtrudedPartMesh({
   outline, width, height, thickness, position, selected, showBounds, onClick,
-  color, metalness = 0.4, roughness = 0.6, opacity = 1, bends,
+  color, metalness = 0.4, roughness = 0.6, opacity = 1, bends, textureKey,
 }: ExtrudedPartMeshProps) {
+  const maps = useMemo(() => getMaterialMaps(textureKey ?? null), [textureKey]);
   const geometry = useMemo(() => {
     const shape = buildShape(outline, width, height);
     const geom = new THREE.ExtrudeGeometry(shape, {
@@ -186,6 +188,8 @@ function ExtrudedPartMesh({
         opacity={opacity}
         emissive={selected ? "#0ea5e9" : "#000000"}
         emissiveIntensity={selected ? 0.25 : 0}
+        normalMap={maps?.normal ?? null}
+        roughnessMap={maps?.roughness ?? null}
       />
       {(showBounds || selected) && (
         <Edges color={selected ? "#38bdf8" : "#666666"} lineWidth={selected ? 2.5 : 1} threshold={1} />
@@ -207,6 +211,7 @@ interface MeshProps {
   wireframe?: boolean;
   opacity?: number;
   bends?: BendLinesProps["bends"];
+  textureKey?: TextureKey;
 }
 
 function PartMesh({
@@ -221,7 +226,9 @@ function PartMesh({
   wireframe = false,
   opacity = 1,
   bends,
+  textureKey,
 }: MeshProps) {
+  const maps = useMemo(() => getMaterialMaps(textureKey ?? null), [textureKey]);
   return (
     <mesh
       position={[position.x, position.z, position.y]}
@@ -242,6 +249,8 @@ function PartMesh({
         opacity={opacity}
         emissive={selected ? "#0ea5e9" : "#000000"}
         emissiveIntensity={selected ? 0.25 : 0}
+        normalMap={maps?.normal ?? null}
+        roughnessMap={maps?.roughness ?? null}
       />
       {(showBounds || selected) && (
         <Edges
@@ -641,30 +650,134 @@ interface AssembledViewProps {
   hiddenPartIds?: Set<string>;
 }
 
-function sheetMetalAppearance(material: string | undefined): { color: string; metalness: number; roughness: number; opacity: number; transparent: boolean } {
+type TextureKey =
+  | "brushed-aluminum"
+  | "stainless"
+  | "mild-steel"
+  | "galvanized"
+  | "copper"
+  | "brass"
+  | "acrylic-clear"
+  | "acrylic-black"
+  | null;
+
+function sheetMetalAppearance(material: string | undefined): {
+  color: string; metalness: number; roughness: number; opacity: number; transparent: boolean; texture: TextureKey;
+} {
   const m = (material ?? "").toLowerCase();
   if (m.includes("acrylic") && m.includes("clear")) {
-    return { color: "#9ad0e8", metalness: 0, roughness: 0.05, opacity: 0.28, transparent: true };
+    return { color: "#9ad0e8", metalness: 0, roughness: 0.05, opacity: 0.28, transparent: true, texture: null };
   }
   if (m.includes("acrylic") && m.includes("black")) {
-    return { color: "#1a1a1d", metalness: 0, roughness: 0.15, opacity: 0.92, transparent: false };
+    return { color: "#1a1a1d", metalness: 0, roughness: 0.15, opacity: 0.92, transparent: false, texture: null };
   }
   if (m.includes("aluminum")) {
-    return { color: "#cfd2d7", metalness: 0.55, roughness: 0.45, opacity: 1, transparent: false };
+    return { color: "#cfd2d7", metalness: 0.55, roughness: 0.45, opacity: 1, transparent: false, texture: "brushed-aluminum" };
   }
   if (m.includes("stainless")) {
-    return { color: "#d8dadd", metalness: 0.65, roughness: 0.35, opacity: 1, transparent: false };
+    return { color: "#d8dadd", metalness: 0.65, roughness: 0.35, opacity: 1, transparent: false, texture: "stainless" };
   }
   if (m.includes("copper")) {
-    return { color: "#c08552", metalness: 0.7, roughness: 0.4, opacity: 1, transparent: false };
+    return { color: "#c08552", metalness: 0.7, roughness: 0.4, opacity: 1, transparent: false, texture: "copper" };
   }
   if (m.includes("brass")) {
-    return { color: "#caa75a", metalness: 0.7, roughness: 0.4, opacity: 1, transparent: false };
+    return { color: "#caa75a", metalness: 0.7, roughness: 0.4, opacity: 1, transparent: false, texture: "brass" };
   }
   if (m.includes("galvanized")) {
-    return { color: "#bcc3cb", metalness: 0.5, roughness: 0.55, opacity: 1, transparent: false };
+    return { color: "#bcc3cb", metalness: 0.5, roughness: 0.55, opacity: 1, transparent: false, texture: "galvanized" };
   }
-  return { color: "#d0d4da", metalness: 0.4, roughness: 0.6, opacity: 1, transparent: false };
+  return { color: "#d0d4da", metalness: 0.4, roughness: 0.6, opacity: 1, transparent: false, texture: "mild-steel" };
+}
+
+/**
+ * Procedural normal + roughness maps per material. Built once on first use,
+ * cached in a module-level Map, and reused as `<meshStandardMaterial normalMap roughnessMap>`.
+ * Subtle deviations only — the goal is to differentiate brushed aluminum from
+ * mild steel under directional lighting, not to draw attention to the texture.
+ */
+const TEXTURE_CACHE = new Map<TextureKey, { normal: THREE.Texture; roughness: THREE.Texture }>();
+
+function getMaterialMaps(key: TextureKey): { normal: THREE.Texture; roughness: THREE.Texture } | null {
+  if (key === null) return null;
+  const cached = TEXTURE_CACHE.get(key);
+  if (cached) return cached;
+
+  const SIZE = 256;
+  // Pseudo-random with a fixed seed per key so textures look stable.
+  let seed = key.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  const rand = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+
+  function build(generator: (x: number, y: number) => { dx: number; dy: number; rough: number }): { normal: THREE.Texture; roughness: THREE.Texture } {
+    const normalData = new Uint8Array(SIZE * SIZE * 4);
+    const roughData = new Uint8Array(SIZE * SIZE * 4);
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 0; x < SIZE; x++) {
+        const { dx, dy, rough } = generator(x, y);
+        // Normal vector (dx, dy, 1) normalised → encoded RGB.
+        const len = Math.sqrt(dx * dx + dy * dy + 1);
+        const nx = dx / len, ny = dy / len, nz = 1 / len;
+        const i = (y * SIZE + x) * 4;
+        normalData[i] = Math.round((nx * 0.5 + 0.5) * 255);
+        normalData[i + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+        normalData[i + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+        normalData[i + 3] = 255;
+        const rg = Math.max(0, Math.min(255, Math.round(rough * 255)));
+        roughData[i] = rg; roughData[i + 1] = rg; roughData[i + 2] = rg; roughData[i + 3] = 255;
+      }
+    }
+    const normal = new THREE.DataTexture(normalData, SIZE, SIZE, THREE.RGBAFormat);
+    normal.wrapS = THREE.RepeatWrapping;
+    normal.wrapT = THREE.RepeatWrapping;
+    normal.repeat.set(8, 8);
+    normal.needsUpdate = true;
+    const roughness = new THREE.DataTexture(roughData, SIZE, SIZE, THREE.RGBAFormat);
+    roughness.wrapS = THREE.RepeatWrapping;
+    roughness.wrapT = THREE.RepeatWrapping;
+    roughness.repeat.set(8, 8);
+    roughness.needsUpdate = true;
+    return { normal, roughness };
+  }
+
+  let result: { normal: THREE.Texture; roughness: THREE.Texture };
+  if (key === "brushed-aluminum") {
+    // Long horizontal striations.
+    result = build((x, _y) => {
+      const r = rand();
+      const dx = (r - 0.5) * 0.6;
+      return { dx, dy: 0, rough: 0.45 + (Math.sin(x * 0.5) + r) * 0.04 };
+    });
+  } else if (key === "stainless") {
+    // Very fine isotropic grain.
+    result = build(() => {
+      const r = rand(), g = rand();
+      return { dx: (r - 0.5) * 0.15, dy: (g - 0.5) * 0.15, rough: 0.32 + r * 0.06 };
+    });
+  } else if (key === "mild-steel") {
+    // Coarser random grain.
+    result = build(() => {
+      const r = rand(), g = rand();
+      return { dx: (r - 0.5) * 0.4, dy: (g - 0.5) * 0.4, rough: 0.55 + r * 0.1 };
+    });
+  } else if (key === "galvanized") {
+    // Spotty zinc grain — patches with slightly varied roughness.
+    result = build((x, y) => {
+      const r = rand();
+      const blob = Math.sin(x * 0.3 + r * 6) * Math.cos(y * 0.3 + r * 6);
+      return { dx: blob * 0.3, dy: blob * 0.3, rough: 0.5 + Math.abs(blob) * 0.15 };
+    });
+  } else if (key === "copper" || key === "brass") {
+    // Soft horizontal grain; slightly less pronounced for brass.
+    const amp = key === "copper" ? 0.35 : 0.25;
+    result = build(() => {
+      const r = rand();
+      return { dx: (r - 0.5) * amp, dy: 0, rough: 0.38 + r * 0.06 };
+    });
+  } else {
+    result = build(() => ({ dx: 0, dy: 0, rough: 0.6 }));
+  }
+
+  TEXTURE_CACHE.set(key, result);
+  return result;
 }
 
 export default function AssembledView({ projectId, focusedPartId = null, onFocusPart, hiddenPartIds }: AssembledViewProps) {
@@ -936,6 +1049,7 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
                 roughness={appearance.roughness}
                 opacity={appearance.opacity}
                 bends={bends}
+                textureKey={appearance.texture}
               />
             );
           }
@@ -952,6 +1066,7 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
               roughness={appearance.roughness}
               opacity={appearance.opacity}
               bends={bends}
+              textureKey={appearance.texture}
             />
           );
         })}

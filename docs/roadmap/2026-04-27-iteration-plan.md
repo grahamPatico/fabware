@@ -199,9 +199,16 @@ but render it as a box" gaps to close.
   The cut-step path through the simulator (chunk 2.7a) still works for
   parts both with and without bends. Animated fold preview is queued under
   a new follow-up chunk in the backlog.
-- [ ] **3.4 Material textures.** Subtle PBR maps so brushed aluminum
-  doesn't look identical to mild steel. Use single-channel normal maps
-  generated procedurally — no external assets needed.
+- [x] **3.4 Material textures.** _Done 2026-04-28._ Procedural normal +
+  roughness maps generated per material via `getMaterialMaps(textureKey)`.
+  Cached at module level so each material's texture is built once. Patterns:
+  brushed-aluminum = horizontal striations; stainless = fine isotropic
+  grain; mild-steel = coarser random grain; galvanized = patchy zinc
+  blobs; copper / brass = soft horizontal grain (different amplitude).
+  Acrylic gets no map (smooth glass). Textures mounted on both
+  `<PartMesh>` and `<ExtrudedPartMesh>` meshStandardMaterial via
+  `normalMap` + `roughnessMap`. 256×256 RGBA DataTextures with
+  `RepeatWrapping` × 8 so detail scales naturally with part size.
 - [ ] **3.5 Hole rendering.** Current parts are solid rectangular boxes;
   the holes (which exist in the DSL) aren't visible. Render them as black
   circles on the surface (texture or actual subtraction). Even just a flat
@@ -328,3 +335,4 @@ but render it as a box" gaps to close.
 | 2026-04-27 | 2.3 hinge classes | `hingeStyle` (butt/piano/concealed) plumbed through hingedEnclosure params + tier-aware default. Per-style validator: butt counts holes per leaf, piano enforces hole-every-3", concealed checks for cup bore + bracket mounts. Style encoded in role string as pivot:STYLE. Smoke `_audit:auditHingeStyle` covers all seven scenarios. |
 | 2026-04-27 | 2.6 mfg primer tool | `manufacturing:summarizeForProject` query + `check_manufacturing` agent tool. Aggregates per-part rules + simulator step status into a compact summary the agent surfaces between turns. Closes the self-repair loop. |
 | 2026-04-28 | 3.3 bend lines | Yellow dashed lines on part top surface for every bend feature; mounted inside both PartMesh and ExtrudedPartMesh so they inherit pose rotation. Animated fold preview spun off into backlog. |
+| 2026-04-28 | 3.4 material textures | Procedural normal + roughness maps per material (brushed-aluminum striations, mild-steel grain, galvanized blobs, copper/brass soft grain, stainless fine grain). Cached at module level, applied via `normalMap` + `roughnessMap` on both PartMesh and ExtrudedPartMesh. |
