@@ -2,12 +2,13 @@
 // generate against a canonical scope and reports any intersection failures.
 // Bypasses the agent entirely so results don't depend on LLM behavior.
 
-import { internalAction, internalMutation } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { listArchetypes } from "./archetypes";
 import { computeIntersectionRules } from "./lib/intersectRules";
 import { validateAssembly } from "./lib/assemblyRules";
+import { generateBom } from "./lib/bom";
 import type { Doc } from "./_generated/dataModel";
 import type { PartDsl } from "./lib/dsl";
 
@@ -121,6 +122,51 @@ export const auditWeldJoint = internalAction({
       message: r.message,
       suggestion: typeof r.suggestion === "string" ? r.suggestion : undefined,
     };
+  },
+});
+
+export const _bomFor = internalQuery({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, { projectId }): Promise<{ csv: string }> => {
+    const project = await ctx.db.get(projectId);
+    const parts = await ctx.db.query("parts").withIndex("by_project", q => q.eq("projectId", projectId)).collect();
+    const interfaces = await ctx.db.query("interfaces").withIndex("by_project", q => q.eq("projectId", projectId)).collect();
+    const assemblyParts = await ctx.db.query("assemblyParts").withIndex("by_project", q => q.eq("projectId", projectId)).collect();
+    return { csv: generateBom({ projectName: project?.name ?? "Untitled", parts, interfaces, assemblyParts }) };
+  },
+});
+
+/**
+ * Synthetic smoke for the BOM emitter (chunk 5.3). Generates the default
+ * hinged_enclosure deterministically and reports CSV structure.
+ */
+export const auditBom = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ csvBytes: number; csvLines: number; sheetGroups: number; hardwareRows: number; preview: string }> => {
+    const pid: any = await ctx.runMutation(internal._audit.createAuditProject, {});
+    await ctx.runMutation(internal._audit.generateArchetypeDeterministic, {
+      projectId: pid, archetypeId: "hinged_enclosure",
+    });
+    const result: any = await ctx.runQuery(internal._audit._bomFor, { projectId: pid });
+    const lines: string[] = result.csv.split("\n");
+    const sheetIdx = lines.findIndex(l => l.startsWith("## Sheet"));
+    const hardwareIdx = lines.findIndex(l => l.startsWith("## Hardware"));
+    const sheetGroups = Math.max(0, hardwareIdx - sheetIdx - 2);
+    const hardwareRows = Math.max(0, lines.length - hardwareIdx - 3);
+    return {
+      csvBytes: result.csv.length,
+      csvLines: lines.length,
+      sheetGroups,
+      hardwareRows,
+      preview: lines.slice(0, 10).join(" | "),
+    };
+  },
+});
+
+export const createAuditProject = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.insert("projects", { name: "audit bom", status: "draft", createdAt: Date.now(), updatedAt: Date.now() });
   },
 });
 

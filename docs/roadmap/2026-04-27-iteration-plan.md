@@ -309,9 +309,19 @@ but render it as a box" gaps to close.
   → Blob URL → browser download. Verified: default archetype base
   produces a 1.88 KB PDF with 5 objects, valid header / xref / trailer,
   opens in Preview / Acrobat / Chrome PDF viewer.
-- [ ] **5.3 BOM CSV.** Sheet-metal parts (one row per material/thickness
-  combo with total area) + McMaster hardware (one row per part number with
-  total qty). Downloadable from the workspace.
+- [x] **5.3 BOM CSV.** _Done 2026-04-28._ `convex/lib/bom.ts` walks
+  every part in a project, groups sheet-metal by `(material, thickness)`
+  with `partCount / total area in² + ft² / total weight lb / total cost
+  USD / roles`, and aggregates hardware by McMaster part number with
+  `quantity` summed across `assemblyParts`, `interface.hardwareRefs`,
+  and `purchased`-kind parts. `bom:projectCsv(projectId)` query
+  returns `{ filename, csv }` (RFC-4180 CSV with header rows + a
+  `## section` divider between sheet metal and hardware). New
+  `BomDownloadButton` in `AssemblyPartsPanel` triggers a browser
+  download. **Verify**: a default `hinged_enclosure` produces a
+  395-byte CSV with one sheet-metal group (Mild Steel 0.075", 6 parts,
+  873.51 in² total) and one hardware row (McMaster 1635A3 ×2 from the
+  lid hinge).
 - [ ] **5.4 SCS upload bundle.** Zip file: `<project>/cuts/*.dxf`,
   `<project>/bom.csv`, `<project>/README.md`. One-click download.
 - [ ] **5.5 STEP export for the full assembly.** Lower priority — most
@@ -473,3 +483,4 @@ failures.
 | 2026-04-28 | Agent audit + Bug A fix | 4-scenario sweep on prod surfaced piano-hinge fastener-count bug (default 4 < required 20 for tall lockers). Fixed paramDefaults to compute fastenerCount from hinge edge length when style is piano. Locker hinge rule now passes. |
 | 2026-04-28 | 5.1 DXF generation | `dxf:partDxf` query + Download button per part. Hand-rolled R12 ASCII emitter on CUT/HOLE/BEND layers with outline support for all 5 outline kinds. SCS-uploadable. |
 | 2026-04-28 | 5.2 PDF drawing | `pdf:partPdf` query + FileText button per part. Hand-rolled PDF 1.4 emitter, US Letter, title block + outline + Bezier holes + dashed bends + dimension callouts. ~2 KB per default part. |
+| 2026-04-28 | 5.3 BOM CSV | `bom:projectCsv` query + Download BOM button on the AssemblyPartsPanel. Sheet-metal groups by (material, thickness) with area/weight/cost, hardware rolls up across assemblyParts + interfaces + purchased parts. |

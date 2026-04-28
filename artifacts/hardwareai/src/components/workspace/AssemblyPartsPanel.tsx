@@ -1,6 +1,6 @@
-import React from "react";
-import { useQuery, useMutation } from "convex/react";
-import { ExternalLink, Plus, Trash2, Package } from "lucide-react";
+import React, { useState } from "react";
+import { useQuery, useMutation, useConvex } from "convex/react";
+import { ExternalLink, Plus, Trash2, Package, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,42 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 type HardwareRef = { mcmasterPartNumber: string; quantity: number; role?: string };
+
+function BomDownloadButton({ projectId }: { projectId: Id<"projects"> }) {
+  const convex = useConvex();
+  const [busy, setBusy] = useState(false);
+  const onDownload = async () => {
+    setBusy(true);
+    try {
+      const result = await convex.query(api.bom.projectCsv, { projectId });
+      const blob = new Blob([result.csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={onDownload}
+      disabled={busy}
+      className="font-mono uppercase tracking-wider text-[10px] gap-1 h-7"
+      title="Download project Bill of Materials as CSV"
+    >
+      <FileSpreadsheet className="w-3 h-3" />
+      BOM
+    </Button>
+  );
+}
 
 function aggregateInterfaceHardware(
   interfaces: Array<{ hardwareRefs?: HardwareRef[] | null }> | undefined,
@@ -86,9 +122,12 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
             Assembly · McMaster
           </span>
         </div>
-        <Badge variant="outline" className="font-mono text-[10px]">
-          {(parts ?? []).length + interfaceHardware.length + purchasedParts.length} item{(parts ?? []).length + interfaceHardware.length + purchasedParts.length === 1 ? "" : "s"}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <BomDownloadButton projectId={projectId} />
+          <Badge variant="outline" className="font-mono text-[10px]">
+            {(parts ?? []).length + interfaceHardware.length + purchasedParts.length} item{(parts ?? []).length + interfaceHardware.length + purchasedParts.length === 1 ? "" : "s"}
+          </Badge>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2">
