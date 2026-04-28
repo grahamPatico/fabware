@@ -92,17 +92,22 @@ function generate(params: Params, _scope: ProjectScope) {
       dsl: makePlate("plate", params.shelfWidth, params.shelfDepth, params, [shelfHole]),
       position: { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 },
     },
+    // Brackets stand vertically as thin plates in the YZ plane (their thickness
+    // is along world X, so they sit at the left/right edges of the shelf and
+    // extend downward by bracketHeight along Z and along the shelf's depth
+    // along Y). rotX=π/2 + rotZ=π/2 rotates a flat plate into that orientation
+    // under three.js's Euler XYZ order.
     {
       role: "bracket_left",
       label: "Bracket — Left",
       dsl: makePlate("bracket", params.shelfDepth, params.bracketHeight, params, bracketFeatures),
-      position: { x: t, y: 0, z: -params.bracketHeight / 2, rotX: 0, rotY: 0, rotZ: 0 },
+      position: { x: t / 2, y: 0, z: -(params.bracketHeight + t) / 2, rotX: Math.PI / 2, rotY: Math.PI / 2, rotZ: 0 },
     },
     {
       role: "bracket_right",
       label: "Bracket — Right",
       dsl: makePlate("bracket", params.shelfDepth, params.bracketHeight, params, bracketFeatures),
-      position: { x: params.shelfWidth - t, y: 0, z: -params.bracketHeight / 2, rotX: 0, rotY: 0, rotZ: 0 },
+      position: { x: params.shelfWidth - t / 2, y: 0, z: -(params.bracketHeight + t) / 2, rotX: Math.PI / 2, rotY: Math.PI / 2, rotZ: 0 },
     },
   ];
 
