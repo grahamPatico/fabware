@@ -11,9 +11,10 @@ interface Props {
   onFocusPart: (id: Id<"parts"> | null) => void;
   hiddenPartIds?: Set<string>;
   onTogglePart?: (id: Id<"parts">) => void;
+  readOnly?: boolean;
 }
 
-export default function PartList({ projectId, focusedPartId, onFocusPart, hiddenPartIds, onTogglePart }: Props) {
+export default function PartList({ projectId, focusedPartId, onFocusPart, hiddenPartIds, onTogglePart, readOnly = false }: Props) {
   const parts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
   const weights = useQuery(api.manufacturing.weightSummary, projectId ? { projectId } : "skip");
   const costs = useQuery(api.manufacturing.costSummary, projectId ? { projectId } : "skip");
@@ -174,28 +175,30 @@ export default function PartList({ projectId, focusedPartId, onFocusPart, hidden
                   </button>
                 </>
               )}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirmingId === p._id) {
-                    handleDelete(p._id);
-                  } else {
-                    setConfirmingId(p._id as unknown as string);
-                  }
-                }}
-                onBlur={() => { if (confirmingId === p._id) setConfirmingId(null); }}
-                className={`px-2.5 transition-colors ${
-                  confirmingId === p._id
-                    ? "bg-rose-500/30 text-rose-200 hover:bg-rose-500/50"
-                    : "hover:bg-rose-500/15 text-muted-foreground hover:text-rose-300"
-                }`}
-                title={confirmingId === p._id ? "Click again to confirm delete" : "Delete part"}
-                aria-label="Delete part"
-                disabled={deleting}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirmingId === p._id) {
+                      handleDelete(p._id);
+                    } else {
+                      setConfirmingId(p._id as unknown as string);
+                    }
+                  }}
+                  onBlur={() => { if (confirmingId === p._id) setConfirmingId(null); }}
+                  className={`px-2.5 transition-colors ${
+                    confirmingId === p._id
+                      ? "bg-rose-500/30 text-rose-200 hover:bg-rose-500/50"
+                      : "hover:bg-rose-500/15 text-muted-foreground hover:text-rose-300"
+                  }`}
+                  title={confirmingId === p._id ? "Click again to confirm delete" : "Delete part"}
+                  aria-label="Delete part"
+                  disabled={deleting}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           );
         })}

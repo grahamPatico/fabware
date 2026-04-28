@@ -11,6 +11,7 @@ import BackendPending from "@/pages/BackendPending";
 
 const Home = React.lazy(() => import("@/pages/Home"));
 const Workspace = React.lazy(() => import("@/pages/Workspace"));
+const Shared = React.lazy(() => import("@/pages/Shared"));
 const Export = React.lazy(() => import("@/pages/Export"));
 const Chat = React.lazy(() => import("@/pages/Chat"));
 
@@ -66,6 +67,13 @@ function Router() {
         <StudioGuard>
           <LazyStudio>
             <Workspace />
+          </LazyStudio>
+        </StudioGuard>
+      </Route>
+      <Route path="/share/:slug">
+        <StudioGuard>
+          <LazyStudio>
+            <Shared />
           </LazyStudio>
         </StudioGuard>
       </Route>

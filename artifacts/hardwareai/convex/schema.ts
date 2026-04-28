@@ -44,9 +44,12 @@ export default defineSchema({
     archetypeParams: v.optional(v.any()),
     isMultiPart: v.optional(v.boolean()),
     currentSnapshotId: v.optional(v.id("assemblySnapshots")),
+    shareSlug: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_updated", ["updatedAt"]),
+  })
+    .index("by_updated", ["updatedAt"])
+    .index("by_share_slug", ["shareSlug"]),
 
   // --- Assembly snapshots (project-level undo/redo history) ---
   assemblySnapshots: defineTable({

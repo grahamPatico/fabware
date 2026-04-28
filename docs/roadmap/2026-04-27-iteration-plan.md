@@ -390,8 +390,30 @@ but render it as a box" gaps to close.
   snapshots, after undo: `archetypeId=hinged_enclosure, parts=6,
   canUndo=true, canRedo=true`; after redo: `archetypeId=box_with_lid,
   parts=6, canUndo=true, canRedo=false`. Archetype regression: 6/6 clean.
-- [ ] **6.3 Read-only share link.** Public URL that shows the assembly
-  view + parts + BOM but disables editing.
+- [x] **6.3 Read-only share link.** _Done 2026-04-28._ New `shareSlug`
+  field on the projects table (12-char base32 slug from a
+  collision-resistant alphabet that drops 0/o/1/i/l, indexed
+  `by_share_slug`). New mutations `projects:enableShare` (idempotent —
+  reuses the existing slug, generates one with up to 5 collision
+  retries otherwise) and `projects:disableShare` (clears the slug).
+  New public query `projects:getBySlug(slug)` returns project metadata
+  (id, name, scope, archetypeId, archetypeParams) — falls back to
+  null if the slug is unknown or has been revoked. New `/share/:slug`
+  route in `App.tsx` renders a thin `Shared.tsx` wrapper that resolves
+  the slug and mounts the existing `Workspace` component with
+  `readOnly` + `shareLabel` props. Workspace's read-only mode hides
+  the chat panel + chat collapse toggle, undo/redo + REV badge,
+  Scope/History/Share buttons, the parts-rail trash icon, and the
+  AssemblyPartsPanel search/add-form/per-row delete; downloads (DXF
+  / PDF / OBJ / BOM / SCS bundle) all still work since they're
+  pure-read queries. Header swaps the back-arrow for a viewer eye
+  icon, the project ID for the project name, and adds an amber
+  "Read-only" badge. New `ShareDialog` (Share button on the studio
+  toolbar) generates / copies / revokes the link.
+  **Verify**: `npx convex run projects:enableShare '{"projectId":…}'`
+  returns `{slug: "65jdbwjyegth"}`; `projects:getBySlug` returns the
+  matching project. `projects:disableShare` then `getBySlug` returns
+  null. Archetype regression: 6/6 clean.
 - [ ] **6.4 Commenting on parts.** Click a part → leave a comment →
   feeds into the agent's context next turn ("the user noted: ...").
 - [ ] **6.5 Mobile / tablet view.** Today the 3-pane layout breaks under
@@ -550,3 +572,4 @@ failures.
 | 2026-04-28 | refactor: transform3d module | Two callers had inline Euler→axis matrices encoding different XYZ conventions. Extracted `eulerAxesThreeJs` (renderer/SAT) and `eulerAxesDataFrame` (positions.ts pipeline) into `convex/lib/transform3d.ts`. 6/6 archetype regression + every smoke byte-identical post-migration. |
 | 2026-04-28 | 6.1 studio dashboard delete | `Home.tsx` was already a project list with NewProjectWizard CTA; closed the chunk by wiring `projects:remove` to a hover-revealed two-click trash icon on every card. **Tier 6 starts.** |
 | 2026-04-28 | 6.2 project-level undo/redo | New `assemblySnapshots` table (role-keyed parts + interfaces + archetype state JSON, 50-cap, redo-future pruning). Hooked into `projectChat:send` — one snapshot per agent turn that lands state-changing tools. Workspace header gains Undo/Redo buttons + REV count + ⌘Z / ⌘⇧Z / Ctrl+Y shortcuts. `_audit:auditUndoRedo` smoke verifies capture → undo → redo correctly restores archetypeId + parts on prod. Legacy `partRevisions`/`revisions:undo` left in place for the unused single-spec canvas. |
+| 2026-04-28 | 6.3 share link | `projects.shareSlug` (indexed `by_share_slug`) + enable/disable mutations + public `getBySlug` query. New `/share/:slug` route renders `Shared.tsx` → `Workspace` in read-only mode (chat panel hidden, undo/redo/scope/history/share toggles hidden, part-rail delete + assembly add/delete hidden, downloads still work). Studio header gains a Share button + ShareDialog with copy-to-clipboard and revoke. Verified end-to-end via `projects:enableShare` → `getBySlug` → `disableShare` → `getBySlug` returns null. |

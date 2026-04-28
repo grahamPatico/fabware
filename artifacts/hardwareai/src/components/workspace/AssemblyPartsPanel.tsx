@@ -143,7 +143,7 @@ function aggregateInterfaceHardware(
   return Array.from(map.values()).sort((a, b) => a.partNumber.localeCompare(b.partNumber));
 }
 
-export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"projects"> }) {
+export default function AssemblyPartsPanel({ projectId, readOnly = false }: { projectId: Id<"projects">; readOnly?: boolean }) {
   const parts = useQuery(api.assemblyParts.list, projectId ? { projectId } : "skip");
   const allParts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
   const interfaces = useQuery(api.interfaces.listForProject, projectId ? { projectId } : "skip");
@@ -207,6 +207,7 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
         </div>
       </div>
 
+      {!readOnly && (
       <div className="flex flex-col gap-2">
         <Input
           value={suggestText}
@@ -238,7 +239,9 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
           </div>
         )}
       </div>
+      )}
 
+      {!readOnly && (
       <form onSubmit={onAdd} className="flex gap-2 items-end">
         <div className="flex-1 flex flex-col gap-1">
           <label className="font-mono text-[10px] uppercase text-muted-foreground">
@@ -272,7 +275,8 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
           Add
         </Button>
       </form>
-      {addError && (
+      )}
+      {!readOnly && addError && (
         <div className="bg-destructive/10 border border-destructive/30 rounded p-2 font-mono text-[11px] text-destructive">
           {addError}
         </div>
@@ -340,16 +344,18 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
               </div>
               <div className="text-xs text-foreground truncate">{p.name}</div>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => deletePart({ partId: p._id as Id<"assemblyParts"> })}
-              className="opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0"
-              title="Remove"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
-            </Button>
+            {!readOnly && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => deletePart({ partId: p._id as Id<"assemblyParts"> })}
+                className="opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0"
+                title="Remove"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+              </Button>
+            )}
           </div>
         ))}
       </div>

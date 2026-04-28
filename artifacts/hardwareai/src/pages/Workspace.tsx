@@ -10,6 +10,8 @@ import {
   Sliders,
   Undo2,
   Redo2,
+  Share2,
+  Eye,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -22,6 +24,7 @@ import AssembledView from "@/components/workspace/AssembledView";
 import RulesStatusStrip from "@/components/workspace/RulesStatusStrip";
 import BendSimulatorPanel from "@/components/workspace/BendSimulatorPanel";
 import HistoryPanel from "@/components/workspace/HistoryPanel";
+import ShareDialog from "@/components/workspace/ShareDialog";
 import AssemblyPartsPanel from "@/components/workspace/AssemblyPartsPanel";
 import PartList from "@/components/workspace/PartList";
 import InterfaceList from "@/components/workspace/InterfaceList";
@@ -34,11 +37,22 @@ import type { Id } from "../../convex/_generated/dataModel";
 const RESIZE_HANDLE = "w-1 bg-border data-[resize-handle-state=hover]:bg-primary/40 data-[resize-handle-state=drag]:bg-primary transition-colors";
 const RESIZE_HANDLE_HORIZ = "h-1 bg-border data-[resize-handle-state=hover]:bg-primary/40 data-[resize-handle-state=drag]:bg-primary transition-colors";
 
-export default function Workspace() {
+interface WorkspaceProps {
+  projectId?: Id<"projects"> | null;
+  readOnly?: boolean;
+  shareLabel?: string | null;
+}
+
+export default function Workspace({
+  projectId: projectIdProp,
+  readOnly = false,
+  shareLabel = null,
+}: WorkspaceProps = {}) {
   const params = useParams();
-  const projectId = (params.id as Id<"projects"> | undefined) ?? null;
+  const projectId = projectIdProp ?? ((params.id as Id<"projects"> | undefined) ?? null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [scopeOpen, setScopeOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [focusedPartId, setFocusedPartId] = useState<Id<"parts"> | null>(null);
   const [hiddenPartIds, setHiddenPartIds] = useState<Set<string>>(new Set());
   const togglePartHidden = (id: Id<"parts">) => {
@@ -67,7 +81,7 @@ export default function Workspace() {
   const canRedo = !!snapshotStatus?.canRedo;
 
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || readOnly) return;
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
@@ -88,7 +102,7 @@ export default function Workspace() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [projectId, canUndo, canRedo, undoMut, redoMut]);
+  }, [projectId, canUndo, canRedo, undoMut, redoMut, readOnly]);
 
   if (!projectId) return <div>Invalid project ID</div>;
   const shortId = projectId.slice(-4).toUpperCase();
@@ -110,13 +124,26 @@ export default function Workspace() {
     <div className="h-screen w-full flex flex-col bg-background overflow-hidden">
       <header className="h-14 border-b border-border bg-card px-4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
-          <Link href="/studio" className="text-muted-foreground hover:text-primary"><ArrowLeft className="w-4 h-4" /></Link>
+          {readOnly ? (
+            <span className="text-muted-foreground"><Eye className="w-4 h-4" /></span>
+          ) : (
+            <Link href="/studio" className="text-muted-foreground hover:text-primary"><ArrowLeft className="w-4 h-4" /></Link>
+          )}
           <div className="w-px h-6 bg-border" />
           <Settings2 className="w-4 h-4 text-primary" />
-          <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold">Studio</span>
+          <span className="font-mono text-xs uppercase tracking-wider text-primary font-bold">
+            {readOnly ? "Shared view" : "Studio"}
+          </span>
           <div className="w-px h-6 bg-border" />
-          <span className="font-mono text-sm text-muted-foreground">PRJ-{shortId}</span>
+          <span className="font-mono text-sm text-muted-foreground">
+            {readOnly && shareLabel ? shareLabel : `PRJ-${shortId}`}
+          </span>
           <ArchetypeInfoChip projectId={projectId} />
+          {readOnly && (
+            <span className="font-mono text-[10px] uppercase tracking-widest bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded px-2 py-0.5">
+              Read-only
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -128,15 +155,17 @@ export default function Workspace() {
           >
             {leftCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleChat}
-            className="h-8 w-8"
-            title={chatCollapsed ? "Show chat" : "Hide chat"}
-          >
-            {chatCollapsed ? <PanelRightOpen className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
-          </Button>
+          {!readOnly && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleChat}
+              className="h-8 w-8"
+              title={chatCollapsed ? "Show chat" : "Hide chat"}
+            >
+              {chatCollapsed ? <PanelRightOpen className="w-4 h-4" /> : <PanelRightClose className="w-4 h-4" />}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -146,39 +175,46 @@ export default function Workspace() {
           >
             {assemblyCollapsed ? <PanelBottomOpen className="w-4 h-4" /> : <PanelBottomClose className="w-4 h-4" />}
           </Button>
-          <div className="w-px h-6 bg-border mx-2" />
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => undoMut({ projectId })}
-            disabled={!canUndo}
-            className="h-8 w-8"
-            title={canUndo ? `Undo (⌘Z) — ${snapshotStatus?.label ?? ""}` : "Nothing to undo"}
-          >
-            <Undo2 className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => redoMut({ projectId })}
-            disabled={!canRedo}
-            className="h-8 w-8"
-            title={canRedo ? "Redo (⌘⇧Z)" : "Nothing to redo"}
-          >
-            <Redo2 className="w-4 h-4" />
-          </Button>
-          {snapshotStatus && snapshotStatus.total > 0 && (
-            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground px-1">
-              {snapshotStatus.current}/{snapshotStatus.total}
-            </span>
+          {!readOnly && (
+            <>
+              <div className="w-px h-6 bg-border mx-2" />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => undoMut({ projectId })}
+                disabled={!canUndo}
+                className="h-8 w-8"
+                title={canUndo ? `Undo (⌘Z) — ${snapshotStatus?.label ?? ""}` : "Nothing to undo"}
+              >
+                <Undo2 className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => redoMut({ projectId })}
+                disabled={!canRedo}
+                className="h-8 w-8"
+                title={canRedo ? "Redo (⌘⇧Z)" : "Nothing to redo"}
+              >
+                <Redo2 className="w-4 h-4" />
+              </Button>
+              {snapshotStatus && snapshotStatus.total > 0 && (
+                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground px-1">
+                  {snapshotStatus.current}/{snapshotStatus.total}
+                </span>
+              )}
+              <div className="w-px h-6 bg-border mx-2" />
+              <Button variant="outline" size="sm" onClick={() => setScopeOpen(true)} className="font-mono text-xs uppercase tracking-widest">
+                <Sliders className="w-3.5 h-3.5 mr-2" />Scope
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)} className="font-mono text-xs uppercase tracking-widest">
+                <History className="w-3.5 h-3.5 mr-2" />History
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShareOpen(true)} className="font-mono text-xs uppercase tracking-widest">
+                <Share2 className="w-3.5 h-3.5 mr-2" />Share
+              </Button>
+            </>
           )}
-          <div className="w-px h-6 bg-border mx-2" />
-          <Button variant="outline" size="sm" onClick={() => setScopeOpen(true)} className="font-mono text-xs uppercase tracking-widest">
-            <Sliders className="w-3.5 h-3.5 mr-2" />Scope
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)} className="font-mono text-xs uppercase tracking-widest">
-            <History className="w-3.5 h-3.5 mr-2" />History
-          </Button>
         </div>
       </header>
 
@@ -202,12 +238,15 @@ export default function Workspace() {
               onFocusPart={setFocusedPartId}
               hiddenPartIds={hiddenPartIds}
               onTogglePart={togglePartHidden}
+              readOnly={readOnly}
             />
             <InterfaceList projectId={projectId} />
           </aside>
         </Panel>
         <PanelResizeHandle className={RESIZE_HANDLE} />
 
+        {!readOnly && (
+        <>
         {/* Middle: chat */}
         <Panel
           ref={chatRef}
@@ -224,9 +263,11 @@ export default function Workspace() {
           </section>
         </Panel>
         <PanelResizeHandle className={RESIZE_HANDLE} />
+        </>
+        )}
 
         {/* Right: canvas + assembly parts */}
-        <Panel defaultSize={50} minSize={25}>
+        <Panel defaultSize={readOnly ? 82 : 50} minSize={25}>
           <section className="h-full flex flex-col bg-[#0a0f18] relative">
             <RulesStatusStrip projectId={projectId} />
             <PanelGroup direction="vertical" autoSaveId="fabware-workspace-v">
@@ -255,7 +296,7 @@ export default function Workspace() {
                 onExpand={() => setAssemblyCollapsed(false)}
               >
                 <div className="h-full flex flex-col min-h-0 overflow-hidden">
-                  <AssemblyPartsPanel projectId={projectId} />
+                  <AssemblyPartsPanel projectId={projectId} readOnly={readOnly} />
                 </div>
               </Panel>
             </PanelGroup>
@@ -263,15 +304,24 @@ export default function Workspace() {
         </Panel>
       </PanelGroup>
 
-      <HistoryPanel
-        projectId={projectId}
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-        currentRevisionId={null}
-        previewRevisionId={null}
-        onPreviewRevision={() => {}}
-      />
-      <ScopeEditor projectId={projectId} open={scopeOpen} onOpenChange={setScopeOpen} />
+      {!readOnly && (
+        <>
+          <HistoryPanel
+            projectId={projectId}
+            open={historyOpen}
+            onOpenChange={setHistoryOpen}
+            currentRevisionId={null}
+            previewRevisionId={null}
+            onPreviewRevision={() => {}}
+          />
+          <ScopeEditor projectId={projectId} open={scopeOpen} onOpenChange={setScopeOpen} />
+          <ShareDialog
+            projectId={projectId}
+            open={shareOpen}
+            onOpenChange={setShareOpen}
+          />
+        </>
+      )}
     </div>
   );
 }
