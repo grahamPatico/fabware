@@ -326,6 +326,55 @@ but render it as a box" gaps to close.
   rows have no `userId`. Add Clerk or Convex Auth, scope rows, expose a
   spend dashboard. Foundation for usage-based billing.
 
+## Agent-based audit findings 2026-04-28
+
+Drove four scenarios end-to-end through `projectChat:send` (Opus 4.7,
+medium effort): tall school locker, outdoor control panel, 5-point star
+sign, top-hinged tool trunk. Three came back clean, the locker hit two
+failures.
+
+### Bug A — piano-hinge default fastener count too low (FIXED)
+
+A 60" tall locker auto-picks `hingeStyle: piano` (locker on mvp tier).
+The validator (chunk 2.3) requires one mounting hole every ~3" of edge,
+so 60"/3" = 20 holes per part — but `paramDefaults` was returning the
+tier default `fastenerCount: 4`. Validator correctly failed.
+
+Fix: compute `fastenerCount` from hinge edge length when style is piano:
+`Math.max(4, Math.ceil(hingeEdgeLen / 3))`. Edge length depends on
+`doorFace + hingeSide` (for front-door it's `innerHeight`, for top-door
+it's `outerW` or `outerD` depending on which wall the hinge is on).
+Verified: same locker re-audited reports `Piano hinge: 20 / 20 mounting
+holes (>= 20 required)` pass.
+
+### Bug B — 60" tall wall exceeds 43" max sheet (KNOWN LIMITATION)
+
+A 60" tall locker's wall dimensions (12.15" × 60") exceed mild steel's
+43"×43" max sheet. The new project-level `assembly_max_sheet` rule
+correctly flags this — it's a real manufacturing constraint, not a bug.
+
+To resolve, the user (or agent) needs to either:
+- pick a different material with a larger sheet (none available in the
+  current curated catalog),
+- split each tall wall into two stacked panels joined by a weld seam, or
+- accept the constraint and use a fabricator other than SCS.
+
+Logged as a separate backlog item: "agent self-repair when max-sheet
+fails" — would have the agent automatically split or switch material on
+seeing the rule fail.
+
+### Sweep result (post-fix)
+
+| Scenario | Fails | Notes |
+|---|---|---|
+| Tall school locker 12×18×60 | 1 | max-sheet (real constraint) |
+| Outdoor panel 18×12×6 | 0 | clean |
+| Star sign 8" 1/8" mild steel | 0 | clean |
+| Tool trunk 16×8×6 jerry-rigged | 0 | clean |
+
+Archetype regression: 6/6 archetypes still report zero intersection
+failures.
+
 ## User-asked chunks shipped 2026-04-27 (out-of-tier)
 
 - [x] **Delete part button.** PartList rows now have a Trash icon. Two-click
@@ -368,6 +417,10 @@ but render it as a box" gaps to close.
 - True hole cutouts (carved off 3.5): use `THREE.Shape.holes` so the
   ExtrudeGeometry actually subtracts the hole instead of just covering it
   with a black cylinder. Required for accurate DXF + flat-pattern PDF.
+- Agent self-repair when max-sheet fails (carved off audit 2026-04-28):
+  on `assembly_max_sheet` fail, the agent should auto-split walls into
+  stacked panels joined by a weld seam OR call `update_archetype_params`
+  to flip material. Currently the rule fires but the agent doesn't act.
 
 ## Status log
 
@@ -395,3 +448,4 @@ but render it as a box" gaps to close.
 | 2026-04-28 | 4.3 weight estimate | `weight.ts` + `manufacturing:weightSummary` + PartList row-level lb display. Density per category, area subtraction for holes / slots, polygon-aware shoelace for non-rectangle outlines. |
 | 2026-04-28 | 4.4 cost estimate | `cost.ts` + `manufacturing:costSummary`. Material × thickness scale + perimeter cuts + bends + powder-coat finish + min-per-part. PartList header shows project SCS total. ±30% of actual quote. |
 | 2026-04-28 | 4.5 max sheet hard fail | Project-level `assembly_max_sheet` rule in validateAssembly flags any part exceeding its material's max sheet. **Tier 4 fully complete.** |
+| 2026-04-28 | Agent audit + Bug A fix | 4-scenario sweep on prod surfaced piano-hinge fastener-count bug (default 4 < required 20 for tall lockers). Fixed paramDefaults to compute fastenerCount from hinge edge length when style is piano. Locker hinge rule now passes. |

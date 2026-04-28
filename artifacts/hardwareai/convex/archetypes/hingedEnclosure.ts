@@ -65,21 +65,37 @@ function paramDefaults(scope: ProjectScope): Params {
     piano: "1598A12",     // 36" × 1.5" steel piano hinge (continuous)
     concealed: "1559A14", // 35mm cup-and-bracket hinge
   };
+  // Piano hinges run continuously and need a screw every ~3" of edge length.
+  // Compute the relevant edge length so the default fastener count satisfies
+  // the validator out of the box. Other styles use the tier default (4).
+  const doorFace: "top" | "front" = isLocker ? "front" : "top";
+  const hingeSide: Params["hingeSide"] = isLocker ? "right" : "back";
+  const tThick = tier.thickness!;
+  const outerW = inner.w + 2 * tThick;
+  const outerD = inner.d + 2 * tThick;
+  const hingeEdgeLen =
+    doorFace === "front" ? inner.h
+    : (hingeSide === "back" || hingeSide === "front") ? outerW
+    : outerD;
+  const fastenerCount = styleHint === "piano"
+    ? Math.max(4, Math.ceil(hingeEdgeLen / 3))
+    : tier.fastenerCount!;
+
   return {
     innerWidth: inner.w,
     innerDepth: inner.d,
     innerHeight: inner.h,
     material,
-    thickness: tier.thickness!,
-    doorFace: isLocker ? "front" : "top",
-    hingeSide: isLocker ? "right" : "back",
+    thickness: tThick,
+    doorFace,
+    hingeSide,
     bodyConstruction: scope.tier === "commercial" ? "bolted_plates" : "single_bend",
     hingeStyle: styleHint,
     powderCoat: tier.powderCoat!,
     powderCoatColor: tier.powderCoatColor!,
     fastenerPartNumber: tier.fastenerPartNumber!,
     hingePartNumber: partNumberByStyle[styleHint],
-    fastenerCount: tier.fastenerCount!,
+    fastenerCount,
   };
 }
 
