@@ -125,6 +125,42 @@ export const auditWeldJoint = internalAction({
 });
 
 /**
+ * Synthetic smoke for PDF generation (chunk 5.2). Returns byte length and
+ * a peek at the header / trailer so we can confirm the structure without
+ * shipping the whole binary back through the CLI.
+ */
+export const auditPdf = internalAction({
+  args: {
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    holeCount: v.optional(v.number()),
+    addBend: v.optional(v.boolean()),
+  },
+  handler: async (_ctx, args): Promise<{ bytes: number; head: string; tail: string; objCount: number }> => {
+    const features: any[] = [];
+    if (args.holeCount && args.holeCount > 0) {
+      features.push({ kind: "hole", name: "mount", count: args.holeCount, diameter: 0.266, pattern: "corner", inset: 0.375 });
+    }
+    if (args.addBend) features.push({ kind: "bend", name: "main", axis: "horizontal", positionRatio: 0.5, angle: 90, radius: 0.1 });
+    const dsl: PartDsl = {
+      version: 1, partType: "plate", material: "Mild Steel (CRS)", thickness: 0.075,
+      width: args.width ?? 6, height: args.height ?? 4, depth: null,
+      features, finish: null, assemblyRefs: [],
+    };
+    const { generatePartPdf } = await import("./lib/pdf");
+    const bytes = generatePartPdf(dsl, "Test Part", "test_part");
+    let bin = "";
+    for (let i = 0; i < Math.min(40, bytes.length); i++) bin += String.fromCharCode(bytes[i]);
+    let tail = "";
+    for (let i = Math.max(0, bytes.length - 30); i < bytes.length; i++) tail += String.fromCharCode(bytes[i]);
+    let bin2 = "";
+    for (let i = 0; i < bytes.length; i++) bin2 += String.fromCharCode(bytes[i]);
+    const objCount = (bin2.match(/ obj\n/g) || []).length;
+    return { bytes: bytes.length, head: bin.replace(/\n/g, "\\n"), tail: tail.replace(/\n/g, "\\n"), objCount };
+  },
+});
+
+/**
  * Synthetic smoke for DXF generation (chunk 5.1).
  */
 export const auditDxf = internalAction({

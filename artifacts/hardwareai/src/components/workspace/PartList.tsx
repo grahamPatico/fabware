@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useConvex } from "convex/react";
-import { Eye, EyeOff, Trash2, Download } from "lucide-react";
+import { Eye, EyeOff, Trash2, Download, FileText } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { PartKindBadge } from "./PartKindBadge";
@@ -29,6 +29,28 @@ export default function PartList({ projectId, focusedPartId, onFocusPart, hidden
       const result = await convex.query(api.dxf.partDxf, { partId: id });
       if (!result) return;
       const blob = new Blob([result.dxf], { type: "application/dxf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const handleDownloadPdf = async (id: Id<"parts">) => {
+    setDownloading(id as unknown as string);
+    try {
+      const result = await convex.query(api.pdf.partPdf, { partId: id });
+      if (!result) return;
+      const bin = atob(result.base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -129,16 +151,28 @@ export default function PartList({ projectId, focusedPartId, onFocusPart, hidden
                 </button>
               )}
               {(p.kind ?? "sheet_metal") === "sheet_metal" && (
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); handleDownloadDxf(p._id); }}
-                  className="px-2.5 hover:bg-muted/40 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
-                  title="Download flat-pattern DXF"
-                  aria-label="Download DXF"
-                  disabled={downloading === (p._id as unknown as string)}
-                >
-                  <Download className="w-3.5 h-3.5" />
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleDownloadDxf(p._id); }}
+                    className="px-2.5 hover:bg-muted/40 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    title="Download flat-pattern DXF"
+                    aria-label="Download DXF"
+                    disabled={downloading === (p._id as unknown as string)}
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleDownloadPdf(p._id); }}
+                    className="px-2.5 hover:bg-muted/40 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
+                    title="Download shop-drawing PDF"
+                    aria-label="Download PDF"
+                    disabled={downloading === (p._id as unknown as string)}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                  </button>
+                </>
               )}
               <button
                 type="button"

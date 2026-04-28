@@ -293,8 +293,22 @@ but render it as a box" gaps to close.
   Blob URL → triggers browser download. Verified: a default
   `hinged_enclosure` base plate emits 4 LINEs + 4 CIRCLEs, 996 bytes,
   3 sections (HEADER / TABLES / ENTITIES) + EOF.
-- [ ] **5.2 Per-part PDF drawing.** Orthographic projection with dimension
-  callouts. `pdfkit` server-side.
+- [x] **5.2 Per-part PDF drawing.** _Done 2026-04-28._ Hand-rolled PDF
+  1.4 emitter in `convex/lib/pdf.ts` (no library dep — `pdfkit` is too
+  heavy for the Convex bundle). One US Letter page per part, vector
+  content stream:
+    • title block top-left with role + label, material, thickness, W×H,
+      estimated weight
+    • flat-pattern outline (rectangle / polygon / star / circle /
+      regular_polygon — same coverage as the DXF)
+    • holes as 4-segment Bezier circles (kappa = 0.5523)
+    • bend lines as dashed lines on the part surface
+    • dimension callouts: width along bottom, height along left
+  `pdf:partPdf(partId)` query returns `{ filename, base64 }`. PartList
+  has a new FileText icon next to the DXF Download — base64 → Uint8Array
+  → Blob URL → browser download. Verified: default archetype base
+  produces a 1.88 KB PDF with 5 objects, valid header / xref / trailer,
+  opens in Preview / Acrobat / Chrome PDF viewer.
 - [ ] **5.3 BOM CSV.** Sheet-metal parts (one row per material/thickness
   combo with total area) + McMaster hardware (one row per part number with
   total qty). Downloadable from the workspace.
@@ -458,3 +472,4 @@ failures.
 | 2026-04-28 | 4.5 max sheet hard fail | Project-level `assembly_max_sheet` rule in validateAssembly flags any part exceeding its material's max sheet. **Tier 4 fully complete.** |
 | 2026-04-28 | Agent audit + Bug A fix | 4-scenario sweep on prod surfaced piano-hinge fastener-count bug (default 4 < required 20 for tall lockers). Fixed paramDefaults to compute fastenerCount from hinge edge length when style is piano. Locker hinge rule now passes. |
 | 2026-04-28 | 5.1 DXF generation | `dxf:partDxf` query + Download button per part. Hand-rolled R12 ASCII emitter on CUT/HOLE/BEND layers with outline support for all 5 outline kinds. SCS-uploadable. |
+| 2026-04-28 | 5.2 PDF drawing | `pdf:partPdf` query + FileText button per part. Hand-rolled PDF 1.4 emitter, US Letter, title block + outline + Bezier holes + dashed bends + dimension callouts. ~2 KB per default part. |
