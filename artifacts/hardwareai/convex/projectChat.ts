@@ -73,27 +73,41 @@ export const send = action({
       projectState,
     });
 
-    const summaryLines: string[] = [];
     let livePartsSnapshot = parts;
+    // Stream each tool result as its own assistant message so the user sees
+    // progress in real time (Convex queries are reactive — frontend updates
+    // the moment each insert lands).
     for (const call of agentResult.toolCalls) {
-      summaryLines.push(await applyToolCall(ctx, a.projectId, livePartsSnapshot, interfaces, call));
+      const result = await applyToolCall(ctx, a.projectId, livePartsSnapshot, interfaces, call);
+      if (result && result.trim().length > 0) {
+        await ctx.runMutation(internal.messages.insertProjectMessage, {
+          projectId: a.projectId, role: "assistant", content: result,
+          model: a.model, effort: a.effort,
+        });
+      }
       if (
         call.name === "select_archetype" ||
         call.name === "update_archetype_params" ||
         call.name === "add_printed_part" ||
-        call.name === "add_purchased_part"
+        call.name === "add_purchased_part" ||
+        call.name === "add_freeform_2d_part"
       ) {
         livePartsSnapshot = await ctx.runQuery(api.parts.listForProject, { projectId: a.projectId });
       }
     }
 
-    const assistantText = agentResult.responseText.trim() ||
-      summaryLines.filter(Boolean).join("\n") ||
-      "Updated.";
-    await ctx.runMutation(internal.messages.insertProjectMessage, {
-      projectId: a.projectId, role: "assistant", content: assistantText,
-      model: a.model, effort: a.effort,
-    });
+    const assistantText = agentResult.responseText.trim();
+    if (assistantText) {
+      await ctx.runMutation(internal.messages.insertProjectMessage, {
+        projectId: a.projectId, role: "assistant", content: assistantText,
+        model: a.model, effort: a.effort,
+      });
+    } else if (agentResult.toolCalls.length === 0) {
+      await ctx.runMutation(internal.messages.insertProjectMessage, {
+        projectId: a.projectId, role: "assistant", content: "Updated.",
+        model: a.model, effort: a.effort,
+      });
+    }
 
     const validation = await ctx.runQuery(api.validation.getAssemblyValidation, { projectId: a.projectId });
     return { validation };

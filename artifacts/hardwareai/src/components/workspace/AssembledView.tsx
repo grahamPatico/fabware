@@ -216,9 +216,36 @@ interface AssembledViewProps {
   projectId: Id<"projects">;
   focusedPartId?: Id<"parts"> | null;
   onFocusPart?: (id: Id<"parts"> | null) => void;
+  hiddenPartIds?: Set<string>;
 }
 
-export default function AssembledView({ projectId, focusedPartId = null, onFocusPart }: AssembledViewProps) {
+function sheetMetalAppearance(material: string | undefined): { color: string; metalness: number; roughness: number; opacity: number; transparent: boolean } {
+  const m = (material ?? "").toLowerCase();
+  if (m.includes("acrylic") && m.includes("clear")) {
+    return { color: "#9ad0e8", metalness: 0, roughness: 0.05, opacity: 0.28, transparent: true };
+  }
+  if (m.includes("acrylic") && m.includes("black")) {
+    return { color: "#1a1a1d", metalness: 0, roughness: 0.15, opacity: 0.92, transparent: false };
+  }
+  if (m.includes("aluminum")) {
+    return { color: "#cfd2d7", metalness: 0.55, roughness: 0.45, opacity: 1, transparent: false };
+  }
+  if (m.includes("stainless")) {
+    return { color: "#d8dadd", metalness: 0.65, roughness: 0.35, opacity: 1, transparent: false };
+  }
+  if (m.includes("copper")) {
+    return { color: "#c08552", metalness: 0.7, roughness: 0.4, opacity: 1, transparent: false };
+  }
+  if (m.includes("brass")) {
+    return { color: "#caa75a", metalness: 0.7, roughness: 0.4, opacity: 1, transparent: false };
+  }
+  if (m.includes("galvanized")) {
+    return { color: "#bcc3cb", metalness: 0.5, roughness: 0.55, opacity: 1, transparent: false };
+  }
+  return { color: "#d0d4da", metalness: 0.4, roughness: 0.6, opacity: 1, transparent: false };
+}
+
+export default function AssembledView({ projectId, focusedPartId = null, onFocusPart, hiddenPartIds }: AssembledViewProps) {
   const parts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
   const project = useQuery(api.projects.get, projectId ? { projectId } : "skip");
   const controlsRef = useRef<any>(null);
@@ -314,6 +341,7 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
         {parts?.map(p => {
           const kind = p.kind ?? "sheet_metal";
           const selected = p._id === focusedPartId;
+          if (hiddenPartIds?.has(p._id as unknown as string)) return null;
           if (kind === "printed") {
             const bb = printedBoundingBox(p);
             return (
@@ -344,6 +372,7 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
               />
             );
           }
+          const appearance = sheetMetalAppearance(p.material);
           return (
             <PartMesh
               key={p._id}
@@ -352,9 +381,10 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
               selected={selected}
               showBounds={showBounds}
               onClick={() => handlePartClick(p._id)}
-              color="#d0d4da"
-              metalness={0.4}
-              roughness={0.6}
+              color={appearance.color}
+              metalness={appearance.metalness}
+              roughness={appearance.roughness}
+              opacity={appearance.opacity}
             />
           );
         })}

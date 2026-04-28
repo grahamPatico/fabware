@@ -177,6 +177,28 @@ export const SCS_MATERIALS: Record<string, MaterialRule> = {
     minHoleMultiplier: 1.0,
     textureKey: "brass",
   },
+  "Acrylic Clear": {
+    name: "Acrylic Clear",
+    category: "acrylic",
+    thicknesses: [0.060, 0.118, 0.177, 0.236, 0.354, 0.472],
+    canBend: false,
+    canPowderCoat: false,
+    maxSheet: { width: 32, height: 32 },
+    bendRadiusMultiplier: 99,
+    minHoleMultiplier: 1.0,
+    textureKey: "acrylic-clear",
+  },
+  "Acrylic Black": {
+    name: "Acrylic Black",
+    category: "acrylic",
+    thicknesses: [0.060, 0.118, 0.177, 0.236, 0.354, 0.472],
+    canBend: false,
+    canPowderCoat: false,
+    maxSheet: { width: 32, height: 32 },
+    bendRadiusMultiplier: 99,
+    minHoleMultiplier: 1.0,
+    textureKey: "acrylic-black",
+  },
 };
 
 export function listMaterialNames(): string[] {

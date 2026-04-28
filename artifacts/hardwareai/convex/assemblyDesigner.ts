@@ -411,6 +411,8 @@ If the user asks for an item the catalog doesn't have (e.g. a specific 3" OD alu
 Every custom part you add is one of three kinds:
 
 - **sheet_metal** — flat-pattern parts laser-cut by Send Cut Send. Use for panels, brackets, enclosures, anything dominated by 2D geometry with optional bends. Multi-part bolted assemblies come from archetypes; single non-rectangular parts (star, disc, hex, logo, custom polygon) come from \`add_freeform_2d_part\`. Lasers can cut any closed 2D outline — don't tell the user "we can't make that shape" just because it's not a rectangle.
+
+  Available materials: **Mild Steel (CRS)**, **Galvanized Steel**, **Stainless Steel 304/316**, **Aluminum 5052/6061**, **Copper**, **Brass**, **Acrylic Clear**, **Acrylic Black**. SCS laser-cuts acrylic too — when the user asks for a clear cover, transparent door, viewing window, or display top, use **"Acrylic Clear"** (renders semi-transparent in the viewer). Acrylic and 6061 don't bend, so don't put bends on them.
 - **printed** — 3D-printed parts (FDM/resin). Use for small custom shapes with complex 3D geometry: bezels, knobs, cable grommets, snap-fit clips, mounting standoffs. Add via \`add_printed_part\`.
 - **purchased** — off-the-shelf parts from McMaster. Use for fasteners, bearings, hinges, rubber feet, springs, magnets — anything where buying is cheaper, faster, and higher quality than making. Add via \`add_purchased_part\`.
 

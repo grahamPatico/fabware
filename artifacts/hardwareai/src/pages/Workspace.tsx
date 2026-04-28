@@ -37,6 +37,15 @@ export default function Workspace() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [focusedPartId, setFocusedPartId] = useState<Id<"parts"> | null>(null);
+  const [hiddenPartIds, setHiddenPartIds] = useState<Set<string>>(new Set());
+  const togglePartHidden = (id: Id<"parts">) => {
+    setHiddenPartIds(prev => {
+      const next = new Set(prev);
+      const key = id as unknown as string;
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   const leftRef = useRef<ImperativePanelHandle>(null);
   const chatRef = useRef<ImperativePanelHandle>(null);
@@ -128,7 +137,13 @@ export default function Workspace() {
           className="bg-background"
         >
           <aside className="h-full border-r border-border flex flex-col">
-            <PartList projectId={projectId} focusedPartId={focusedPartId} onFocusPart={setFocusedPartId} />
+            <PartList
+              projectId={projectId}
+              focusedPartId={focusedPartId}
+              onFocusPart={setFocusedPartId}
+              hiddenPartIds={hiddenPartIds}
+              onTogglePart={togglePartHidden}
+            />
             <InterfaceList projectId={projectId} />
           </aside>
         </Panel>
@@ -162,6 +177,7 @@ export default function Workspace() {
                     projectId={projectId}
                     focusedPartId={focusedPartId}
                     onFocusPart={setFocusedPartId}
+                    hiddenPartIds={hiddenPartIds}
                   />
                 </div>
               </Panel>

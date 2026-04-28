@@ -39,27 +39,20 @@ function lenSq(a: Vec3): number {
  * (rotateX, then rotateY, then rotateZ — same convention as `positions.ts`)
  * and return its three column vectors as the OBB's local axes in world space.
  */
+/**
+ * Mirrors three.js's `Matrix4.makeRotationFromEuler` with order='XYZ' so the
+ * SAT operates in the exact frame the renderer uses. Source:
+ * three.js/src/math/Matrix4.js (XYZ branch).
+ */
 export function eulerXyzToAxes(rx: number, ry: number, rz: number): [Vec3, Vec3, Vec3] {
-  const sx = Math.sin(rx), cx = Math.cos(rx);
-  const sy = Math.sin(ry), cy = Math.cos(ry);
-  const sz = Math.sin(rz), cz = Math.cos(rz);
-  // R = Rz * Ry * Rx? No — `positions.ts` rotates a point by X, then Y, then Z.
-  // For p' = Rz · Ry · Rx · p (applying X first when read right-to-left), the
-  // rotation matrix is R = Rz · Ry · Rx. Its columns are the world-space images
-  // of the local x,y,z basis vectors.
-  const r00 = cy * cz;
-  const r01 = sx * sy * cz - cx * sz;
-  const r02 = cx * sy * cz + sx * sz;
-  const r10 = cy * sz;
-  const r11 = sx * sy * sz + cx * cz;
-  const r12 = cx * sy * sz - sx * cz;
-  const r20 = -sy;
-  const r21 = sx * cy;
-  const r22 = cx * cy;
+  const a = Math.cos(rx), b = Math.sin(rx);
+  const c = Math.cos(ry), d = Math.sin(ry);
+  const e = Math.cos(rz), f = Math.sin(rz);
+  const ae = a * e, af = a * f, be = b * e, bf = b * f;
   return [
-    [r00, r10, r20],
-    [r01, r11, r21],
-    [r02, r12, r22],
+    [c * e,         af + be * d,    bf - ae * d],
+    [-c * f,        ae - bf * d,    be + af * d],
+    [d,             -b * c,         a * c],
   ];
 }
 
