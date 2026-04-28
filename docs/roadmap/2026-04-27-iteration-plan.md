@@ -89,12 +89,23 @@ agent should pick the right construction for the user's tier and use case.
   **Verify**: `npx convex run _audit:auditWeldJoint '{}'` → status pass.
   Archetype regression: `npx convex run _audit:auditAllArchetypes '{}'`
   still shows zero failures.
-- [ ] **2.3 Hinge geometry classes.** Today every hinge is a generic
-  `1635A3`. Real options: piano (continuous, full edge length), butt
-  (discrete, 2–3 hinges spaced along edge), concealed (cup-and-bracket,
-  fully hidden). Each has its own hole pattern. Add `hingeStyle` param to
-  hinged_enclosure. Update `checkHingeGeometry` to validate that the named
-  pattern is feasible at the chosen edge.
+- [x] **2.3 Hinge geometry classes.** _Done 2026-04-27._ New `hingeStyle:
+  "butt" | "piano" | "concealed"` param on hinged_enclosure. Default
+  resolution: locker + ≥mvp tier → piano; commercial / kitchen / euro use
+  cases → concealed; everything else → butt. Per-style McMaster part
+  numbers (1635A3 / 1598A12 / 1559A14) and hardware quantities (2–3 / 1 /
+  2). `checkHingeGeometry` rewritten to enforce per-style hole-count
+  expectations: piano needs ≥ ⌈edgeLen/3"⌉ mounting holes per part with
+  qty=1; butt needs 2 holes per leaf × qty (2–3); concealed needs a 35mm
+  cup bore on the door + 2 mounting holes per hinge × qty=2. Style is
+  encoded in `hardwareRefs[0].role` as `pivot:STYLE` so the validator can
+  read it without a schema migration. System prompt updated with the
+  three styles + when to pick each.
+  **Verify**: `_audit:auditHingeStyle` covers seven scenarios (pass /
+  fail-holes / warn-qty for butt; pass / fail-holes for piano; pass /
+  warn-no-cup-bore for concealed) — all return the expected status.
+  Archetype regression: 6 archetypes still report zero intersection
+  failures.
 - [x] **2.4 Min flange + hole-to-bend distance validators.** _Done
   2026-04-27 as part of 2.7a backend._ Both checks live in
   `convex/lib/bendSim.ts`: `min_flange` (≥ 4× thickness past bend tangent,
@@ -289,3 +300,4 @@ but render it as a box" gaps to close.
 | 2026-04-27 | 3.2 polygon extrude | `ExtrudedPartMesh` renders star / circle / polygon / regular_polygon outlines via `THREE.Shape` + `ExtrudeGeometry`; rectangle parts still go through the cheaper boxGeometry path. |
 | 2026-04-27 | delete + hinge slider + McMaster geom | Trash icon on parts (two-click confirm), 0–150° hinge open slider with proper edge-pivot animation, purchased parts render as category-aware geometry instead of placeholder cubes. |
 | 2026-04-27 | 2.2 weld_joint | New `tab` feature + `weld_joint` interface kind. Validator checks tab/slot pairing, count match, fit, and clearance slack; surfaces amber Tab+Weld badge in InterfaceList. `_audit:auditWeldJoint` smoke covers pass / fail-size / warn-sloppy / fail-count. |
+| 2026-04-27 | 2.3 hinge classes | `hingeStyle` (butt/piano/concealed) plumbed through hingedEnclosure params + tier-aware default. Per-style validator: butt counts holes per leaf, piano enforces hole-every-3", concealed checks for cup bore + bracket mounts. Style encoded in role string as pivot:STYLE. Smoke `_audit:auditHingeStyle` covers all seven scenarios. |

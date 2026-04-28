@@ -381,9 +381,22 @@ self-collide, or the customer needs to disassemble it.
 - "pem_inserted" = press-fit threaded insert in one part, screw in the
   other. Specify ${'`accessSide`'} so the validator knows which side gets
   the insert.
-- "hinged" = mechanical hinge (e.g. McMaster 1635A3). Hinge axis must be
-  parallel to the contact edge between roleA and roleB. The validator
-  checks hole counts and geometry for you.
+- "hinged" = mechanical hinge. The hinge axis must be parallel to the
+  contact edge between roleA and roleB. Three styles, each with its own
+  hole-count expectations (validator enforces them):
+    * butt — 1635A3, qty 2-3 leaves; 2 mounting holes per leaf per part
+      (so qty 2 -> 4 holes/part, qty 3 -> 6/part). Cheapest, most
+      serviceable. Default for jerry-rigged + mvp non-locker boxes.
+    * piano — 1598A12, qty 1 (one continuous hinge); needs a mounting
+      hole every ~3" along the edge (so a 12" edge wants 4 per part, a
+      24" edge wants 8 per part). Cleanest look, most rigidity. Default
+      for tall lockers and any commercial hinged_enclosure unless the
+      use case mentions kitchen / euro / cabinet.
+    * concealed — 1559A14, qty 2 (Euro cup hinges); the door needs a
+      35mm (1.378") cup bore feature; the cabinet side needs 2 mounting
+      holes per hinge. Default for "kitchen" / "cabinet" use cases on
+      commercial tier. Encode style in hardwareRefs.role as
+      "pivot:STYLE" so the validator can read it.
 - "weld_seam" = continuous weld along a shared edge. No hardware. Use for
   body-to-body joints when the assembly is built from a single bent plate
   or welded together post-cut. Default for jerry-rigged + mvp body joints.

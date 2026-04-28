@@ -124,6 +124,53 @@ export const auditWeldJoint = internalAction({
   },
 });
 
+/**
+ * Synthetic smoke for the per-style hinge validator (chunk 2.3). Builds two
+ * sheet-metal panels with N mounting holes and a hinged interface in the
+ * named style, then returns the hinge_geometry_ok rule.
+ */
+export const auditHingeStyle = internalAction({
+  args: {
+    style: v.union(v.literal("butt"), v.literal("piano"), v.literal("concealed")),
+    holesPerPart: v.optional(v.number()),
+    hingeQuantity: v.optional(v.number()),
+    addCupBore: v.optional(v.boolean()),
+  },
+  handler: async (_ctx, args): Promise<{ status: string; message: string; suggestion?: string }> => {
+    const holes = args.holesPerPart ?? 4;
+    const qty = args.hingeQuantity ?? (args.style === "piano" ? 1 : 2);
+    const cupBore = args.addCupBore ?? (args.style === "concealed");
+
+    const features: any[] = [{ kind: "hole", name: "mount", count: holes, diameter: 0.166, pattern: "top_row", inset: 0.375 }];
+    if (cupBore) features.push({ kind: "hole", name: "cup_bore", count: qty, diameter: 1.378, pattern: "center", inset: 0.5 });
+
+    const dsl: PartDsl = {
+      version: 1, partType: "plate", material: "Mild Steel (CRS)", thickness: 0.075,
+      width: 24, height: 6, depth: null,
+      features, finish: null, assemblyRefs: [],
+    };
+
+    const result = validateAssembly({
+      parts: [
+        { id: "A", role: "lid",       pose: { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 }, dsl },
+        { id: "B", role: "wall_back", pose: { x: 0, y: 1, z: 0, rotX: 0, rotY: 0, rotZ: 0 }, dsl },
+      ],
+      interfaces: [{
+        kind: "hinged", partA: "A", partB: "B",
+        featureRefs: [{ partId: "A", featureName: "mount" }, { partId: "B", featureName: "mount" }],
+        hardwareRefs: [{ mcmasterPartNumber: "test", quantity: qty, role: `pivot:${args.style}` }],
+      }],
+      scope: null,
+    });
+    const r = result.rules.find(rr => rr.id === "hinge_geometry_ok");
+    if (!r) return { status: "missing", message: "Validator didn't emit hinge_geometry_ok rule." };
+    return {
+      status: r.status, message: r.message,
+      suggestion: typeof r.suggestion === "string" ? r.suggestion : undefined,
+    };
+  },
+});
+
 // Convenience: generate an archetype's default geometry into a real project so
 // it can be inspected in the UI. Used during iterative audit sessions.
 export const generateArchetypeDeterministic = internalMutation({

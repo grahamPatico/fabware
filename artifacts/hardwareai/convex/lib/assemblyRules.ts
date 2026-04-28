@@ -177,11 +177,99 @@ function checkFastenerClearance(
   return { id: "fastener_clearance_ok", label: "Fastener clearance", status: "pass", message: `Ø${holeD}" clears ${spec.label}.` };
 }
 
+/**
+ * Per-style hinge geometry validator.
+ *
+ * Style is encoded in the hardwareRefs[0].role string as "pivot:STYLE"
+ * (set by hingedEnclosure.generate). Falls back to "butt" when missing so
+ * older projects don't trip a phantom failure.
+ *
+ *   piano     - quantity 1; expect ceil(edgeLen / 3") mounting holes per part
+ *               (continuous hinge needs a screw every ~3" for full strength).
+ *   butt      - quantity 2 or 3 (typical doors); each leaf needs 2 mounting
+ *               holes per part, so total >= 2 * quantity.
+ *   concealed - quantity 2 cup hinges per door; each cup needs a 35mm
+ *               (1.378") feature on the door; cabinet-side bracket needs 2
+ *               mounting holes per hinge. Validator warns if the door has
+ *               no slot/hole feature large enough to be the cup bore.
+ */
 function checkHingeGeometry(
   iface: AssemblyInput["interfaces"][number],
   parts: Map<string, AssemblyInput["parts"][number]>,
 ): RuleResult {
-  return { ...checkHolePatternMatch(iface, parts), id: "hinge_geometry_ok", label: "Hinge geometry" };
+  const partA = parts.get(iface.partA);
+  const partB = parts.get(iface.partB);
+  if (!partA || !partB) {
+    return { id: "hinge_geometry_ok", label: "Hinge geometry", status: "warn",
+      message: "Can't check hinge - missing part." };
+  }
+  const hardwareRole = iface.hardwareRefs?.[0]?.role ?? "pivot:butt";
+  const styleParts = hardwareRole.split(":");
+  const rawStyle = styleParts.length === 2 ? styleParts[1] : "butt";
+  const style: "piano" | "butt" | "concealed" =
+    rawStyle === "piano" || rawStyle === "concealed" ? rawStyle : "butt";
+  const hingeQty = iface.hardwareRefs?.[0]?.quantity ?? 2;
+
+  const refByPart = new Map<string, string>();
+  for (const r of iface.featureRefs ?? []) refByPart.set(r.partId, r.featureName);
+
+  function holeCountFor(part: AssemblyInput["parts"][number]): number {
+    const featName = refByPart.get(part.id);
+    const f = part.dsl.features.find((x: any) => x.kind === "hole" && (!featName || x.name === featName));
+    return f && f.kind === "hole" ? f.count : 0;
+  }
+  const aHoles = holeCountFor(partA);
+  const bHoles = holeCountFor(partB);
+
+  if (style === "piano") {
+    const edgeLen = Math.max(partA.dsl.width, partA.dsl.height);
+    const required = Math.max(4, Math.ceil(edgeLen / 3));
+    if (hingeQty !== 1) {
+      return { id: "hinge_geometry_ok", label: "Hinge geometry", status: "warn",
+        message: `Piano hinge expects quantity 1 (one continuous hinge), got ${hingeQty}.` };
+    }
+    if (aHoles < required || bHoles < required) {
+      return { id: "hinge_geometry_ok", label: "Hinge geometry", status: "fail",
+        message: `Piano hinge needs >= ${required} mounting holes per part (one every ~3"); have ${aHoles} / ${bHoles}.`,
+        suggestion: `Increase hole count to ${required} on each part.` };
+    }
+    return { id: "hinge_geometry_ok", label: "Hinge geometry", status: "pass",
+      message: `Piano hinge: ${aHoles} / ${bHoles} mounting holes (>= ${required} required).` };
+  }
+
+  if (style === "butt") {
+    if (hingeQty < 2 || hingeQty > 3) {
+      return { id: "hinge_geometry_ok", label: "Hinge geometry", status: "warn",
+        message: `Butt hinges typically come in pairs or triples; got quantity ${hingeQty}.` };
+    }
+    const required = 2 * hingeQty;
+    if (aHoles < required || bHoles < required) {
+      return { id: "hinge_geometry_ok", label: "Hinge geometry", status: "fail",
+        message: `${hingeQty} butt hinges x 2 holes per leaf = ${required} holes per part required; have ${aHoles} / ${bHoles}.`,
+        suggestion: `Add holes to reach ${required} per part.` };
+    }
+    return { id: "hinge_geometry_ok", label: "Hinge geometry", status: "pass",
+      message: `${hingeQty} butt hinges: ${aHoles} / ${bHoles} mounting holes (>= ${required} required).` };
+  }
+
+  // concealed
+  const CUP_DIA_MIN = 1.0;
+  const hasCup = (part: AssemblyInput["parts"][number]) => part.dsl.features.some((f: any) =>
+    (f.kind === "hole" && f.diameter >= CUP_DIA_MIN) ||
+    (f.kind === "slot" && f.length >= CUP_DIA_MIN && f.width >= CUP_DIA_MIN));
+  if (!hasCup(partA) && !hasCup(partB)) {
+    return { id: "hinge_geometry_ok", label: "Hinge geometry", status: "warn",
+      message: `Concealed hinge needs a 35mm+ cup bore on the door - none found.`,
+      suggestion: "Add a cup-bore hole feature (35mm = 1.378\") to the door for each concealed hinge." };
+  }
+  const bracketRequired = 2 * hingeQty;
+  if (aHoles < bracketRequired || bHoles < bracketRequired) {
+    return { id: "hinge_geometry_ok", label: "Hinge geometry", status: "fail",
+      message: `${hingeQty} concealed hinges x 2 mounting screws each = ${bracketRequired} holes per part required; have ${aHoles} / ${bHoles}.`,
+      suggestion: `Add holes to reach ${bracketRequired} per part.` };
+  }
+  return { id: "hinge_geometry_ok", label: "Hinge geometry", status: "pass",
+    message: `Concealed hinges: cup bore present, ${aHoles} / ${bHoles} bracket-mounting holes (>= ${bracketRequired} required).` };
 }
 
 function checkWeldJointTabSlot(

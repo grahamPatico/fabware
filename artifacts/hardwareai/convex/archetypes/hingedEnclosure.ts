@@ -19,6 +19,12 @@ const paramSchema = z.object({
   // bolted together (serviceable but more parts + visible fasteners).
   // Default flips with tier (jerry-rigged + mvp → single_bend; commercial → bolted).
   bodyConstruction: z.enum(["single_bend", "bolted_plates"]).default("single_bend"),
+  // hingeStyle: "butt" → 2–3 discrete leaves bolted on the outside (cheap,
+  // serviceable). "piano" → continuous hinge along the full edge length
+  // (clean look, more rigidity). "concealed" → Euro cup hinge hidden inside
+  // the cabinet (kitchen-cabinet style). Validator picks per-style hole-count
+  // expectations.
+  hingeStyle: z.enum(["butt", "piano", "concealed"]).default("butt"),
   powderCoat: z.boolean(),
   powderCoatColor: z.string(),
   fastenerPartNumber: z.string(),
@@ -43,7 +49,22 @@ function paramDefaults(scope: ProjectScope): Params {
   // Heuristic: tall + narrow → locker; otherwise trunk (top-hinged).
   const tallNarrow = inner.h >= 1.5 * Math.max(inner.w, inner.d);
   const lockerWords = /\b(locker|cabinet|wardrobe|fridge|cupboard)\b/i;
-  const isLocker = tallNarrow || lockerWords.test(scope.useCase ?? "");
+  const useCaseStr = scope.useCase ?? "";
+  const isLocker = tallNarrow || lockerWords.test(useCaseStr);
+  // hingeStyle defaults: piano on long edges (lockers, mvp), concealed on
+  // commercial cabinets, butt elsewhere (cheapest, most serviceable).
+  const styleHint =
+    /\b(piano|continuous)\b/i.test(useCaseStr) ? "piano"
+    : /\b(concealed|euro|kitchen|cabinet)\b/i.test(useCaseStr) ? "concealed"
+    : (isLocker && scope.tier !== "jerry-rigged") ? "piano"
+    : scope.tier === "commercial" ? "concealed"
+    : "butt";
+  // Style-specific McMaster part numbers (overridable by user).
+  const partNumberByStyle: Record<string, string> = {
+    butt: "1635A3",       // 1.5" × 1.5" steel butt hinge
+    piano: "1598A12",     // 36" × 1.5" steel piano hinge (continuous)
+    concealed: "1559A14", // 35mm cup-and-bracket hinge
+  };
   return {
     innerWidth: inner.w,
     innerDepth: inner.d,
@@ -53,10 +74,11 @@ function paramDefaults(scope: ProjectScope): Params {
     doorFace: isLocker ? "front" : "top",
     hingeSide: isLocker ? "right" : "back",
     bodyConstruction: scope.tier === "commercial" ? "bolted_plates" : "single_bend",
+    hingeStyle: styleHint,
     powderCoat: tier.powderCoat!,
     powderCoatColor: tier.powderCoatColor!,
     fastenerPartNumber: tier.fastenerPartNumber!,
-    hingePartNumber: tier.hingePartNumber!,
+    hingePartNumber: partNumberByStyle[styleHint],
     fastenerCount: tier.fastenerCount!,
   };
 }
@@ -74,6 +96,13 @@ function makePlate(_name: string, w: number, h: number, p: Params, holeFeature?:
     finish: p.powderCoat ? { type: "powder_coat", color: p.powderCoatColor } : null,
     assemblyRefs: [],
   };
+}
+
+// Hardware quantity per hinge style: 1 piano hinge along the full edge,
+// 2 butt hinges spaced along the edge, 2 concealed cup hinges per door.
+function hingeQty(style: Params["hingeStyle"]): number {
+  if (style === "piano") return 1;
+  return 2;
 }
 
 function generate(params: Params, _scope: ProjectScope) {
@@ -139,7 +168,7 @@ function generate(params: Params, _scope: ProjectScope) {
       bodyJoint("base", "wall_left"),
       bodyJoint("base", "wall_right"),
       // Lid always hinges (must be removable), so this stays a hinge interface.
-      { kind: "hinged" as const, roleA: "lid", roleB: hingeRole, featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.hingePartNumber, quantity: 2, role: "pivot" }] },
+      { kind: "hinged" as const, roleA: "lid", roleB: hingeRole, featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.hingePartNumber, quantity: hingeQty(params.hingeStyle), role: `pivot:${params.hingeStyle}` }] },
     ];
     return { parts, interfaces };
   }
@@ -171,7 +200,7 @@ function generate(params: Params, _scope: ProjectScope) {
     bodyJoint("wall_top", "wall_left"),
     bodyJoint("wall_top", "wall_right"),
     // Door always hinges (must swing open).
-    { kind: "hinged" as const, roleA: "door_front", roleB: hingeWall, featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.hingePartNumber, quantity: 2, role: "pivot" }] },
+    { kind: "hinged" as const, roleA: "door_front", roleB: hingeWall, featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.hingePartNumber, quantity: hingeQty(params.hingeStyle), role: `pivot:${params.hingeStyle}` }] },
   ];
   return { parts, interfaces };
 }
