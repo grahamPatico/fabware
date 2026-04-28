@@ -223,8 +223,14 @@ but render it as a box" gaps to close.
 
 ## Tier 4 — Validators
 
-- [ ] **4.1 Hole-to-edge distance** (≥ 2× thickness). Already partly
-  computed in featuresInWorld; add as an explicit rule.
+- [x] **4.1 Hole-to-edge distance** (≥ 2× thickness). _Done 2026-04-28._
+  New `hole_to_edge` rule in the bend-simulator's cut step. Walks every
+  hole pattern, computes per-instance distance to the nearest part edge
+  minus the hole radius, then classifies: `fail` if the rim sits outside
+  the part outline (negative distance), `warn` if inside but closer than
+  2 × thickness, `pass` otherwise. Surfaced through `validatePartByKind`
+  alongside the bend rules. New `_audit:auditHoleToEdge` covers pass /
+  warn / fail-rim-on-edge / fail-rim-past-edge.
 - [ ] **4.2 Material vs feature compatibility.** E.g. acrylic can't bend,
   6061 has minimum bend radius 2× thickness. Already in scsRules.ts but not
   surfaced as a top-level rule.
@@ -347,3 +353,4 @@ but render it as a box" gaps to close.
 | 2026-04-28 | 3.3 bend lines | Yellow dashed lines on part top surface for every bend feature; mounted inside both PartMesh and ExtrudedPartMesh so they inherit pose rotation. Animated fold preview spun off into backlog. |
 | 2026-04-28 | 3.4 material textures | Procedural normal + roughness maps per material (brushed-aluminum striations, mild-steel grain, galvanized blobs, copper/brass soft grain, stainless fine grain). Cached at module level, applied via `normalMap` + `roughnessMap` on both PartMesh and ExtrudedPartMesh. |
 | 2026-04-28 | 3.5 hole rendering | `<HoleMarks>` mounts thin black cylinders at every DSL hole position, mounted in both PartMesh + ExtrudedPartMesh. True cutouts queued in backlog. **Tier 3 fully complete.** |
+| 2026-04-28 | 4.1 hole-to-edge | `hole_to_edge` rule in the cut step: fail when rim crosses outline, warn when within 2×t of edge, pass otherwise. `_audit:auditHoleToEdge` smoke covers pass / warn / fail. |

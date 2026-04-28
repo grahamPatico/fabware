@@ -125,6 +125,38 @@ export const auditWeldJoint = internalAction({
 });
 
 /**
+ * Synthetic smoke for the hole-to-edge distance check (chunk 4.1). Builds a
+ * one-part flat pattern with a hole pattern at a given inset and reports the
+ * `hole_to_edge` rule from the simulator's cut step.
+ */
+export const auditHoleToEdge = internalAction({
+  args: {
+    thickness: v.optional(v.number()),
+    holeDiameter: v.optional(v.number()),
+    inset: v.optional(v.number()),
+  },
+  handler: async (_ctx, args): Promise<{ status: string; message: string; suggestion?: string }> => {
+    const t = args.thickness ?? 0.075;
+    const dia = args.holeDiameter ?? 0.266;
+    const inset = args.inset ?? 0.375;
+    const dsl: PartDsl = {
+      version: 1, partType: "plate", material: "Mild Steel (CRS)", thickness: t,
+      width: 4, height: 4, depth: null,
+      features: [{ kind: "hole", name: "mount", count: 4, diameter: dia, pattern: "corner", inset }],
+      finish: null, assemblyRefs: [],
+    };
+    const { simulatePart } = await import("./lib/bendSim");
+    const cutStep = simulatePart(dsl).find(s => s.kind === "cut");
+    const rule = cutStep?.rules.find(r => r.id === "hole_to_edge");
+    if (!rule) return { status: "missing", message: "hole_to_edge rule not emitted." };
+    return {
+      status: rule.status, message: rule.message,
+      suggestion: typeof rule.suggestion === "string" ? rule.suggestion : undefined,
+    };
+  },
+});
+
+/**
  * Synthetic smoke for the per-style hinge validator (chunk 2.3). Builds two
  * sheet-metal panels with N mounting holes and a hinged interface in the
  * named style, then returns the hinge_geometry_ok rule.

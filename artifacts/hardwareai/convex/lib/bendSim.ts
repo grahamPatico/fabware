@@ -104,6 +104,39 @@ export function simulatePart(dsl: PartDsl): SimStep[] {
     : warn("thickness_in_catalog", "Non-standard gauge",
         `${t}" is not in ${mat.name}'s catalog (${mat.thicknesses.join(", ")}). SCS will quote special order.`));
 
+  // Hole-to-edge distance: every hole's outer rim must sit at least 2*t from
+  // the part outline. SCS will laser through closer, but the rim deforms during
+  // material handling. Rule applies to all sheet-metal regardless of bends.
+  const holes = dsl.features.filter((f): f is HoleFeature => f.kind === "hole");
+  if (holes.length > 0) {
+    const minClear = 2 * t;
+    let worstName = "";
+    let worstDist = Infinity;
+    for (const h of holes) {
+      const r = h.diameter / 2;
+      const positions = holeLocalPositions(h, dsl.width, dsl.height);
+      for (const p of positions) {
+        const distToEdge = Math.min(p.x, p.y, dsl.width - p.x, dsl.height - p.y) - r;
+        if (distToEdge < minClear && distToEdge < worstDist) {
+          worstDist = distToEdge;
+          worstName = h.name;
+        }
+      }
+    }
+    if (worstDist === Infinity) {
+      cutRules.push(pass("hole_to_edge", "Hole-to-edge distance OK",
+        `All holes at least ${minClear.toFixed(3)}" + radius from the part outline.`));
+    } else if (worstDist < 0) {
+      cutRules.push(fail("hole_to_edge", "Hole breaks the outline",
+        `${worstName}: hole rim is ${(-worstDist).toFixed(3)}" past the edge — it cuts through the part outline.`,
+        `Move the hole at least ${minClear.toFixed(3)}" inside the part edge.`));
+    } else {
+      cutRules.push(warn("hole_to_edge", "Hole near edge",
+        `${worstName}: rim sits ${worstDist.toFixed(3)}" from the nearest edge; recommend ≥ ${minClear.toFixed(3)}" so it doesn't deform during cutting.`,
+        `Move the hole inward to at least ${minClear.toFixed(3)}" of clearance.`));
+    }
+  }
+
   steps.push({ id: "step_cut", kind: "cut", label: "Laser cut flat pattern", rules: cutRules });
 
   // ============================================================
