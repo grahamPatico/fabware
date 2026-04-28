@@ -6,6 +6,8 @@ import * as THREE from "three";
 import { Home, Square } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { holeWorldPositions } from "../../../convex/lib/featuresInWorld";
+import { PartDslSchema } from "../../../convex/lib/dsl";
 
 type Pose = { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number };
 
@@ -198,6 +200,96 @@ function SceneController({
   return null;
 }
 
+interface BoltMeshesProps {
+  parts: Array<any>;
+  interfaces: Array<any>;
+}
+
+const BOLT_TONE: Record<string, string> = {
+  bolted: "#9aa3ad",
+  riveted: "#caa75a",
+  pem_inserted: "#76c4e8",
+};
+
+/**
+ * Render small cylinders at every bolted/riveted/pem_inserted hole shared by
+ * an interface. The cylinder's long axis follows the part's local Z (its
+ * thickness direction) so the bolt sticks out perpendicular to the surface.
+ *
+ * NOTE: this lives in the renderer (three.js) frame. Hole world positions come
+ * out of `holeWorldPositions` in the data frame; we swap Y↔Z to land in three.
+ * See docs/conventions/coordinate-frames.md for why.
+ */
+function BoltMeshes({ parts, interfaces }: BoltMeshesProps) {
+  const bolts = useMemo(() => {
+    if (!parts || !interfaces) return [];
+    const partsById = new Map(parts.map(p => [p._id, p]));
+    const out: Array<{
+      key: string;
+      position: [number, number, number];
+      groupRotation: [number, number, number];
+      length: number;
+      diameter: number;
+      color: string;
+      title: string;
+    }> = [];
+
+    for (const iface of interfaces) {
+      const tone = BOLT_TONE[iface.kind];
+      if (!tone) continue;
+      const partA = partsById.get(iface.partA);
+      if (!partA?.dslJson) continue;
+      let dslA: any;
+      try { dslA = PartDslSchema.parse(JSON.parse(partA.dslJson)); }
+      catch { continue; }
+      const refA = (iface.featureRefs ?? []).find((r: any) => r.partId === partA._id);
+      if (!refA) continue;
+      const holes = holeWorldPositions(dslA, partA.position).filter(h => h.featureName === refA.featureName);
+      const partB = partsById.get(iface.partB);
+      const lenAcrossParts = (partA.thickness ?? 0.075) + (partB?.thickness ?? 0.075) + 0.25;
+      const firstHardware = (iface.hardwareRefs ?? [])[0];
+      const labelText = firstHardware
+        ? `${firstHardware.quantity}× ${firstHardware.mcmasterPartNumber} (${iface.kind})`
+        : iface.kind;
+      holes.forEach((h, idx) => {
+        out.push({
+          key: `${iface._id}:${idx}`,
+          // data → three.js frame swap
+          position: [h.worldPoint.x, h.worldPoint.z, h.worldPoint.y],
+          // Group rotation = part's pose rotation in renderer frame.
+          // The cylinder inside the group is pre-rotated π/2 around X so its
+          // long axis (default three.js Y) points along the group's local Z,
+          // which after the part's rotation = perpendicular to the part face.
+          groupRotation: [partA.position.rotX, partA.position.rotZ, partA.position.rotY],
+          length: lenAcrossParts,
+          diameter: Math.max(0.12, h.diameter * 0.9),
+          color: tone,
+          title: labelText,
+        });
+      });
+    }
+    return out;
+  }, [parts, interfaces]);
+
+  return (
+    <>
+      {bolts.map(b => (
+        <group key={b.key} position={b.position} rotation={b.groupRotation}>
+          <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <cylinderGeometry args={[b.diameter / 2, b.diameter / 2, b.length, 14]} />
+            <meshStandardMaterial color={b.color} metalness={0.7} roughness={0.3} />
+          </mesh>
+          {/* Bolt head — slightly wider, capped at top of cylinder */}
+          <mesh position={[0, 0, b.length / 2 - 0.015]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <cylinderGeometry args={[b.diameter * 0.85, b.diameter * 0.85, 0.05, 14]} />
+            <meshStandardMaterial color={b.color} metalness={0.75} roughness={0.25} />
+          </mesh>
+        </group>
+      ))}
+    </>
+  );
+}
+
 function printedBoundingBox(p: { dslJson?: string | null }): { w: number; d: number; h: number } {
   if (!p.dslJson) return { w: 25, d: 25, h: 5 };
   try {
@@ -247,10 +339,12 @@ function sheetMetalAppearance(material: string | undefined): { color: string; me
 
 export default function AssembledView({ projectId, focusedPartId = null, onFocusPart, hiddenPartIds }: AssembledViewProps) {
   const parts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
+  const interfaces = useQuery(api.interfaces.listForProject, projectId ? { projectId } : "skip");
   const project = useQuery(api.projects.get, projectId ? { projectId } : "skip");
   const controlsRef = useRef<any>(null);
   const [homeSignal, setHomeSignal] = useState(0);
   const [showBounds, setShowBounds] = useState(false);
+  const [showBolts, setShowBolts] = useState(true);
 
   const partBounds = useMemo(() => {
     if (!parts) return [];
@@ -312,6 +406,15 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
           <Square className="w-3.5 h-3.5" />
           Bounds
         </label>
+        <label className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-card/80 backdrop-blur border border-border shadow-lg shadow-black/40 font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showBolts}
+            onChange={(e) => setShowBolts(e.target.checked)}
+            className="accent-primary w-3 h-3"
+          />
+          Bolts
+        </label>
       </div>
       {focusedPart && (
         <div className="absolute top-3 left-3 z-10 px-3 py-1.5 rounded-md bg-primary/15 backdrop-blur border border-primary/40 shadow-lg shadow-black/40 font-mono text-[11px] flex items-center gap-2">
@@ -338,6 +441,12 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
         <Grid args={[40, 40]} cellColor="#333" sectionColor="#555" fadeDistance={60} infiniteGrid />
         <OrbitControls ref={controlsRef as any} makeDefault />
         <SceneController parts={partBounds} controlsRef={controlsRef} homeSignal={homeSignal} />
+        {showBolts && parts && interfaces && (
+          <BoltMeshes
+            parts={parts.filter(p => !hiddenPartIds?.has(p._id as unknown as string))}
+            interfaces={interfaces}
+          />
+        )}
         {parts?.map(p => {
           const kind = p.kind ?? "sheet_metal";
           const selected = p._id === focusedPartId;

@@ -105,13 +105,14 @@ agent should pick the right construction for the user's tier and use case.
 The 3D view today is a placeholder. Several "we already model this in data
 but render it as a box" gaps to close.
 
-- [ ] **3.1 Render bolts at hole positions in AssembledView.** For each
-  `bolted` / `riveted` / `pem_inserted` interface, draw a small cylinder at
-  each shared hole's world position, axis along the part normal. Color by
-  fastener (zinc grey for steel screws, sky blue for stainless, gold for
-  brass). Tooltip shows McMaster part number + interface role on hover.
-  **Verify**: a default `hinged_enclosure` with `fastenerCount: 4` shows 16
-  bolts (4 per wall, 4 walls bolted to base).
+- [x] **3.1 Render bolts at hole positions in AssembledView.** _Done
+  2026-04-27. New `<BoltMeshes>` component renders a cylinder + bolt-head
+  cap at every hole shared by a bolted/riveted/pem_inserted interface,
+  oriented perpendicular to the part surface using a group with the part's
+  pose rotation + π/2-X pre-rotation on the inner mesh. Color tone per
+  kind: bolted=zinc, riveted=brass, PEM=sky-blue. New "Bolts" toggle in
+  the canvas chrome alongside Home / Bounds. Length = sum of part
+  thicknesses + 0.25" so bolt-heads sit visibly above the surface._
 - [ ] **3.2 Render polygon outlines for non-rectangle sheet-metal parts.**
   Today `add_freeform_2d_part` produces parts with `outline:
   {kind: "star"|"polygon"|...}` but AssembledView still renders the AABB.
@@ -212,3 +213,4 @@ but render it as a box" gaps to close.
 | 2026-04-27 | 1.1 audit + fix | All 6 archetypes pass `parts_dont_intersect`. Same wall rotation bug fixed across boxWithLid, dividedTray, slidingEnclosure; brackets reoriented in shelfWithBrackets. |
 | 2026-04-27 | 1.3 regression infra | `_audit:auditAllArchetypes` ships — run any time to verify all archetypes' defaults are clean. |
 | 2026-04-27 | 1.2 conventions doc | `docs/conventions/coordinate-frames.md` written with rotation recipes; intersect.ts + positions.ts reference it. |
+| 2026-04-27 | 3.1 bolt rendering | Cylinders + bolt-head caps at hole positions for bolted/riveted/PEM interfaces; "Bolts" toggle on canvas. |
