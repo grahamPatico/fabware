@@ -205,6 +205,9 @@ function bendTangents(features: PartDsl["features"], width: number, height: numb
  * are part-local with the outline's bottom-left at origin.
  */
 export function holePositionsFor(h: HoleFeature, width: number, height: number): Vec2[] {
+  if (h.positions && h.positions.length > 0) {
+    return h.positions.slice(0, h.count).map(p => ({ x: p.x, y: p.y }));
+  }
   const inset = h.inset ?? 0.375;
   const insetX = h.insetX ?? inset;
   const insetY = h.insetY ?? inset;

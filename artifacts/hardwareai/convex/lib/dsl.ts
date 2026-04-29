@@ -26,6 +26,11 @@ const HoleSchema = z.object({
   // pattern (e.g. a bracket bolted to a wider panel).
   insetX: z.number().nullish(),
   insetY: z.number().nullish(),
+  // Explicit hole positions in part-local frame (overrides `pattern`).
+  // Use this when no built-in pattern can express the hole layout — e.g.
+  // a shelf with two grouped clusters of holes where each cluster mates a
+  // separate bracket.
+  positions: z.array(z.object({ x: z.number(), y: z.number() })).nullish(),
 });
 
 const BendSchema = z.object({

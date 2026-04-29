@@ -80,19 +80,19 @@ function generate(params: Params, _scope: ProjectScope) {
     { role: "lid",        label: "Lid",          dsl: makePlate("lid",        outerW, outerD, params, { ...hole(params.fastenerCount), pattern: "bottom_row" as const }), position: { x: cx,           y: cy,                z: innerH + t / 2, rotX: 0,           rotY: 0, rotZ: 0 } },
   ];
 
-  const hw = [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }];
-
+  // Sheet-metal box bodies are typically corner-welded, not bolted at every
+  // edge. Switching to weld_seam matches manufacturing reality and avoids
+  // forcing ill-aligned hole patterns on through every wall edge.
+  // (Removable-lid variant with hinge/latch is a separate archetype.)
   const interfaces = [
-    // 4 wall-to-base bolted
-    { kind: "bolted" as const, roleA: "base", roleB: "wall_front", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    { kind: "bolted" as const, roleA: "base", roleB: "wall_back",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    { kind: "bolted" as const, roleA: "base", roleB: "wall_left",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    { kind: "bolted" as const, roleA: "base", roleB: "wall_right", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    // 4 lid-to-wall bolted
-    { kind: "bolted" as const, roleA: "lid", roleB: "wall_front", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    { kind: "bolted" as const, roleA: "lid", roleB: "wall_back",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    { kind: "bolted" as const, roleA: "lid", roleB: "wall_left",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    { kind: "bolted" as const, roleA: "lid", roleB: "wall_right", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
+    { kind: "weld_seam" as const, roleA: "base", roleB: "wall_front", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
+    { kind: "weld_seam" as const, roleA: "base", roleB: "wall_back",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
+    { kind: "weld_seam" as const, roleA: "base", roleB: "wall_left",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
+    { kind: "weld_seam" as const, roleA: "base", roleB: "wall_right", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
+    { kind: "weld_seam" as const, roleA: "lid",  roleB: "wall_front", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
+    { kind: "weld_seam" as const, roleA: "lid",  roleB: "wall_back",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
+    { kind: "weld_seam" as const, roleA: "lid",  roleB: "wall_left",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
+    { kind: "weld_seam" as const, roleA: "lid",  roleB: "wall_right", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
   ];
 
   return { parts, interfaces };

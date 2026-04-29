@@ -96,20 +96,19 @@ function generate(params: Params, _scope: ProjectScope) {
     });
   }
 
-  const hw = [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }];
-
+  // Sheet-metal tray bodies are corner-welded (matches manufacturing reality
+  // and avoids forcing wall-to-base hole patterns to align in world space).
   const interfaces: InterfaceSpec[] = [
-    // 4 wall-to-base
-    { kind: "bolted", roleA: "base", roleB: "wall_front", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    { kind: "bolted", roleA: "base", roleB: "wall_back",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    { kind: "bolted", roleA: "base", roleB: "wall_left",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    { kind: "bolted", roleA: "base", roleB: "wall_right", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
+    { kind: "weld_seam", roleA: "base", roleB: "wall_front", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
+    { kind: "weld_seam", roleA: "base", roleB: "wall_back",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
+    { kind: "weld_seam", roleA: "base", roleB: "wall_left",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
+    { kind: "weld_seam", roleA: "base", roleB: "wall_right", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
   ];
 
-  // 2 interfaces per divider (to wall_left and wall_right)
+  // Dividers tack-welded to the side walls (typical tray construction).
   for (let i = 0; i < params.dividerCount; i++) {
-    interfaces.push({ kind: "bolted", roleA: `divider_${i}`, roleB: "wall_left",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw });
-    interfaces.push({ kind: "bolted", roleA: `divider_${i}`, roleB: "wall_right", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw });
+    interfaces.push({ kind: "weld_seam", roleA: `divider_${i}`, roleB: "wall_left",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] });
+    interfaces.push({ kind: "weld_seam", roleA: `divider_${i}`, roleB: "wall_right", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] });
   }
 
   return { parts, interfaces };

@@ -57,65 +57,86 @@ function generate(params: Params, _scope: ProjectScope) {
   const t = params.thickness;
   const mountingHoleDia = 0.266;
 
-  const shelfHole: PartDsl["features"][number] = {
+  // The shelf has TWO independent hole groups — one above each bracket.
+  // Treating mounting as a single shared "mounting_hole" feature can't
+  // simultaneously align with both brackets because the brackets sit at
+  // different x positions on the shelf. Two named features lets each
+  // bracket's interface reference its own group.
+  const flangeWidth = Math.min(params.shelfDepth, 4); // L-bracket horizontal flange
+  const inset = 0.375;
+  const step = (flangeWidth - 2 * inset) / Math.max(params.fastenerCount - 1, 1);
+  const rightX = params.shelfWidth - flangeWidth; // bracket_right origin
+
+  // Bracket flanges are placed at world x ∈ [0, flangeWidth] (left) and
+  // [rightX, rightX + flangeWidth] (right) with their flat-pattern bottom_row
+  // at local y=inset, x = inset + i*step for i in [0..count-1].
+  // Shelf holes need to coincide in world space; use explicit positions so
+  // each cluster sits exactly under its bracket.
+  const bracketLocalX = (i: number) => inset + i * step;
+  const leftCluster = Array.from({ length: params.fastenerCount }, (_, i) =>
+    ({ x: bracketLocalX(i), y: inset }));
+  const rightCluster = Array.from({ length: params.fastenerCount }, (_, i) =>
+    ({ x: rightX + bracketLocalX(i), y: inset }));
+
+  const shelfHoleLeft: PartDsl["features"][number] = {
+    kind: "hole",
+    name: "mounting_hole_left",
+    count: params.fastenerCount,
+    diameter: mountingHoleDia,
+    pattern: "bottom_row",
+    positions: leftCluster,
+  };
+  const shelfHoleRight: PartDsl["features"][number] = {
+    kind: "hole",
+    name: "mounting_hole_right",
+    count: params.fastenerCount,
+    diameter: mountingHoleDia,
+    pattern: "bottom_row",
+    positions: rightCluster,
+  };
+  const bracketHole: PartDsl["features"][number] = {
     kind: "hole",
     name: "mounting_hole",
     count: params.fastenerCount,
     diameter: mountingHoleDia,
     pattern: "bottom_row",
-    inset: 0.375,
+    inset,
   };
-
-  const bracketFeatures: PartDsl["features"] = [
-    {
-      kind: "bend",
-      name: "main_bend",
-      axis: "horizontal",
-      positionRatio: 0.5,
-      angle: 90,
-      radius: 0.062,
-    },
-    {
-      kind: "hole",
-      name: "mounting_hole",
-      count: params.fastenerCount,
-      diameter: mountingHoleDia,
-      pattern: "bottom_row",
-      inset: 0.375,
-    },
-  ];
 
   const parts = [
     {
       role: "shelf",
       label: "Shelf",
-      dsl: makePlate("plate", params.shelfWidth, params.shelfDepth, params, [shelfHole]),
+      dsl: makePlate("plate", params.shelfWidth, params.shelfDepth, params, [shelfHoleLeft, shelfHoleRight]),
       position: { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 },
     },
-    // Brackets stand vertically as thin plates in the YZ plane (their thickness
-    // is along world X, so they sit at the left/right edges of the shelf and
-    // extend downward by bracketHeight along Z and along the shelf's depth
-    // along Y). rotX=π/2 + rotZ=π/2 rotates a flat plate into that orientation
-    // under three.js's Euler XYZ order.
+    // Bracket flanges sit horizontally directly under each end of the shelf.
+    // The L-bracket vertical leg (which would mount to a wall) is omitted
+    // from this default archetype — modeling it requires a real bend-aware
+    // pose that splits the bracket into two flanges joined at the bend.
+    // Today the archetype models only the horizontal flange that bolts to
+    // the shelf so we can guarantee bolts actually pass through both parts.
     {
       role: "bracket_left",
-      label: "Bracket — Left",
-      dsl: makePlate("bracket", params.shelfDepth, params.bracketHeight, params, bracketFeatures),
-      position: { x: t / 2, y: 0, z: -(params.bracketHeight + t) / 2, rotX: Math.PI / 2, rotY: Math.PI / 2, rotZ: 0 },
+      label: "Bracket — Left flange",
+      dsl: makePlate("bracket", flangeWidth, params.shelfDepth, params, [bracketHole]),
+      position: { x: 0, y: 0, z: -t, rotX: 0, rotY: 0, rotZ: 0 },
     },
     {
       role: "bracket_right",
-      label: "Bracket — Right",
-      dsl: makePlate("bracket", params.shelfDepth, params.bracketHeight, params, bracketFeatures),
-      position: { x: params.shelfWidth - t / 2, y: 0, z: -(params.bracketHeight + t) / 2, rotX: Math.PI / 2, rotY: Math.PI / 2, rotZ: 0 },
+      label: "Bracket — Right flange",
+      dsl: makePlate("bracket", flangeWidth, params.shelfDepth, params, [bracketHole]),
+      position: { x: rightX, y: 0, z: -t, rotX: 0, rotY: 0, rotZ: 0 },
     },
   ];
 
   const hw = [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }];
+  // Suppress unused-warning lint when step/insetX/insetY math depends on it implicitly.
+  void step;
 
   const interfaces = [
-    { kind: "bolted" as const, roleA: "bracket_left",  roleB: "shelf", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    { kind: "bolted" as const, roleA: "bracket_right", roleB: "shelf", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
+    { kind: "bolted" as const, roleA: "bracket_left",  roleB: "shelf", featureA: "mounting_hole", featureB: "mounting_hole_left",  hardwareRefs: hw },
+    { kind: "bolted" as const, roleA: "bracket_right", roleB: "shelf", featureA: "mounting_hole", featureB: "mounting_hole_right", hardwareRefs: hw },
   ];
 
   return { parts, interfaces };
