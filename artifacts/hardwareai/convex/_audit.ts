@@ -716,9 +716,10 @@ export const auditAllArchetypesFullValidation = internalAction({
  * through both holes ship a broken assembly.
  */
 export const auditHoleAlignment = internalAction({
-  args: { offsetIn: v.optional(v.number()) },
+  args: { offsetIn: v.optional(v.number()), stackZ: v.optional(v.number()) },
   handler: async (_ctx, args): Promise<{ status: string; message: string; suggestion?: string }> => {
     const offset = args.offsetIn ?? 0;
+    const stackZ = args.stackZ ?? 0;
     const dsl = (): PartDsl => ({
       version: 1, partType: "plate", material: "Mild Steel (CRS)", thickness: 0.075,
       width: 6, height: 6, depth: null,
@@ -733,7 +734,7 @@ export const auditHoleAlignment = internalAction({
     const result = validateAssembly({
       parts: [
         { id: "A", role: "plate_a", pose: { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 }, dsl: dsl() },
-        { id: "B", role: "plate_b", pose: { x: offset, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 }, dsl: dsl() },
+        { id: "B", role: "plate_b", pose: { x: offset, y: 0, z: stackZ, rotX: 0, rotY: 0, rotZ: 0 }, dsl: dsl() },
       ],
       interfaces: [{
         kind: "bolted", partA: "A", partB: "B",

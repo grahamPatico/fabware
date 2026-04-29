@@ -1,9 +1,25 @@
 import type { PartDsl } from "./dsl";
 import type { Pose } from "./positions";
 import { holeWorldPositions, type HoleInstance } from "./featuresInWorld";
-import { distance } from "./positions";
+import { distance, transformPoint, type WorldPoint } from "./positions";
 import { threadFromPartNumber } from "./fastenerSpecs";
 import { SCS_MATERIALS } from "./scsRules";
+
+// Part's local +Z (face-normal / bolt axis) in world coordinates as a unit vector.
+function partNormalWorld(pose: Pose): { x: number; y: number; z: number } {
+  const origin = transformPoint({ x: 0, y: 0, z: 0 }, pose);
+  const tip = transformPoint({ x: 0, y: 0, z: 1 }, pose);
+  return { x: tip.x - origin.x, y: tip.y - origin.y, z: tip.z - origin.z };
+}
+
+// Perpendicular component of (b - a) relative to unit axis n.
+// |b - a - ((b-a)·n)n|
+function perpDistance(a: WorldPoint, b: WorldPoint, n: { x: number; y: number; z: number }): number {
+  const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+  const dot = dx * n.x + dy * n.y + dz * n.z;
+  const px = dx - dot * n.x, py = dy - dot * n.y, pz = dz - dot * n.z;
+  return Math.sqrt(px * px + py * py + pz * pz);
+}
 
 export interface AssemblyInput {
   parts: Array<{ id: string; role: string; pose: Pose; dsl: PartDsl }>;
@@ -167,11 +183,20 @@ function checkHoleAlignment(
     return { id: "hole_position_alignment", label: "Hole position alignment", status: "warn",
       message: "Hole count differs or zero — skipping position check." };
   }
-  const unmatched = holesA.filter(ha => !holesB.some(hb => distance(ha.worldPoint, hb.worldPoint) <= POSITION_TOLERANCE));
+  // Bolts pass along plate A's normal (its local +Z axis, in world coords).
+  // A bolt threads through both holes when their centers lie on the same
+  // line parallel to that axis — i.e. the perpendicular distance between
+  // ha.worldPoint and hb.worldPoint, projected away from the bolt axis,
+  // is within tolerance. This naturally accommodates stack-up: parts sitting
+  // a thickness apart along the bolt axis still pass.
+  const axis = partNormalWorld(a.pose);
+  const unmatched = holesA.filter(ha =>
+    !holesB.some(hb => perpDistance(ha.worldPoint, hb.worldPoint, axis) <= POSITION_TOLERANCE)
+  );
   if (unmatched.length > 0) {
     return {
       id: "hole_position_alignment", label: "Hole position alignment", status: "fail",
-      message: `${unmatched.length} hole(s) on ${a.role} don't coincide with ${b.role} in world space within ±${POSITION_TOLERANCE}".`,
+      message: `${unmatched.length} hole(s) on ${a.role} don't coincide with ${b.role} along the bolt axis within ±${POSITION_TOLERANCE}".`,
       suggestion: "Adjust part poses so the mating hole patterns coincide — bolts can't pass through both parts otherwise.",
     };
   }
