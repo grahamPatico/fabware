@@ -206,23 +206,25 @@ function bendTangents(features: PartDsl["features"], width: number, height: numb
  */
 export function holePositionsFor(h: HoleFeature, width: number, height: number): Vec2[] {
   const inset = h.inset ?? 0.375;
+  const insetX = h.insetX ?? inset;
+  const insetY = h.insetY ?? inset;
   const out: Vec2[] = [];
   switch (h.pattern) {
     case "corner": {
       const corners: Vec2[] = [
-        { x: inset,         y: inset          },
-        { x: width - inset, y: inset          },
-        { x: inset,         y: height - inset },
-        { x: width - inset, y: height - inset },
+        { x: insetX,         y: insetY          },
+        { x: width - insetX, y: insetY          },
+        { x: insetX,         y: height - insetY },
+        { x: width - insetX, y: height - insetY },
       ];
       const n = Math.min(h.count, 4);
       for (let i = 0; i < n; i++) out.push(corners[i]);
       if (h.count > 4) {
         const edges: Vec2[] = [
-          { x: width / 2,        y: inset          },
-          { x: width / 2,        y: height - inset },
-          { x: inset,            y: height / 2     },
-          { x: width - inset,    y: height / 2     },
+          { x: width / 2,        y: insetY          },
+          { x: width / 2,        y: height - insetY },
+          { x: insetX,           y: height / 2      },
+          { x: width - insetX,   y: height / 2      },
         ];
         for (let i = 0; i < h.count - 4; i++) out.push(edges[i % 4]);
       }
@@ -232,15 +234,15 @@ export function holePositionsFor(h: HoleFeature, width: number, height: number):
       out.push({ x: width / 2, y: height / 2 });
       break;
     case "top_row": {
-      const y = height - inset;
-      const step = (width - 2 * inset) / Math.max(h.count - 1, 1);
-      for (let i = 0; i < h.count; i++) out.push({ x: inset + i * step, y });
+      const y = height - insetY;
+      const step = (width - 2 * insetX) / Math.max(h.count - 1, 1);
+      for (let i = 0; i < h.count; i++) out.push({ x: insetX + i * step, y });
       break;
     }
     case "bottom_row": {
-      const y = inset;
-      const step = (width - 2 * inset) / Math.max(h.count - 1, 1);
-      for (let i = 0; i < h.count; i++) out.push({ x: inset + i * step, y });
+      const y = insetY;
+      const step = (width - 2 * insetX) / Math.max(h.count - 1, 1);
+      for (let i = 0; i < h.count; i++) out.push({ x: insetX + i * step, y });
       break;
     }
   }

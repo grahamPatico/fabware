@@ -21,6 +21,11 @@ const HoleSchema = z.object({
   diameter: z.number().positive(),
   pattern: z.enum(["corner", "center", "top_row", "bottom_row"]),
   inset: z.number().nullish(),
+  // Per-axis inset overrides. When present, take precedence over `inset`.
+  // Needed when a part's hole pattern must align with a smaller mating part's
+  // pattern (e.g. a bracket bolted to a wider panel).
+  insetX: z.number().nullish(),
+  insetY: z.number().nullish(),
 });
 
 const BendSchema = z.object({
