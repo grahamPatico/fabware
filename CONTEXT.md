@@ -42,6 +42,10 @@ _Avoid_: bent point, folded hole, bent feature.
 The full mating spec for a single fastener: `kind` (bolt | screw | rivet | pem), `thread` (e.g. "1/4-20"), `clearanceDiameter`, `receivingFeatureKind` (clear | tap | pem | pilot | rivet), `receivingDiameter`, `minStackIn` / `maxStackIn`, `installAccessSide`. Resolved from a McMaster part number via `fastenerStackFromPartNumber`. Lives in `convex/lib/fastenerStack.ts`. Consumed by `checkFastenerStackMatch` in `assemblyRules.ts`.
 _Avoid_: fastener spec, hardware spec — `ThreadSpec` (the thinner pre-deepening type in `fastenerSpecs.ts`) is being phased out; new code reads FastenerStack.
 
+**Pipe** _(part kind)_:
+A cylindrical structural / plumbing part — outer diameter, wall thickness, length, end conditions. DSL in `convex/lib/pipeDsl.ts`. Doesn't unfold to a flat pattern (so DXF / PDF / weight-by-area don't apply); rendered as a hollow tube with its long axis along local +Z. Common materials: Mild Steel, Stainless 304, Aluminum 6061, Copper, PVC. Added via the agent's `add_pipe` tool.
+_Avoid_: tube (use as a synonym informally; `pipe` is the canonical kind).
+
 **hole role** _(field on HoleFeature)_:
 Optional semantic tag on a HoleFeature naming what fastener the hole receives: `"bolt_clear"`, `"tap_1/4-20"`, `"pem_M4"`, `"pilot_8x12"`, `"rivet_1/8"`. Lets `validateReceivingHole` confirm a bolt has a nut / tap / PEM somewhere, and that a sheet-metal screw lands on a pilot rather than a clearance hole. Untagged holes get a warn that prompts the agent to confirm the receiving feature.
 

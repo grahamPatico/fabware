@@ -99,7 +99,9 @@ export const send = action({
         call.name === "update_archetype_params" ||
         call.name === "add_printed_part" ||
         call.name === "add_purchased_part" ||
-        call.name === "add_freeform_2d_part"
+        call.name === "add_freeform_2d_part" ||
+        call.name === "add_pipe" ||
+        call.name === "add_sheet_metal_part"
       ) {
         livePartsSnapshot = await ctx.runQuery(api.parts.listForProject, { projectId: a.projectId });
       }
@@ -110,7 +112,8 @@ export const send = action({
     const STATE_CHANGING_TOOLS = new Set([
       "select_archetype", "update_archetype_params",
       "add_sheet_metal_part", "add_printed_part", "add_purchased_part",
-      "add_freeform_2d_part", "add_interface", "remove_part",
+      "add_freeform_2d_part", "add_pipe",
+      "add_interface", "remove_part",
       "refine_part", "add_feature_to_part", "break_out", "capture_scope",
     ]);
     const stateChanged = agentResult.toolCalls.some(c => STATE_CHANGING_TOOLS.has(c.name));
@@ -511,6 +514,39 @@ async function applyToolCall(
         return `Couldn't add purchased part ${call.input.role}: ${err?.message?.slice(0, 200) ?? "error"}`;
       }
       return `Added purchased: ${call.input.quantity} × ${call.input.label} (${call.input.mcmasterPartNumber}).`;
+    }
+
+    case "add_pipe": {
+      const TWO_PI3 = 2 * Math.PI;
+      const ppos = call.input.position;
+      const ppLooksDegrees = ["rotX", "rotY", "rotZ"].some(k => Math.abs(ppos?.[k] ?? 0) > TWO_PI3);
+      if (ppLooksDegrees) {
+        ppos.rotX = (ppos.rotX ?? 0) * (Math.PI / 180);
+        ppos.rotY = (ppos.rotY ?? 0) * (Math.PI / 180);
+        ppos.rotZ = (ppos.rotZ ?? 0) * (Math.PI / 180);
+      }
+      const dsl = JSON.stringify({
+        version: 1,
+        kind: "pipe",
+        material: call.input.material,
+        outerDiameter: call.input.outerDiameter,
+        wallThickness: call.input.wallThickness,
+        length: call.input.length,
+        endA: call.input.endA ?? "open",
+        endB: call.input.endB ?? "open",
+      });
+      try {
+        await ctx.runMutation(internal.parts.addPipePartInternal, {
+          projectId,
+          role: call.input.role,
+          label: call.input.label,
+          position: ppos,
+          dslJson: dsl,
+        });
+      } catch (err: any) {
+        return `Couldn't add pipe ${call.input.role}: ${err?.message?.slice(0, 200) ?? "validation error"}`;
+      }
+      return `🟢 Added pipe ${call.input.role}: ${call.input.label} — Ø${call.input.outerDiameter}"×${call.input.length}" ${call.input.material}.`;
     }
 
     case "decide_make_or_buy": {

@@ -16,28 +16,29 @@ export function NewProjectWizard({ open, onOpenChange }: Props) {
   const createProject = useMutation(api.projects.create);
   const updateScope = useMutation(api.projects.updateScope);
   const send = useAction(api.projectChat.send);
-  const [page, setPage] = useState<1 | 2>(1);
   const [busy, setBusy] = useState(false);
 
-  // Page 1 state
   const [name, setName] = useState("");
   const [tier, setTier] = useState<"jerry-rigged" | "mvp" | "commercial">("mvp");
   const [outdoor, setOutdoor] = useState(false);
   const [waterproof, setWaterproof] = useState(false);
-  const [useCase, setUseCase] = useState("");
+  const [intent, setIntent] = useState("");
   const [referenceScale, setReferenceScale] = useState("");
 
-  // Page 2 state
-  const [intent, setIntent] = useState("");
-
-  const handleNext = () => { if (name.trim() && useCase.trim()) setPage(2); };
+  const canSubmit = name.trim().length > 0 && intent.trim().length > 0 && !busy;
 
   const handleSubmit = async () => {
-    if (!intent.trim() || busy) return;
+    if (!canSubmit) return;
     setBusy(true);
     try {
-      const project = await createProject({ name, description: useCase });
+      const project = await createProject({ name, description: intent });
       if (!project) throw new Error("Create failed");
+      // Navigate first so the user sees the studio loading state immediately
+      // — the agent's first turn happens in the background and parts stream
+      // in via reactive queries.
+      setLocation(`/project/${project._id}?starting=1`);
+      onOpenChange(false);
+
       const model = localStorage.getItem("fabware.chat.model") ?? "claude-opus-4-7";
       const effort = localStorage.getItem("fabware.chat.effort") ?? "high";
       await updateScope({
@@ -45,15 +46,15 @@ export function NewProjectWizard({ open, onOpenChange }: Props) {
         scope: {
           tier,
           environment: { location: outdoor ? "outdoor" : "indoor", waterproof: outdoor && waterproof },
-          useCase,
+          useCase: intent,
           referenceScale: referenceScale ? { kind: referenceScale } : undefined,
         },
       });
-      // Kick off the agent so it calls select_archetype
-      await send({ projectId: project._id, content: intent, model, effort });
-      onOpenChange(false);
-      setLocation(`/project/${project._id}`);
-    } finally { setBusy(false); }
+      // Fire the first agent turn — the studio shows loading until parts arrive.
+      send({ projectId: project._id, content: intent, model, effort }).catch(() => {});
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -61,44 +62,50 @@ export function NewProjectWizard({ open, onOpenChange }: Props) {
       <DialogContent className="sm:max-w-[560px] bg-card border-border">
         <DialogHeader>
           <DialogTitle className="font-mono uppercase tracking-wider text-primary">
-            {page === 1 ? "Scope" : "What do you want to build?"}
+            New project
           </DialogTitle>
         </DialogHeader>
-        {page === 1 ? (
-          <div className="grid gap-4 py-4">
-            <div><Label>Project name</Label><Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. TENNIS-LOCKER-01" /></div>
-            <div>
-              <Label>Build tier</Label>
-              <RadioGroup value={tier} onValueChange={(v: any) => setTier(v)}>
-                <div className="flex items-center gap-2"><RadioGroupItem value="jerry-rigged" id="t1" /><label htmlFor="t1">Jerry-rigged (cheap &amp; fast)</label></div>
-                <div className="flex items-center gap-2"><RadioGroupItem value="mvp" id="t2" /><label htmlFor="t2">MVP (prototype-worthy)</label></div>
-                <div className="flex items-center gap-2"><RadioGroupItem value="commercial" id="t3" /><label htmlFor="t3">Commercial (production)</label></div>
-              </RadioGroup>
-            </div>
-            <div className="flex items-center gap-2"><input type="checkbox" checked={outdoor} onChange={e => setOutdoor(e.target.checked)} /> <Label>Outdoor</Label></div>
+        <div className="grid gap-4 py-4">
+          <div>
+            <Label>Project name</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. TENNIS-LOCKER-01" />
+          </div>
+          <div>
+            <Label>Build tier</Label>
+            <RadioGroup value={tier} onValueChange={(v: any) => setTier(v)}>
+              <div className="flex items-center gap-2"><RadioGroupItem value="jerry-rigged" id="t1" /><label htmlFor="t1">Jerry-rigged (cheap &amp; fast)</label></div>
+              <div className="flex items-center gap-2"><RadioGroupItem value="mvp" id="t2" /><label htmlFor="t2">MVP (prototype-worthy)</label></div>
+              <div className="flex items-center gap-2"><RadioGroupItem value="commercial" id="t3" /><label htmlFor="t3">Commercial (production)</label></div>
+            </RadioGroup>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2"><input type="checkbox" checked={outdoor} onChange={e => setOutdoor(e.target.checked)} /> Outdoor</label>
             {outdoor && (
-              <div className="pl-4 flex items-center gap-2"><input type="checkbox" checked={waterproof} onChange={e => setWaterproof(e.target.checked)} /> <Label>Waterproof</Label></div>
+              <label className="flex items-center gap-2 pl-3"><input type="checkbox" checked={waterproof} onChange={e => setWaterproof(e.target.checked)} /> Waterproof</label>
             )}
-            <div><Label>What&apos;s it for?</Label><Input value={useCase} onChange={e => setUseCase(e.target.value)} placeholder="Outdoor tennis-ball rental lockers" /></div>
-            <div><Label>What&apos;s inside / reference scale? (optional)</Label><Input value={referenceScale} onChange={e => setReferenceScale(e.target.value)} placeholder="3 tennis balls, ~12x12x12 inches" /></div>
           </div>
-        ) : (
-          <div className="grid gap-4 py-4">
+          <div>
             <Label>Describe what you want</Label>
-            <Textarea value={intent} onChange={e => setIntent(e.target.value)} rows={6} placeholder="Locker with hinged top, keypad lock, stackable..." />
+            <Textarea
+              value={intent}
+              onChange={e => setIntent(e.target.value)}
+              rows={4}
+              placeholder="Locker with hinged top for storing 3 tennis balls — about 12&times;12&times;12 inches, keypad lock, stackable."
+            />
           </div>
-        )}
+          <div>
+            <Label>Reference scale (optional)</Label>
+            <Input
+              value={referenceScale}
+              onChange={e => setReferenceScale(e.target.value)}
+              placeholder="3 tennis balls, ~12x12x12 inches"
+            />
+          </div>
+        </div>
         <DialogFooter>
-          {page === 1 ? (
-            <Button onClick={handleNext} disabled={!name.trim() || !useCase.trim()} className="w-full">Next</Button>
-          ) : (
-            <div className="flex gap-2 w-full">
-              <Button variant="outline" onClick={() => setPage(1)} className="flex-1">Back</Button>
-              <Button onClick={handleSubmit} disabled={!intent.trim() || busy} className="flex-1">
-                {busy ? "Generating..." : "Create & generate"}
-              </Button>
-            </div>
-          )}
+          <Button onClick={handleSubmit} disabled={!canSubmit} className="w-full">
+            {busy ? "Generating…" : "Create & generate"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

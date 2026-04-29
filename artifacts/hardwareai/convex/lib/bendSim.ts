@@ -132,6 +132,31 @@ export function simulatePart(dsl: PartDsl): SimStep[] {
       "Switch material or remove the incompatible feature (bend / powder coat)."));
   }
 
+  // Standard-gauge nudge: real shops stock specific thicknesses. Non-stock
+  // requires custom plate orders (longer lead, higher minimum) and rarely
+  // pays off outside production. Warn whenever the thickness deviates from
+  // the material's stocked list by > 0.002" (the catalog tolerance).
+  const stockedT = mat.thicknesses ?? [];
+  if (stockedT.length > 0) {
+    const closest = stockedT.reduce((best, s) =>
+      Math.abs(s - t) < Math.abs(best - t) ? s : best, stockedT[0]);
+    const diff = Math.abs(closest - t);
+    if (diff > 0.002) {
+      cutRules.push(warn(
+        "standard_gauge",
+        "Non-standard thickness",
+        `${t}" isn't a stocked ${mat.name} thickness. Closest stock: ${closest}".`,
+        `Snap to ${closest}" unless this is a production-only run that requires the exact thickness.`,
+      ));
+    } else {
+      cutRules.push(pass(
+        "standard_gauge",
+        "Standard gauge",
+        `${t}" matches stocked ${mat.name}.`,
+      ));
+    }
+  }
+
   steps.push({ id: "step_cut", kind: "cut", label: "Laser cut flat pattern", rules: cutRules });
 
   // ============================================================

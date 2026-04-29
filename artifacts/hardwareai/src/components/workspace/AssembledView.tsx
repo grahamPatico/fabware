@@ -7,6 +7,8 @@ import { Home, Square } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { holeWorldPositions } from "../../../convex/lib/featuresInWorld";
+import { holesPostBend } from "../../../convex/lib/bentGeometry";
+import { fastenerStackFromPartNumber } from "../../../convex/lib/fastenerStack";
 import { PartDslSchema } from "../../../convex/lib/dsl";
 import { flatPattern, type FlatPattern as FlatPatternRecord } from "../../../convex/lib/flatPattern";
 import { MCMASTER_SEED } from "../../../convex/lib/mcmasterSeed";
@@ -285,6 +287,61 @@ function PartMesh({
   );
 }
 
+interface PipeMeshProps {
+  position: { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number };
+  outerDiameter: number;
+  wallThickness: number;
+  length: number;
+  material: string;
+  selected: boolean;
+  showBounds: boolean;
+  onClick: (e: ThreeEvent<MouseEvent>) => void;
+}
+
+// Pipes render as a hollow tube — outer cylinder + slightly-darker inner
+// cylinder to fake the bore. Long axis is local +Z (pose-rotated like
+// every other part).
+function PipeMesh({ position, outerDiameter, wallThickness, length, material, selected, showBounds, onClick }: PipeMeshProps) {
+  const r = outerDiameter / 2;
+  const innerR = Math.max(0, r - wallThickness);
+  const appearance = sheetMetalAppearance(material);
+  return (
+    <group
+      position={[position.x, position.z, position.y]}
+      rotation={[position.rotX, position.rotZ, position.rotY]}
+      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      onPointerOver={(e) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
+      onPointerOut={() => { document.body.style.cursor = ""; }}
+    >
+      {/* Outer wall: long axis along local +Y (three.js cylinder default).
+          Pre-rotate π/2 around X so the cylinder's axis aligns with the
+          part's local +Z (data-frame length direction). After the group's
+          pose rotation, the pipe axis lands wherever the user pointed it. */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, length / 2]} castShadow receiveShadow>
+        <cylinderGeometry args={[r, r, length, 28, 1, false]} />
+        <meshStandardMaterial
+          color={selected ? "#7dd3fc" : appearance.color}
+          metalness={appearance.metalness}
+          roughness={appearance.roughness}
+          emissive={selected ? "#0ea5e9" : "#000000"}
+          emissiveIntensity={selected ? 0.25 : 0}
+        />
+        {(showBounds || selected) && (
+          <Edges color={selected ? "#38bdf8" : "#666666"} lineWidth={selected ? 2 : 1} />
+        )}
+      </mesh>
+      {/* Inner bore — only when wall is meaningfully thinner than outer.
+          Slightly shorter than the outer so the cap rings are visible. */}
+      {innerR > 0.05 && (
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, length / 2]}>
+          <cylinderGeometry args={[innerR, innerR, length * 1.001, 28, 1, true]} />
+          <meshStandardMaterial color="#0a0a0a" metalness={0.1} roughness={0.9} side={2} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
 // Reference-scale anchors — translucent stand-ins so users see what fits inside.
 const REFERENCE_KINDS: Record<string, { diameter: number; color: string }> = {
   "tennis ball":    { diameter: 2.575, color: "#d4ff00" },
@@ -449,6 +506,12 @@ function BoltMeshes({ parts, interfaces }: BoltMeshesProps) {
       diameter: number;
       color: string;
       title: string;
+      headDiameter: number;
+      headHeight: number;
+      showNut: boolean;
+      nutDiameter: number;
+      nutHeight: number;
+      stackHeight: number;
     }> = [];
 
     for (const iface of interfaces) {
@@ -461,27 +524,44 @@ function BoltMeshes({ parts, interfaces }: BoltMeshesProps) {
       catch { continue; }
       const refA = (iface.featureRefs ?? []).find((r: any) => r.partId === partA._id);
       if (!refA) continue;
-      const holes = holeWorldPositions(dslA, partA.position).filter(h => h.featureName === refA.featureName);
+      // Use post-bend geometry so bolts on a folded flange land in the
+      // correct world plane (not the unfolded flat-pattern position). The
+      // resulting BentHole carries a per-hole face-normal we'd ideally use
+      // for orientation; for now we still apply the part's group rotation
+      // because the renderer doesn't yet fold parts visually.
+      const bentHoles = holesPostBend(dslA, partA.position).filter(h => h.featureName === refA.featureName);
       const partB = partsById.get(iface.partB);
-      const lenAcrossParts = (partA.thickness ?? 0.075) + (partB?.thickness ?? 0.075) + 0.25;
+      const partAT = partA.thickness ?? 0.075;
+      const partBT = partB?.thickness ?? 0.075;
+      const stackHeight = partAT + partBT;
       const firstHardware = (iface.hardwareRefs ?? [])[0];
+      const stack = firstHardware ? fastenerStackFromPartNumber(firstHardware.mcmasterPartNumber) : null;
+      // Length: stack-up + protrusion past the nut. For rivets, no protrusion.
+      const protrusion = stack?.kind === "rivet" ? 0 : 0.20;
+      const lenAcrossParts = stackHeight + protrusion;
+      const headDiameter = stack ? stack.clearanceDiameter * 1.6 : 0.34;
+      const headHeight = stack?.kind === "rivet" ? 0.05 : 0.07;
+      const showNut = iface.kind === "bolted" && stack?.kind === "bolt";
+      const nutDiameter = stack ? stack.clearanceDiameter * 1.7 : 0.38;
+      const nutHeight = 0.10;
       const labelText = firstHardware
         ? `${firstHardware.quantity}× ${firstHardware.mcmasterPartNumber} (${iface.kind})`
         : iface.kind;
-      holes.forEach((h, idx) => {
+      bentHoles.forEach((h, idx) => {
         out.push({
           key: `${iface._id}:${idx}`,
-          // data → three.js frame swap
           position: [h.worldPoint.x, h.worldPoint.z, h.worldPoint.y],
-          // Group rotation = part's pose rotation in renderer frame.
-          // The cylinder inside the group is pre-rotated π/2 around X so its
-          // long axis (default three.js Y) points along the group's local Z,
-          // which after the part's rotation = perpendicular to the part face.
           groupRotation: [partA.position.rotX, partA.position.rotZ, partA.position.rotY],
           length: lenAcrossParts,
-          diameter: Math.max(0.12, h.diameter * 0.9),
+          diameter: Math.max(0.10, h.diameter * 0.9),
           color: tone,
           title: labelText,
+          headDiameter,
+          headHeight,
+          showNut,
+          nutDiameter,
+          nutHeight,
+          stackHeight,
         });
       });
     }
@@ -492,15 +572,28 @@ function BoltMeshes({ parts, interfaces }: BoltMeshesProps) {
     <>
       {bolts.map(b => (
         <group key={b.key} position={b.position} rotation={b.groupRotation}>
+          {/* Shaft: long axis along the group's local Z (which is the part
+              face-normal post-pose). Z is up in three.js after the
+              cylinder pre-rotation by π/2 around X. */}
           <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
-            <cylinderGeometry args={[b.diameter / 2, b.diameter / 2, b.length, 14]} />
+            <cylinderGeometry args={[b.diameter / 2, b.diameter / 2, b.length, 18]} />
             <meshStandardMaterial color={b.color} metalness={0.7} roughness={0.3} />
           </mesh>
-          {/* Bolt head — slightly wider, capped at top of cylinder */}
-          <mesh position={[0, 0, b.length / 2 - 0.015]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-            <cylinderGeometry args={[b.diameter * 0.85, b.diameter * 0.85, 0.05, 14]} />
-            <meshStandardMaterial color={b.color} metalness={0.75} roughness={0.25} />
+          {/* Hex head on the near side (positive Z). For rivets the head is
+              flatter and brass-toned (BOLT_TONE.riveted handles color). */}
+          <mesh position={[0, 0, b.length / 2 - b.headHeight / 2]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <cylinderGeometry args={[b.headDiameter / 2, b.headDiameter / 2, b.headHeight, 6]} />
+            <meshStandardMaterial color={b.color} metalness={0.8} roughness={0.25} />
           </mesh>
+          {/* Hex nut on the far side when this is a bolted joint with a
+              FastenerStack that needs one. Positioned just past the
+              stack-up so the nut visibly grips the underside. */}
+          {b.showNut && (
+            <mesh position={[0, 0, -b.stackHeight - b.nutHeight / 2]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+              <cylinderGeometry args={[b.nutDiameter / 2, b.nutDiameter / 2, b.nutHeight, 6]} />
+              <meshStandardMaterial color="#7d8690" metalness={0.7} roughness={0.35} />
+            </mesh>
+          )}
         </group>
       ))}
     </>
@@ -972,7 +1065,12 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
       >
         <ambientLight intensity={0.6} />
         <directionalLight position={[20, 30, 10]} intensity={0.8} castShadow />
-        <Grid args={[40, 40]} cellColor="#333" sectionColor="#555" fadeDistance={60} infiniteGrid />
+        {/* Place the grid just below the lowest part so the floor never
+            cuts through a part. Data-frame Z maps to three.js Y; we use
+            bbox.floorZ (lowest data-z) and subtract a small margin. */}
+        <group position={[0, bbox.floorZ - 0.05, 0]}>
+          <Grid args={[40, 40]} cellColor="#333" sectionColor="#555" fadeDistance={60} infiniteGrid />
+        </group>
         <OrbitControls ref={controlsRef as any} makeDefault />
         <SceneController parts={partBounds} controlsRef={controlsRef} homeSignal={homeSignal} />
         {showBolts && parts && interfaces && (
@@ -1034,6 +1132,21 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
                 showBounds={showBounds}
                 onClick={() => handlePartClick(p._id)}
                 category={purchasedCategory(p)}
+              />
+            );
+          }
+          if (kind === "pipe") {
+            return wrapWithHinge(
+              <PipeMesh
+                key={p._id}
+                position={p.position}
+                outerDiameter={p.pipeOuterDiameter ?? 1}
+                wallThickness={p.pipeWallThickness ?? 0.065}
+                length={p.pipeLength ?? 6}
+                material={p.material ?? "Mild Steel (CRS)"}
+                selected={selected}
+                showBounds={showBounds}
+                onClick={() => handlePartClick(p._id)}
               />
             );
           }

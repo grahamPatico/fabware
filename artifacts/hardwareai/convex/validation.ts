@@ -51,8 +51,16 @@ export const getAssemblyValidation = query({
 
     // Geometric intersection check spans ALL kinds (sheet_metal + printed +
     // purchased). A printed knob clipping into a sheet-metal wall is just as
-    // bad as two walls overlapping.
-    const intersectionRules = computeIntersectionRules(parts);
+    // bad as two walls overlapping. Hinged-pair tolerance lives in
+    // intersectRules.ts so the door/frame zone is permitted to share volume.
+    const intersectionRules = computeIntersectionRules(
+      parts,
+      ifaces.map(i => ({
+        kind: i.kind,
+        partA: i.partA as unknown as string,
+        partB: i.partB as unknown as string,
+      })),
+    );
     return {
       rules: [...result.rules, ...intersectionRules],
       hasFailures: result.hasFailures || intersectionRules.some(r => r.status === "fail"),

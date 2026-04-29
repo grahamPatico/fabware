@@ -92,6 +92,7 @@ export default defineSchema({
       v.literal("sheet_metal"),
       v.literal("printed"),
       v.literal("purchased"),
+      v.literal("pipe"),
     )),
     // printed-specific (only used when kind === "printed")
     printedMaterial: v.optional(v.string()),
@@ -101,6 +102,12 @@ export default defineSchema({
     purchasedPartNumber: v.optional(v.string()),
     purchasedQuantity: v.optional(v.number()),
     unitCostUsd: v.optional(v.number()),
+    // pipe-specific (only used when kind === "pipe")
+    pipeOuterDiameter: v.optional(v.number()),
+    pipeWallThickness: v.optional(v.number()),
+    pipeLength: v.optional(v.number()),
+    pipeEndA: v.optional(v.string()),
+    pipeEndB: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project", ["projectId"]),

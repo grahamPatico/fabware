@@ -50,6 +50,10 @@ export default function Workspace({
 }: WorkspaceProps = {}) {
   const params = useParams();
   const projectId = projectIdProp ?? ((params.id as Id<"projects"> | undefined) ?? null);
+  // Whether this Workspace was navigated to with ?starting=1 — set by the
+  // wizard to keep a "generating…" overlay visible until parts arrive.
+  const startingFlag = typeof window !== "undefined"
+    && new URLSearchParams(window.location.search).get("starting") === "1";
   const [historyOpen, setHistoryOpen] = useState(false);
   const [scopeOpen, setScopeOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -273,13 +277,22 @@ export default function Workspace({
             <PanelGroup direction="vertical" autoSaveId="fabware-workspace-v">
               <Panel defaultSize={70} minSize={30}>
                 <div className="h-full flex flex-col">
-                  <div className="flex-1 min-h-0">
+                  <div className="flex-1 min-h-0 relative">
                     <AssembledView
                       projectId={projectId}
                       focusedPartId={focusedPartId}
                       onFocusPart={setFocusedPartId}
                       hiddenPartIds={hiddenPartIds}
                     />
+                    {startingFlag && parts !== undefined && parts.length === 0 && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#0a0f18]/85 backdrop-blur-sm pointer-events-none">
+                        <div className="flex flex-col items-center gap-3 font-mono text-muted-foreground">
+                          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                          <span className="uppercase tracking-widest text-xs">Generating your assembly…</span>
+                          <span className="text-[10px] text-muted-foreground/70">Agent is choosing an archetype and laying out parts</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <BendSimulatorPanel focusedPartId={focusedPartId} />
                 </div>

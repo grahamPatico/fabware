@@ -328,6 +328,30 @@ const TOOLS = [
     },
   },
   {
+    name: "add_pipe",
+    description: "Add a pipe / tube part — cylindrical structural or plumbing piece. Use for frame supports, plumbing runs, conduit, table legs. The pipe's long axis runs along its local +Z; pose places + rotates it in world. Standard sizes: 1/2\", 3/4\", 1\", 1-1/4\", 1-1/2\", 2\" outer diameter; common materials = Mild Steel (CRS), Stainless Steel 304, Aluminum 6061, Copper, PVC.",
+    input_schema: {
+      type: "object",
+      properties: {
+        role: { type: "string" },
+        label: { type: "string" },
+        material: { type: "string" },
+        outerDiameter: { type: "number", description: "Outer diameter in inches. Pick a stocked size." },
+        wallThickness: { type: "number", description: "Wall thickness in inches. Sched 40 for steel/PVC; DOM tube for aluminum." },
+        length: { type: "number", description: "Length along the pipe axis (inches)." },
+        endA: { type: "string", enum: ["open", "capped", "threaded", "flared"], description: "Far end (local Z=0). Default open." },
+        endB: { type: "string", enum: ["open", "capped", "threaded", "flared"], description: "Near end (local Z=length). Default open." },
+        position: {
+          type: "object",
+          properties: { x: { type: "number" }, y: { type: "number" }, z: { type: "number" }, rotX: { type: "number" }, rotY: { type: "number" }, rotZ: { type: "number" } },
+          required: ["x", "y", "z", "rotX", "rotY", "rotZ"],
+        },
+        rationale: { type: "string" },
+      },
+      required: ["role", "label", "material", "outerDiameter", "wallThickness", "length", "position", "rationale"],
+    },
+  },
+  {
     name: "decide_make_or_buy",
     description: "Reason out loud about whether something the user wants should be a custom part (sheet metal or 3D print) or a purchased off-the-shelf item. The 'decision' field is shown to the user verbatim.",
     input_schema: {
@@ -370,6 +394,8 @@ function buildSystemPrompt(
 3. If the project already has an archetype and the user is refining: call \`refine_part\`, \`add_feature_to_part\`, or \`update_archetype_params\`.
 4. If the user asks for a shape that isn't a rectangle (star, hexagon, disc, logo, custom outline): use \`add_freeform_2d_part\`. Lasers cut **any** 2D outline from a flat sheet — there is no shape constraint as long as the outline is a single closed polygon.
 5. **If no archetype fits at all** (custom multi-part assembly, weird geometry, novel category like a kayak rack or a soldering-iron stand): build piece-by-piece with \`add_sheet_metal_part\` for each plate, then call \`add_interface\` to connect them. After each batch of \`add_sheet_metal_part\` + \`add_interface\` calls, call \`check_manufacturing\` to surface any rule failures and refine. \`remove_part\` cleans up if you change your mind. Use this path when "select an archetype" feels like jamming a square peg into a round hole — the agent should reach for primitives, not stretch the existing archetypes.
+
+   **Default to standard gauges.** Mild Steel and Stainless Steel stock at 0.030, 0.036, 0.048, 0.060, 0.075, 0.090, 0.105, 0.120, 0.135, 0.187, 0.250"; Aluminum 5052 stocks 0.030, 0.048, 0.060, 0.075, 0.090, 0.105, 0.135". Pick the closest stocked gauge — never an arbitrary thickness like 0.080" or 0.111". Non-stock plate adds lead time and minimum-order surcharges and is only justified when a production run absolutely requires the exact thickness; even then, ask the user first.
 
    **Feature vocabulary** (to avoid Zod rejections):
    - \`hole\`: \`{ kind: "hole", name, count, diameter, pattern: "corner"|"center"|"top_row"|"bottom_row", inset?: number, insetX?: number, insetY?: number, positions?: [{x,y}], role?: string }\`
