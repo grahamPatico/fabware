@@ -159,14 +159,16 @@ function generate(params: Params, _scope: ProjectScope) {
     isAcrylic && params.bodyConstruction === "single_bend"
       ? "solvent_welded"
       : params.bodyConstruction;
-  const isWelded = effectiveBody === "single_bend" || effectiveBody === "solvent_welded";
-  const bodyJointFastener = (count: number) =>
-    isWelded ? undefined : hole(count);
+  // After the bolted_plates → weld_seam refactor (see bodyJoint below) every
+  // body construction welds the corners. Body parts no longer carry their
+  // own mounting-hole patterns — the lid + hinge wall still get hinge holes
+  // re-attached below.
+  void effectiveBody;
+  const bodyJointFastener = (_count: number) => undefined;
 
   const base = {
     role: "base", label: "Base",
-    dsl: makePlate("base", outerW, outerD, params,
-      isWelded ? undefined : { ...hole(params.fastenerCount), pattern: "corner" as const }),
+    dsl: makePlate("base", outerW, outerD, params, undefined),
     position: { x: cx, y: cy, z: -t / 2, rotX: 0, rotY: 0, rotZ: 0 },
   };
   const wallBack = {
@@ -185,10 +187,17 @@ function generate(params: Params, _scope: ProjectScope) {
     position: { x: params.innerWidth + t / 2, y: cy, z: cz, rotX: Math.PI / 2, rotY: Math.PI / 2, rotZ: 0 },
   };
 
-  const bodyJoint = (roleA: string, roleB: string) =>
-    isWelded
-      ? { kind: "weld_seam" as const, roleA, roleB, featureA: "edge", featureB: "edge", hardwareRefs: [] as Array<{ mcmasterPartNumber: string; quantity: number; role?: string }> }
-      : { kind: "bolted" as const, roleA, roleB, featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }] };
+  // Body corner joints are weld_seam regardless of bodyConstruction.
+  // Real "bolted" sheet-metal boxes weld their wall-to-base corners and
+  // reserve bolts for removable access panels — corner-bolting two
+  // perpendicular plates needs PEM-inserted flanges (a tab feature) which
+  // the current DSL doesn't model. Treating bolted_plates as "welded body
+  // with bolted lid" matches manufacturing reality and avoids forcing the
+  // hole-alignment validator on physically-impossible joints.
+  const bodyJoint = (roleA: string, roleB: string) => (
+    { kind: "weld_seam" as const, roleA, roleB, featureA: "edge", featureB: "edge",
+      hardwareRefs: [] as Array<{ mcmasterPartNumber: string; quantity: number; role?: string }> }
+  );
 
   if (params.doorFace === "top") {
     const wallFront = {
@@ -205,8 +214,9 @@ function generate(params: Params, _scope: ProjectScope) {
       dsl: makePlate("lid", outerW, outerD, params, { ...hole(params.fastenerCount), pattern: "bottom_row" as const }),
       position: { x: cx, y: cy, z: innerH + t / 2, rotX: 0, rotY: 0, rotZ: 0 },
     };
-    if (isWelded) {
-      // Re-attach hinge holes to the hinge wall (we stripped them above).
+    // Hinge wall always carries hinge mounting holes (the hinge is real
+    // hardware regardless of body construction).
+    {
       const hingeWallObj =
         hingeRole === "wall_back" ? wallBack
         : hingeRole === "wall_front" ? wallFront
@@ -237,8 +247,7 @@ function generate(params: Params, _scope: ProjectScope) {
   };
   const top = {
     role: "wall_top", label: "Top",
-    dsl: makePlate("wall_top", outerW, outerD, params,
-      isWelded ? undefined : { ...hole(params.fastenerCount), pattern: "corner" as const }),
+    dsl: makePlate("wall_top", outerW, outerD, params, undefined),
     position: { x: cx, y: cy, z: innerH + t / 2, rotX: 0, rotY: 0, rotZ: 0 },
   };
   // hingeSide for front-door defaults to right; left allowed too. Map other
@@ -247,8 +256,8 @@ function generate(params: Params, _scope: ProjectScope) {
     params.hingeSide === "left" ? "wall_left"
     : params.hingeSide === "right" ? "wall_right"
     : "wall_right";
-  if (isWelded) {
-    // Re-attach hinge holes to whichever side wall the door pivots on.
+  // Hinge wall always carries hinge mounting holes.
+  {
     const hingeWallObj = hingeWall === "wall_left" ? wallLeft : wallRight;
     hingeWallObj.dsl = makePlate(hingeWall, hingeWallObj.dsl.width, hingeWallObj.dsl.height, params, hole(params.fastenerCount));
   }

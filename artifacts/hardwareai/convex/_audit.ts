@@ -664,44 +664,49 @@ export const createTempProjectInternal = internalMutation({
 
 /**
  * Runs the full `validateAssembly` pass on every archetype's default output
- * and reports any rules with status fail/warn. Catches regressions that
- * `auditAllArchetypes` (intersection-only) misses.
+ * for every tier (jerry-rigged / mvp / commercial). Catches tier-specific
+ * regressions like commercial-tier bolted-corners that mvp's defaults miss.
  */
 export const auditAllArchetypesFullValidation = internalAction({
   args: {},
   handler: async (_ctx): Promise<Array<{
     archetypeId: string;
+    tier: string;
     fails: Array<{ id: string; message: string }>;
     warns: Array<{ id: string; message: string }>;
   }>> => {
-    const out: Array<{ archetypeId: string; fails: any[]; warns: any[] }> = [];
+    const out: Array<{ archetypeId: string; tier: string; fails: any[]; warns: any[] }> = [];
+    const tiers: Array<"jerry-rigged" | "mvp" | "commercial"> = ["jerry-rigged", "mvp", "commercial"];
     for (const arch of listArchetypes()) {
-      const params = arch.paramSchema.parse(arch.paramDefaults(CANONICAL_SCOPE));
-      const { parts: gen, interfaces: genIfaces } = arch.generate(params, CANONICAL_SCOPE);
+      for (const tier of tiers) {
+        const scope = { ...CANONICAL_SCOPE, tier };
+        const params = arch.paramSchema.parse(arch.paramDefaults(scope));
+        const { parts: gen, interfaces: genIfaces } = arch.generate(params, scope);
 
-      const partInputs = gen.map((p: any, idx: number) => ({
-        id: `audit-${arch.id}-${idx}`,
-        role: p.role,
-        pose: { x: p.position.x, y: p.position.y, z: p.position.z, rotX: p.position.rotX, rotY: p.position.rotY, rotZ: p.position.rotZ },
-        dsl: p.dsl,
-      }));
-      const roleToId = new Map(partInputs.map(p => [p.role, p.id]));
-      const ifaceInputs = genIfaces.map((i: any) => ({
-        kind: i.kind,
-        partA: roleToId.get(i.roleA)!,
-        partB: roleToId.get(i.roleB)!,
-        featureRefs: [
-          { partId: roleToId.get(i.roleA)!, featureName: i.featureA },
-          { partId: roleToId.get(i.roleB)!, featureName: i.featureB },
-        ],
-        hardwareRefs: i.hardwareRefs ?? [],
-        accessSide: i.accessSide,
-      })).filter((i: any) => i.partA && i.partB);
+        const partInputs = gen.map((p: any, idx: number) => ({
+          id: `audit-${arch.id}-${tier}-${idx}`,
+          role: p.role,
+          pose: { x: p.position.x, y: p.position.y, z: p.position.z, rotX: p.position.rotX, rotY: p.position.rotY, rotZ: p.position.rotZ },
+          dsl: p.dsl,
+        }));
+        const roleToId = new Map(partInputs.map(p => [p.role, p.id]));
+        const ifaceInputs = genIfaces.map((i: any) => ({
+          kind: i.kind,
+          partA: roleToId.get(i.roleA)!,
+          partB: roleToId.get(i.roleB)!,
+          featureRefs: [
+            { partId: roleToId.get(i.roleA)!, featureName: i.featureA },
+            { partId: roleToId.get(i.roleB)!, featureName: i.featureB },
+          ],
+          hardwareRefs: i.hardwareRefs ?? [],
+          accessSide: i.accessSide,
+        })).filter((i: any) => i.partA && i.partB);
 
-      const result = validateAssembly({ parts: partInputs, interfaces: ifaceInputs, scope: CANONICAL_SCOPE });
-      const fails = result.rules.filter(r => r.status === "fail").map(r => ({ id: r.id, message: r.message }));
-      const warns = result.rules.filter(r => r.status === "warn").map(r => ({ id: r.id, message: r.message }));
-      out.push({ archetypeId: arch.id, fails, warns });
+        const result = validateAssembly({ parts: partInputs, interfaces: ifaceInputs, scope });
+        const fails = result.rules.filter(r => r.status === "fail").map(r => ({ id: r.id, message: r.message }));
+        const warns = result.rules.filter(r => r.status === "warn").map(r => ({ id: r.id, message: r.message }));
+        out.push({ archetypeId: arch.id, tier, fails, warns });
+      }
     }
     return out;
   },
