@@ -31,6 +31,11 @@ const HoleSchema = z.object({
   // a shelf with two grouped clusters of holes where each cluster mates a
   // separate bracket.
   positions: z.array(z.object({ x: z.number(), y: z.number() })).nullish(),
+  // Hole role tag — semantic purpose for FastenerStack matching. Examples:
+  // "bolt_clear" (machine-bolt clearance hole), "tap_1/4-20" (tapped),
+  // "pilot_8x12" (sheet-metal-screw pilot), "pem_M4" (PEM insert receiver),
+  // "rivet_1/8". When absent the validator skips the role check.
+  role: z.string().nullish(),
 });
 
 const BendSchema = z.object({

@@ -77,6 +77,7 @@ function generate(params: Params, _scope: ProjectScope) {
       diameter: mountingHoleDia,
       pattern: "bottom_row",
       inset: 0.375,
+      role: "bolt_clear",
     },
   ];
 
@@ -100,6 +101,7 @@ function generate(params: Params, _scope: ProjectScope) {
       pattern: "top_row",
       insetX: panelInsetX,
       insetY: panelInsetY,
+      role: "bolt_clear",
     },
   ];
 

@@ -756,3 +756,94 @@ export const auditHoleAlignment = internalAction({
     };
   },
 });
+
+/**
+ * Synthetic smoke for the bent-geometry transform. A 4×6 plate with a 90°
+ * horizontal bend at positionRatio=0.5 and one hole on each flange.
+ *
+ *   Flat:        bent (90°):
+ *   +------+     +------+
+ *   |  o   |     |  o   |  ← rotated flange (folded up; world z = +dy)
+ *   |======|     |======|
+ *   |  o   |     |  o   |  ← fixed flange (stays flat)
+ *   +------+     +------+
+ *
+ * holesPostBend should report fixed-flange hole at z=0 and rotated-flange
+ * hole at z = (y - bendY).
+ */
+export const auditBentGeometry = internalAction({
+  args: { angleDeg: v.optional(v.number()) },
+  handler: async (_ctx, args): Promise<{
+    fixed: { x: number; y: number; z: number };
+    rotated: { x: number; y: number; z: number };
+    angle: number;
+  }> => {
+    const angle = args.angleDeg ?? 90;
+    const dsl: PartDsl = {
+      version: 1, partType: "plate", material: "Mild Steel (CRS)", thickness: 0.075,
+      width: 4, height: 6, depth: null,
+      features: [
+        { kind: "bend", name: "main", axis: "horizontal", positionRatio: 0.5, angle, radius: 0.062 },
+        // Two single-position holes — one below the fold (fixed), one above (rotated).
+        { kind: "hole", name: "fixed", count: 1, diameter: 0.266, pattern: "center",
+          positions: [{ x: 2, y: 1.5 }] },
+        { kind: "hole", name: "rotated", count: 1, diameter: 0.266, pattern: "center",
+          positions: [{ x: 2, y: 4.5 }] },
+      ],
+      finish: null, assemblyRefs: [],
+    };
+    const { holesPostBend } = await import("./lib/bentGeometry");
+    const pose = { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 };
+    const holes = holesPostBend(dsl, pose);
+    const fixed = holes.find(h => h.featureName === "fixed")!.worldPoint;
+    const rotated = holes.find(h => h.featureName === "rotated")!.worldPoint;
+    return { fixed, rotated, angle };
+  },
+});
+
+/**
+ * Synthetic smoke for FastenerStack receiving-feature validation.
+ * scenario: "bolt_no_nut" — bolt with neither role tag nor far-side nut → warn
+ *           "bolt_clear"  — bolt with bolt_clear role on far side → pass
+ *           "bolt_pilot"  — bolt with sheet-metal-screw pilot role → fail
+ *           "thick_stack" — stack thicker than fastener max → fail
+ */
+export const auditFastenerStack = internalAction({
+  args: { scenario: v.string() },
+  handler: async (_ctx, { scenario }): Promise<{ status: string; message: string; suggestion?: string }> => {
+    const farRole =
+      scenario === "bolt_clear" ? "bolt_clear"
+      : scenario === "bolt_pilot" ? "pilot_8x12"
+      : scenario === "thick_stack" ? "bolt_clear"
+      : null;
+    const t = scenario === "thick_stack" ? 0.5 : 0.075;
+    const dsl = (role: string | null): PartDsl => ({
+      version: 1, partType: "plate", material: "Mild Steel (CRS)", thickness: t,
+      width: 4, height: 4, depth: null,
+      features: [{
+        kind: "hole", name: "mount", count: 1, diameter: 0.266,
+        pattern: "center", positions: [{ x: 2, y: 2 }],
+        ...(role ? { role } : {}),
+      }],
+      finish: null, assemblyRefs: [],
+    });
+    const result = validateAssembly({
+      parts: [
+        { id: "A", role: "plate_a", pose: { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 }, dsl: dsl("bolt_clear") },
+        { id: "B", role: "plate_b", pose: { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 }, dsl: dsl(farRole) },
+      ],
+      interfaces: [{
+        kind: "bolted", partA: "A", partB: "B",
+        featureRefs: [{ partId: "A", featureName: "mount" }, { partId: "B", featureName: "mount" }],
+        hardwareRefs: [{ mcmasterPartNumber: "91251A540", quantity: 1, role: "fastener" }],
+      }],
+      scope: null,
+    });
+    const r = result.rules.find(rr => rr.id === "fastener_stack_ok");
+    if (!r) return { status: "missing", message: "fastener_stack_ok rule not emitted." };
+    return {
+      status: r.status, message: r.message,
+      suggestion: typeof r.suggestion === "string" ? r.suggestion : undefined,
+    };
+  },
+});

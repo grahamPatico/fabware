@@ -34,6 +34,17 @@ A parameterized recipe that emits a Part-list + Interface-list for a common shap
 **Assembly**:
 The collection of Parts + Interfaces under one Project. Validated as a whole by `assemblyRules.ts` (per-interface checks) + `intersectRules.ts` (geometric intersection).
 
+**BentHole** _(post-bend hole projection)_:
+A single hole's world-space position after the part's bend has been folded to its target angle, with the flange tag (`fixed` | `rotated`) and the flange's outward face-normal in world coords. Computed by `bentGeometry.ts:holesPostBend(dsl, pose)`. Used by `checkHoleAlignment` so a bent flange's hole alignment is checked in its post-bend plane (not the unfolded flat pattern).
+_Avoid_: bent point, folded hole, bent feature.
+
+**FastenerStack**:
+The full mating spec for a single fastener: `kind` (bolt | screw | rivet | pem), `thread` (e.g. "1/4-20"), `clearanceDiameter`, `receivingFeatureKind` (clear | tap | pem | pilot | rivet), `receivingDiameter`, `minStackIn` / `maxStackIn`, `installAccessSide`. Resolved from a McMaster part number via `fastenerStackFromPartNumber`. Lives in `convex/lib/fastenerStack.ts`. Consumed by `checkFastenerStackMatch` in `assemblyRules.ts`.
+_Avoid_: fastener spec, hardware spec — `ThreadSpec` (the thinner pre-deepening type in `fastenerSpecs.ts`) is being phased out; new code reads FastenerStack.
+
+**hole role** _(field on HoleFeature)_:
+Optional semantic tag on a HoleFeature naming what fastener the hole receives: `"bolt_clear"`, `"tap_1/4-20"`, `"pem_M4"`, `"pilot_8x12"`, `"rivet_1/8"`. Lets `validateReceivingHole` confirm a bolt has a nut / tap / PEM somewhere, and that a sheet-metal screw lands on a pilot rather than a clearance hole. Untagged holes get a warn that prompts the agent to confirm the receiving feature.
+
 ### Architecture
 
 See `LANGUAGE.md` (in the `improve-codebase-architecture` skill) for the architectural vocabulary used in deepening conversations: Module / Interface / Implementation / Depth / Seam / Adapter / Leverage / Locality.

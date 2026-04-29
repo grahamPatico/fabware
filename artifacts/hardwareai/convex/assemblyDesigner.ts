@@ -181,7 +181,7 @@ const TOOLS = [
         },
         features: {
           type: "array",
-          description: "Holes / bends / slots / tabs / fillets. Each entry must have a `kind` and a `name`; other fields per kind.",
+          description: "Holes / bends / slots / tabs / fillets. Each entry must have a `kind` and a `name`; other fields per kind. For HOLE features that receive a fastener, set `role` so the FastenerStack validator can confirm the joint mates correctly: 'bolt_clear' (bolt passes through, needs nut/PEM/tap on far side), 'tap_1/4-20' (tapped hole, bolt threads in), 'pem_M4' (PEM threaded insert), 'pilot_8x12' (sheet-metal-screw pilot, smaller than clearance), 'rivet_1/8' (rivet shank). Untagged holes get a warn telling the agent the bolt has no confirmed nut.",
           items: { type: "object" },
         },
         powderCoat: { type: "boolean" },
@@ -372,7 +372,9 @@ function buildSystemPrompt(
 5. **If no archetype fits at all** (custom multi-part assembly, weird geometry, novel category like a kayak rack or a soldering-iron stand): build piece-by-piece with \`add_sheet_metal_part\` for each plate, then call \`add_interface\` to connect them. After each batch of \`add_sheet_metal_part\` + \`add_interface\` calls, call \`check_manufacturing\` to surface any rule failures and refine. \`remove_part\` cleans up if you change your mind. Use this path when "select an archetype" feels like jamming a square peg into a round hole — the agent should reach for primitives, not stretch the existing archetypes.
 
    **Feature vocabulary** (to avoid Zod rejections):
-   - \`hole\`: \`{ kind: "hole", name, count, diameter, pattern: "corner"|"center"|"top_row"|"bottom_row", inset?: number }\`
+   - \`hole\`: \`{ kind: "hole", name, count, diameter, pattern: "corner"|"center"|"top_row"|"bottom_row", inset?: number, insetX?: number, insetY?: number, positions?: [{x,y}], role?: string }\`
+     **Hole role**: tag the receiving hole on a fastener interface so the FastenerStack validator can confirm the joint actually mates. Use \`role: "bolt_clear"\` (bolt passes through, needs nut/PEM/tap on far side), \`role: "tap_1/4-20"\` (threaded), \`role: "pem_M4"\` (PEM insert receiver), \`role: "pilot_8x12"\` (sheet-metal screw pilot), \`role: "rivet_1/8"\`. **A bolt without a nut, tapped hole, or PEM is a structural failure** — set the role on both sides of every bolted joint.
+     **Bend awareness**: when a part has a \`bend\` feature, holes above the bend tangent (positionRatio splits the part) end up on the rotated flange — they live in a different plane after folding. Place the receiving holes on the *fixed* flange (below positionRatio for horizontal bends, left of positionRatio for vertical) when bolting that flange to a flat mating part.
    - \`bend\`: \`{ kind: "bend", name, axis: "horizontal"|"vertical", positionRatio: 0..1, angle, radius }\`
    - \`slot\`: \`{ kind: "slot", name, count, length, width, pattern: same as hole }\`
    - \`tab\`:  \`{ kind: "tab", name, count, length, width, edge: "top"|"bottom"|"left"|"right" }\`

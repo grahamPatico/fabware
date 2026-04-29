@@ -1,11 +1,14 @@
 import type { PartDsl } from "./dsl";
 import type { Pose } from "./positions";
 import { holeWorldPositions, type HoleInstance } from "./featuresInWorld";
+import { holesPostBend, type BentHole } from "./bentGeometry";
 import { distance, transformPoint, type WorldPoint } from "./positions";
 import { threadFromPartNumber } from "./fastenerSpecs";
+import { fastenerStackFromPartNumber, validateReceivingHole } from "./fastenerStack";
 import { SCS_MATERIALS } from "./scsRules";
 
-// Part's local +Z (face-normal / bolt axis) in world coordinates as a unit vector.
+// Part's local +Z (face-normal / bolt axis) in world coordinates as a unit
+// vector. For bent parts the per-flange face-normal lives on `BentHole`.
 function partNormalWorld(pose: Pose): { x: number; y: number; z: number } {
   const origin = transformPoint({ x: 0, y: 0, z: 0 }, pose);
   const tip = transformPoint({ x: 0, y: 0, z: 1 }, pose);
@@ -56,6 +59,7 @@ export function validateAssembly(input: AssemblyInput): { rules: RuleResult[]; h
       rules.push(checkHolePatternMatch(iface, partsById));
       rules.push(checkHoleAlignment(iface, partsById));
       rules.push(checkFastenerClearance(iface, partsById));
+      rules.push(checkFastenerStackMatch(iface, partsById));
     }
     if (iface.kind === "hinged") {
       rules.push(checkHingeGeometry(iface, partsById));
@@ -116,7 +120,15 @@ function checkAllPartsWithinMaxSheet(input: AssemblyInput): RuleResult {
 }
 
 function partHoles(part: { dsl: PartDsl; pose: Pose }, featureName: string): HoleInstance[] {
-  return holeWorldPositions(part.dsl, part.pose).filter(h => h.featureName === featureName);
+  // Use post-bend geometry so flanges that fold onto a mating part report
+  // their world positions on the bent flange, not the unfolded flat pattern.
+  return holesPostBend(part.dsl, part.pose)
+    .filter(h => h.featureName === featureName)
+    .map(h => ({ featureName: h.featureName, diameter: h.diameter, local: { x: 0, y: 0, z: 0 }, worldPoint: h.worldPoint }));
+}
+
+function partBentHoles(part: { dsl: PartDsl; pose: Pose }, featureName: string): BentHole[] {
+  return holesPostBend(part.dsl, part.pose).filter(h => h.featureName === featureName);
 }
 
 function checkHolePatternMatch(
@@ -177,21 +189,23 @@ function checkHoleAlignment(
     return { id: "hole_position_alignment", label: "Hole position alignment", status: "warn",
       message: "Missing featureRefs — skipping position check." };
   }
-  const holesA = partHoles(a, refA);
-  const holesB = partHoles(b, refB);
+  const holesA = partBentHoles(a, refA);
+  const holesB = partBentHoles(b, refB);
   if (holesA.length === 0 || holesB.length === 0 || holesA.length !== holesB.length) {
     return { id: "hole_position_alignment", label: "Hole position alignment", status: "warn",
       message: "Hole count differs or zero — skipping position check." };
   }
-  // Bolts pass along plate A's normal (its local +Z axis, in world coords).
+  // Bolts pass along the flange face-normal of the hole on partA. For an
+  // unbent part this is the part's local +Z; for a bent flange we use the
+  // per-hole face-normal that bentGeometry computed (the rotated flange has
+  // a different normal than the fixed flange after the bend).
   // A bolt threads through both holes when their centers lie on the same
   // line parallel to that axis — i.e. the perpendicular distance between
   // ha.worldPoint and hb.worldPoint, projected away from the bolt axis,
   // is within tolerance. This naturally accommodates stack-up: parts sitting
   // a thickness apart along the bolt axis still pass.
-  const axis = partNormalWorld(a.pose);
   const unmatched = holesA.filter(ha =>
-    !holesB.some(hb => perpDistance(ha.worldPoint, hb.worldPoint, axis) <= POSITION_TOLERANCE)
+    !holesB.some(hb => perpDistance(ha.worldPoint, hb.worldPoint, ha.faceNormalWorld) <= POSITION_TOLERANCE)
   );
   if (unmatched.length > 0) {
     return {
@@ -232,6 +246,83 @@ function checkFastenerClearance(
     };
   }
   return { id: "fastener_clearance_ok", label: "Fastener clearance", status: "pass", message: `Ø${holeD}" clears ${spec.label}.` };
+}
+
+/**
+ * Validates that the receiving feature (hole on the far part) matches the
+ * fastener kind: bolt → clearance/tap/PEM, screw → pilot, rivet → matched
+ * rivet hole, etc. Reads the FastenerStack for the interface's first
+ * hardware ref and checks the role + diameter on the far-side hole.
+ *
+ * Skips when role tags aren't set (back-compat with archetypes that don't
+ * yet annotate); only fails when an explicit role *contradicts* the
+ * fastener kind, which is the high-signal case the user asked for
+ * ("a bolt might need a nut").
+ */
+function checkFastenerStackMatch(
+  iface: AssemblyInput["interfaces"][number],
+  parts: Map<string, AssemblyInput["parts"][number]>,
+): RuleResult {
+  const firstFastener = iface.hardwareRefs[0];
+  if (!firstFastener) {
+    return { id: "fastener_stack_ok", label: "Fastener stack", status: "warn",
+      message: "No hardware specified — skipping stack check." };
+  }
+  const stack = fastenerStackFromPartNumber(firstFastener.mcmasterPartNumber);
+  if (!stack) {
+    return { id: "fastener_stack_ok", label: "Fastener stack", status: "warn",
+      message: `FastenerStack unknown for ${firstFastener.mcmasterPartNumber}; add it to fastenerStack.ts.` };
+  }
+  const a = parts.get(iface.partA);
+  const b = parts.get(iface.partB);
+  if (!a || !b) {
+    return { id: "fastener_stack_ok", label: "Fastener stack", status: "warn",
+      message: "Can't check stack — missing part." };
+  }
+  const refA = iface.featureRefs.find(r => r.partId === iface.partA)?.featureName;
+  const refB = iface.featureRefs.find(r => r.partId === iface.partB)?.featureName;
+  if (!refA || !refB) {
+    return { id: "fastener_stack_ok", label: "Fastener stack", status: "warn",
+      message: "Missing featureRefs — skipping stack check." };
+  }
+  // Look up role from the DSL feature on the far-side part.
+  const farFeature = b.dsl.features.find(f => f.kind === "hole" && f.name === refB);
+  const farHole = farFeature?.kind === "hole" ? farFeature : null;
+  if (!farHole) {
+    return { id: "fastener_stack_ok", label: "Fastener stack", status: "warn",
+      message: `Far-side feature ${b.role}.${refB} isn't a hole — skipping.` };
+  }
+  // Bolt with no role on the far side is the one case the user named:
+  // "a bolt might need a nut." When the bolt's far-side feature has no
+  // role tag, surface a warn — we can't confirm the bolt has somewhere
+  // to thread into.
+  if (stack.kind === "bolt" && !farHole.role) {
+    return { id: "fastener_stack_ok", label: "Fastener stack", status: "warn",
+      message: `Bolt ${stack.thread} on ${b.role}.${refB}: no receiving feature role set. Confirm a nut, tapped hole, or PEM is present.`,
+      suggestion: `Tag the far-side hole with role: "bolt_clear" (needs nut), "tap_${stack.thread}", or "pem_${stack.thread}".` };
+  }
+  const result = validateReceivingHole(stack, farHole.diameter, farHole.role ?? null);
+  if (result.fail) {
+    return { id: "fastener_stack_ok", label: "Fastener stack", status: "fail",
+      message: `${b.role}.${refB}: ${result.reason}`,
+      suggestion: result.suggestion };
+  }
+  // Stack-up height check: sum thicknesses of A and B, compare to fastener band.
+  const aT = a.dsl.thickness ?? 0;
+  const bT = b.dsl.thickness ?? 0;
+  const stackHeight = aT + bT;
+  if (stackHeight > stack.maxStackIn) {
+    return { id: "fastener_stack_ok", label: "Fastener stack", status: "fail",
+      message: `Stack-up ${stackHeight.toFixed(3)}" exceeds ${stack.kind} ${stack.thread} max ${stack.maxStackIn}".`,
+      suggestion: `Pick a longer fastener or thinner material.` };
+  }
+  if (stackHeight < stack.minStackIn) {
+    return { id: "fastener_stack_ok", label: "Fastener stack", status: "warn",
+      message: `Stack-up ${stackHeight.toFixed(3)}" is below ${stack.kind} ${stack.thread} min ${stack.minStackIn}". Bolt may bottom out.`,
+      suggestion: `Use a shorter fastener.` };
+  }
+  return { id: "fastener_stack_ok", label: "Fastener stack", status: "pass",
+    message: `${stack.kind} ${stack.thread}: ${b.role}.${refB} role "${farHole.role ?? "(implicit)"}" mates correctly; stack ${stackHeight.toFixed(3)}".` };
 }
 
 /**
