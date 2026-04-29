@@ -661,3 +661,92 @@ export const createTempProjectInternal = internalMutation({
     });
   },
 });
+
+/**
+ * Runs the full `validateAssembly` pass on every archetype's default output
+ * and reports any rules with status fail/warn. Catches regressions that
+ * `auditAllArchetypes` (intersection-only) misses.
+ */
+export const auditAllArchetypesFullValidation = internalAction({
+  args: {},
+  handler: async (_ctx): Promise<Array<{
+    archetypeId: string;
+    fails: Array<{ id: string; message: string }>;
+    warns: Array<{ id: string; message: string }>;
+  }>> => {
+    const out: Array<{ archetypeId: string; fails: any[]; warns: any[] }> = [];
+    for (const arch of listArchetypes()) {
+      const params = arch.paramSchema.parse(arch.paramDefaults(CANONICAL_SCOPE));
+      const { parts: gen, interfaces: genIfaces } = arch.generate(params, CANONICAL_SCOPE);
+
+      const partInputs = gen.map((p: any, idx: number) => ({
+        id: `audit-${arch.id}-${idx}`,
+        role: p.role,
+        pose: { x: p.position.x, y: p.position.y, z: p.position.z, rotX: p.position.rotX, rotY: p.position.rotY, rotZ: p.position.rotZ },
+        dsl: p.dsl,
+      }));
+      const roleToId = new Map(partInputs.map(p => [p.role, p.id]));
+      const ifaceInputs = genIfaces.map((i: any) => ({
+        kind: i.kind,
+        partA: roleToId.get(i.roleA)!,
+        partB: roleToId.get(i.roleB)!,
+        featureRefs: [
+          { partId: roleToId.get(i.roleA)!, featureName: i.featureA },
+          { partId: roleToId.get(i.roleB)!, featureName: i.featureB },
+        ],
+        hardwareRefs: i.hardwareRefs ?? [],
+        accessSide: i.accessSide,
+      })).filter((i: any) => i.partA && i.partB);
+
+      const result = validateAssembly({ parts: partInputs, interfaces: ifaceInputs, scope: CANONICAL_SCOPE });
+      const fails = result.rules.filter(r => r.status === "fail").map(r => ({ id: r.id, message: r.message }));
+      const warns = result.rules.filter(r => r.status === "warn").map(r => ({ id: r.id, message: r.message }));
+      out.push({ archetypeId: arch.id, fails, warns });
+    }
+    return out;
+  },
+});
+
+/**
+ * Synthetic smoke for the hole-alignment validator. Tracer bullet for
+ * fastener-mechanics work: two flat plates, four corner holes each, joined
+ * by a bolted interface. Caller supplies `offsetIn` — how far plate B is
+ * translated past the matching position on plate A. offsetIn=0 should pass;
+ * any nontrivial offset should fail (not warn) — bolts that don't go
+ * through both holes ship a broken assembly.
+ */
+export const auditHoleAlignment = internalAction({
+  args: { offsetIn: v.optional(v.number()) },
+  handler: async (_ctx, args): Promise<{ status: string; message: string; suggestion?: string }> => {
+    const offset = args.offsetIn ?? 0;
+    const dsl = (): PartDsl => ({
+      version: 1, partType: "plate", material: "Mild Steel (CRS)", thickness: 0.075,
+      width: 6, height: 6, depth: null,
+      features: [{
+        kind: "hole", name: "mount", count: 4,
+        diameter: 0.266, pattern: "corner", inset: 0.5,
+      }],
+      finish: null, assemblyRefs: [],
+    });
+    // Tracer keeps both plates coplanar so offset=0 is a clean baseline.
+    // Stack-up (Z separation by part thickness) is handled in a separate cycle.
+    const result = validateAssembly({
+      parts: [
+        { id: "A", role: "plate_a", pose: { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 }, dsl: dsl() },
+        { id: "B", role: "plate_b", pose: { x: offset, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 }, dsl: dsl() },
+      ],
+      interfaces: [{
+        kind: "bolted", partA: "A", partB: "B",
+        featureRefs: [{ partId: "A", featureName: "mount" }, { partId: "B", featureName: "mount" }],
+        hardwareRefs: [{ mcmasterPartNumber: "91251A540", quantity: 4, role: "fastener" }],
+      }],
+      scope: null,
+    });
+    const r = result.rules.find(rr => rr.id === "hole_position_alignment");
+    if (!r) return { status: "missing", message: "Validator didn't emit hole_position_alignment rule." };
+    return {
+      status: r.status, message: r.message,
+      suggestion: typeof r.suggestion === "string" ? r.suggestion : undefined,
+    };
+  },
+});

@@ -170,9 +170,9 @@ function checkHoleAlignment(
   const unmatched = holesA.filter(ha => !holesB.some(hb => distance(ha.worldPoint, hb.worldPoint) <= POSITION_TOLERANCE));
   if (unmatched.length > 0) {
     return {
-      id: "hole_position_alignment", label: "Hole position alignment", status: "warn",
+      id: "hole_position_alignment", label: "Hole position alignment", status: "fail",
       message: `${unmatched.length} hole(s) on ${a.role} don't coincide with ${b.role} in world space within ±${POSITION_TOLERANCE}".`,
-      suggestion: "Adjust part poses so the mating hole patterns coincide. (Geometric alignment is a future-slice concern.)",
+      suggestion: "Adjust part poses so the mating hole patterns coincide — bolts can't pass through both parts otherwise.",
     };
   }
   return { id: "hole_position_alignment", label: "Hole position alignment", status: "pass",
