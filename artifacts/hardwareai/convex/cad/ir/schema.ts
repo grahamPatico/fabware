@@ -111,10 +111,38 @@ const PatternFeature = z.object({
   spacing: ParamRef,
 });
 
+const RevolveFeature = z.object({
+  ...Base, kind: z.literal("revolve"),
+  profile: Snake,
+  axis: z.enum(["x", "y", "z"]),
+  angle: ParamRef,
+}).superRefine((val, ctx) => {
+  const a = typeof val.angle === "number" ? val.angle : null;
+  if (a !== null && (a <= 0 || a > 360)) {
+    ctx.addIssue({ code: "custom", message: "revolve angle must be > 0 and ≤ 360 degrees" });
+  }
+});
+
+const ShellFeature = z.object({
+  ...Base, kind: z.literal("shell"),
+  thickness: ParamRef,
+  removedFaces: z.array(FaceRef).min(1),
+});
+
+const BendFlangeFeature = z.object({
+  ...Base, kind: z.literal("bend_flange"),
+  face: FaceRef,
+  angle: ParamRef,
+  radius: ParamRef,
+  length: ParamRef,
+  thickness: ParamRef,
+});
+
 export const FeatureSchema = z.discriminatedUnion("kind", [
   ExtrudeFeature, CutExtrudeFeature,
   FilletFeature, ChamferFeature,
   HoleFeature, PatternFeature,
+  RevolveFeature, ShellFeature, BendFlangeFeature,
 ]);
 
 // ── Phase 4: Assembly schemas ────────────────────────────────────────────────

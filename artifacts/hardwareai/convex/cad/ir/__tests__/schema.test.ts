@@ -49,6 +49,62 @@ describe("emptyIr", () => {
   });
 });
 
+// ── Phase 5: RevolveFeature schema tests ─────────────────────────────────────
+
+describe("RevolveFeature schema — Phase 5", () => {
+  it("accepts a valid revolve feature with literal angle", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [
+        { kind: "revolve", id: "rev1", profile: "sk1", axis: "y", angle: 180 },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+
+  it("accepts a revolve feature with param-ref angle", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: { sweep_angle: { id: "sweep_angle", value: 270 } },
+      sketches: {},
+      features: [
+        { kind: "revolve", id: "rev1", profile: "sk1", axis: "z", angle: "sweep_angle" },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+
+  it("rejects a revolve feature with angle = 0", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [
+        { kind: "revolve", id: "rev1", profile: "sk1", axis: "x", angle: 0 },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).toThrow(/revolve angle must be > 0/);
+  });
+
+  it("rejects a revolve feature with angle > 360", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [
+        { kind: "revolve", id: "rev1", profile: "sk1", axis: "x", angle: 361 },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).toThrow(/revolve angle must be > 0/);
+  });
+});
+
 // ── Phase 3: HoleFeature sub-type schema tests ───────────────────────────────
 
 const baseHoleIr = {

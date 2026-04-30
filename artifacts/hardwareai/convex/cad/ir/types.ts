@@ -112,10 +112,33 @@ export interface PatternFeature extends BaseFeature {
   spacing: ParamRef;
 }
 
+export interface RevolveFeature extends BaseFeature {
+  kind: "revolve";
+  profile: SketchId;
+  axis: "x" | "y" | "z";
+  angle: ParamRef;              // degrees (0 < angle ≤ 360)
+}
+
+export interface ShellFeature extends BaseFeature {
+  kind: "shell";
+  thickness: ParamRef;
+  removedFaces: FaceRef[];      // faces to open (at least one)
+}
+
+export interface BendFlangeFeature extends BaseFeature {
+  kind: "bend_flange";
+  face: FaceRef;
+  angle: ParamRef;              // bend angle in degrees
+  radius: ParamRef;             // inner bend radius
+  length: ParamRef;             // flange length
+  thickness: ParamRef;          // sheet thickness
+}
+
 export type Feature =
   | ExtrudeFeature | CutExtrudeFeature
   | FilletFeature | ChamferFeature
-  | HoleFeature | PatternFeature;
+  | HoleFeature | PatternFeature
+  | RevolveFeature | ShellFeature | BendFlangeFeature;
 
 export interface EntityRegistry {
   faces:    Record<FaceId,   { feature: FeatureId; tag: string; topologyHash: string }>;
