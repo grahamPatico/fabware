@@ -103,4 +103,50 @@ describe("applyPatch", () => {
     const r = applyPatch(emptyIr("mm"), { kind: "suppress", featureId: "missing" });
     expect(r.schemaViolations.some(v => v.ruleId === "schema.unresolved-feature-ref")).toBe(true);
   });
+
+  // ── Task 3: reorder_feature ───────────────────────────────────────────────
+
+  it("reorder_feature with beforeFeatureId moves a feature earlier", () => {
+    const parent: CadIr = {
+      ...emptyIr("mm"),
+      sketches: { s: { id: "s", plane: "XY", geometry: [] } },
+      features: [
+        { kind: "extrude", id: "a", profile: "s", distance: 3, operation: "new_body" },
+        { kind: "extrude", id: "b", profile: "s", distance: 3, operation: "new_body" },
+        { kind: "extrude", id: "c", profile: "s", distance: 3, operation: "new_body" },
+      ],
+    };
+    const r = applyPatch(parent, { kind: "reorder_feature", featureId: "c", beforeFeatureId: "b" });
+    expect(r.schemaViolations).toEqual([]);
+    expect(r.ir.features.map(f => f.id)).toEqual(["a", "c", "b"]);
+  });
+
+  it("reorder_feature with afterFeatureId moves a feature later", () => {
+    const parent: CadIr = {
+      ...emptyIr("mm"),
+      sketches: { s: { id: "s", plane: "XY", geometry: [] } },
+      features: [
+        { kind: "extrude", id: "a", profile: "s", distance: 3, operation: "new_body" },
+        { kind: "extrude", id: "b", profile: "s", distance: 3, operation: "new_body" },
+      ],
+    };
+    const r = applyPatch(parent, { kind: "reorder_feature", featureId: "a", afterFeatureId: "b" });
+    expect(r.ir.features.map(f => f.id)).toEqual(["b", "a"]);
+  });
+
+  it("reorder_feature that creates forward references is rejected", () => {
+    const parent: CadIr = {
+      ...emptyIr("mm"),
+      sketches: { s: { id: "s", plane: "XY", geometry: [] } },
+      features: [
+        { kind: "extrude", id: "base", profile: "s", distance: 3, operation: "new_body" },
+        { kind: "fillet", id: "f", edges: [{ feature: "base", query: "all" }], radius: 1 },
+      ],
+    };
+    // Move base after fillet — fillet now references a later feature
+    const r = applyPatch(parent, { kind: "reorder_feature", featureId: "base", afterFeatureId: "f" });
+    expect(r.schemaViolations.some(v => v.ruleId === "schema.forward-feature-ref")).toBe(true);
+    // ir reverts to parent
+    expect(r.ir.features.map(f => f.id)).toEqual(["base", "f"]);
+  });
 });

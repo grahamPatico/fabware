@@ -15,7 +15,8 @@ export function applyPatch(parent: CadIr, patch: Patch): ApplyResult {
   if (
     patch.kind === "modify_feature" ||
     patch.kind === "suppress" ||
-    patch.kind === "unsuppress"
+    patch.kind === "unsuppress" ||
+    patch.kind === "reorder_feature"
   ) {
     const exists = parent.features.some(f => f.id === patch.featureId);
     if (!exists) {
@@ -29,6 +30,26 @@ export function applyPatch(parent: CadIr, patch: Patch): ApplyResult {
           location: { kind: "feature", id: patch.featureId },
         }],
       };
+    }
+  }
+
+  // For reorder_feature, also guard the anchor feature (beforeFeatureId / afterFeatureId)
+  if (patch.kind === "reorder_feature") {
+    const anchorId = patch.beforeFeatureId ?? patch.afterFeatureId;
+    if (anchorId !== undefined) {
+      const anchorExists = parent.features.some(f => f.id === anchorId);
+      if (!anchorExists) {
+        return {
+          ir: parent,
+          schemaViolations: [{
+            ruleId: "schema.unresolved-feature-ref",
+            severity: "error",
+            message: `reorder_feature anchor "${anchorId}" not found`,
+            agentMessage: `No feature with id "${anchorId}" exists.`,
+            location: { kind: "feature", id: anchorId },
+          }],
+        };
+      }
     }
   }
 
@@ -87,7 +108,31 @@ function applyToCandidate(parent: CadIr, patch: Patch): CadIr {
         ],
       };
     }
-    case "reorder_feature":
+    case "reorder_feature": {
+      const fromIdx = parent.features.findIndex(f => f.id === patch.featureId);
+      if (fromIdx === -1) return parent;
+      const moved = parent.features[fromIdx];
+      const remaining = [
+        ...parent.features.slice(0, fromIdx),
+        ...parent.features.slice(fromIdx + 1),
+      ];
+      let toIdx: number;
+      if (patch.beforeFeatureId !== undefined) {
+        toIdx = remaining.findIndex(f => f.id === patch.beforeFeatureId);
+        if (toIdx === -1) return parent;
+      } else if (patch.afterFeatureId !== undefined) {
+        const afterIdx = remaining.findIndex(f => f.id === patch.afterFeatureId);
+        if (afterIdx === -1) return parent;
+        toIdx = afterIdx + 1;
+      } else {
+        // No anchor: move to end
+        return { ...parent, features: [...remaining, moved] };
+      }
+      return {
+        ...parent,
+        features: [...remaining.slice(0, toIdx), moved, ...remaining.slice(toIdx)],
+      };
+    }
     case "remove":
       throw new Error(`patch kind "${patch.kind}" not yet implemented`);
   }
