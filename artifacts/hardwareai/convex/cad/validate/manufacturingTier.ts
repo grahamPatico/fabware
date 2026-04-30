@@ -10,6 +10,7 @@ import type { Violation } from "../../plugins/types";
 import { holeEdgeDistance } from "./rules/holeEdgeDistance";
 import { minWallThickness } from "./rules/minWallThickness";
 import { boltClearance } from "./rules/boltClearance";
+import { minBendRadius } from "./rules/minBendRadius";
 
 /**
  * Validate manufacturing-tier concerns against a resolved IR.
@@ -20,5 +21,6 @@ export function validateManufacturingTier(ir: ResolvedIr): Violation[] {
     ...holeEdgeDistance(ir),
     ...minWallThickness(ir),
     ...boltClearance(ir),
+    ...minBendRadius(ir),
   ];
 }

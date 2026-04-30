@@ -166,6 +166,71 @@ describe("ShellFeature schema — Phase 5", () => {
   });
 });
 
+// ── Phase 5: BendFlangeFeature schema tests ──────────────────────────────────
+
+describe("BendFlangeFeature schema — Phase 5", () => {
+  it("accepts a valid bend_flange feature", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [
+        {
+          kind: "bend_flange",
+          id: "flange1",
+          face: { feature: "plate1", tag: "east" },
+          angle: 90,
+          radius: 1.5,
+          length: 20,
+          thickness: 2,
+        },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+
+  it("rejects a bend_flange feature missing required fields", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [
+        {
+          kind: "bend_flange",
+          id: "flange1",
+          face: { feature: "plate1", tag: "east" },
+          angle: 90,
+          // missing radius, length, thickness
+        },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).toThrow();
+  });
+
+  it("accepts bend_flange with param-ref radius", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: { bend_r: { id: "bend_r", value: 2 }, sheet_t: { id: "sheet_t", value: 1 } },
+      sketches: {},
+      features: [
+        {
+          kind: "bend_flange",
+          id: "flange1",
+          face: { feature: "plate1", tag: "top" },
+          angle: 45,
+          radius: "bend_r",
+          length: 15,
+          thickness: "sheet_t",
+        },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+});
+
 // ── Phase 3: HoleFeature sub-type schema tests ───────────────────────────────
 
 const baseHoleIr = {
