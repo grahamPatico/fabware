@@ -1,9 +1,27 @@
 // artifacts/hardwareai/convex/cad/validate/schemaTier.ts
-import type { CadIr, Feature } from "../ir/types";
+import type { CadIr, Feature, SketchConstraint } from "../ir/types";
 import type { Violation } from "../../plugins/types";
 
 function v(ruleId: string, message: string, agent: string, location?: Violation["location"]): Violation {
   return { ruleId, severity: "error", message, agentMessage: agent, location };
+}
+
+/** Collect all sketch entity ids referenced by a constraint. */
+function constraintEntityRefs(c: SketchConstraint): string[] {
+  switch (c.kind) {
+    case "coincident":
+    case "distance":
+      return [c.a.entity, c.b.entity];
+    case "parallel":
+    case "perpendicular":
+    case "tangent":
+    case "equal":
+    case "angle":
+      return [c.a, c.b];
+    case "horizontal":
+    case "vertical":
+      return [c.entity];
+  }
 }
 
 export function validateSchemaTier(ir: CadIr): Violation[] {
@@ -67,6 +85,40 @@ export function validateSchemaTier(ir: CadIr): Violation[] {
           `Reorder so "${ref}" comes before "${f.id}".`,
           { kind: "feature", id: f.id },
         ));
+      }
+    }
+  }
+
+  // ── Phase 7: Sketch Constraint checks ───────────────────────────────────────
+
+  for (const [sketchId, sketch] of Object.entries(ir.sketches)) {
+    if (!sketch.constraints || sketch.constraints.length === 0) continue;
+
+    // Build set of entity ids in this sketch
+    const entityIds = new Set(sketch.geometry.map((g) => g.id));
+
+    const seenConstraintIds = new Set<string>();
+    for (const c of sketch.constraints) {
+      // Duplicate constraint ids
+      if (seenConstraintIds.has(c.id)) {
+        out.push(v(
+          "schema.duplicate-constraint-id",
+          `Sketch "${sketchId}" has duplicate constraint id "${c.id}"`,
+          `Rename one of the constraints with id "${c.id}" in sketch "${sketchId}".`,
+        ));
+      }
+      seenConstraintIds.add(c.id);
+
+      // Collect entity ids referenced by this constraint
+      const referencedEntityIds = constraintEntityRefs(c);
+      for (const entityId of referencedEntityIds) {
+        if (!entityIds.has(entityId)) {
+          out.push(v(
+            "schema.constraint-unresolved-entity-ref",
+            `Constraint "${c.id}" in sketch "${sketchId}" references missing entity "${entityId}"`,
+            `Add entity "${entityId}" to sketch "${sketchId}", or update the constraint reference.`,
+          ));
+        }
       }
     }
   }
