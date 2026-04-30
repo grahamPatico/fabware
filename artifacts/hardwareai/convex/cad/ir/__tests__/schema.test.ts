@@ -105,6 +105,67 @@ describe("RevolveFeature schema — Phase 5", () => {
   });
 });
 
+// ── Phase 5: ShellFeature schema tests ───────────────────────────────────────
+
+describe("ShellFeature schema — Phase 5", () => {
+  it("accepts a valid shell feature", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [
+        {
+          kind: "shell",
+          id: "shell1",
+          thickness: 2,
+          removedFaces: [{ feature: "extrude_base", tag: "top" }],
+        },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+
+  it("rejects a shell feature with empty removedFaces array", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [
+        {
+          kind: "shell",
+          id: "shell1",
+          thickness: 2,
+          removedFaces: [],
+        },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).toThrow();
+  });
+
+  it("accepts shell with param-ref thickness and multiple removed faces", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: { wall_t: { id: "wall_t", value: 1.5 } },
+      sketches: {},
+      features: [
+        {
+          kind: "shell",
+          id: "shell1",
+          thickness: "wall_t",
+          removedFaces: [
+            { feature: "box1", tag: "top" },
+            { feature: "box1", tag: "bottom" },
+          ],
+        },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+});
+
 // ── Phase 3: HoleFeature sub-type schema tests ───────────────────────────────
 
 const baseHoleIr = {
