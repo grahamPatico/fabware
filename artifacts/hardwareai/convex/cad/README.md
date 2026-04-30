@@ -21,8 +21,9 @@ convex/cad/
 │   └── resolveIr.ts      — resolveIr(): evaluates all ParamRefs → ResolvedIr
 │
 ├── validate/
-│   ├── schemaTier.ts     — Tier-1: structural / schema rules (duplicate ids, missing refs, joint refs)
-│   ├── geometryTier.ts   — Tier-2 / Tier-3: geometry sanity (positive dims, etc.)
+│   ├── schemaTier.ts     — Tier-1: structural / schema rules (duplicate ids, missing refs, joint refs, constraint refs)
+│   ├── constraintTier.ts — Tier-2: sketch constraint rules (contradictions, DOF heuristic) — Phase 7
+│   ├── geometryTier.ts   — Tier-3: geometry sanity (positive dims, etc.)
 │   ├── assemblyTier.ts   — Tier-5: assembly topology rules (floating parts, over-constrained groups)
 │   └── manufacturingTier.ts — Tier-4: manufacturing rules (hole-edge-distance, …)
 │
@@ -331,6 +332,62 @@ Tests: **182 passing** (`pnpm test --run`).
 
 ---
 
+## Phase 7 scope (shipped)
+
+Phase 7 adds sketch constraint types, Tier 2 constraint validation, `add_constraint` / `remove_constraint` patch ops, and wires Tier 2 into the plugin validate pipeline.
+
+### SketchConstraint types (Phase 7 Task 1)
+
+`SketchDef` gains an optional `constraints?: SketchConstraint[]` field. `SketchConstraint` is a 9-kind discriminated union:
+
+| Kind | Fields | Operates on |
+|---|---|---|
+| `coincident` | `a: SketchPointRef, b: SketchPointRef` | entity points (start/end/center) |
+| `distance` | `a: SketchPointRef, b: SketchPointRef, distance: ParamRef` | entity points |
+| `parallel` | `a: SketchEntityRef, b: SketchEntityRef` | entity ids |
+| `perpendicular` | `a: SketchEntityRef, b: SketchEntityRef` | entity ids |
+| `tangent` | `a: SketchEntityRef, b: SketchEntityRef` | entity ids |
+| `equal` | `a: SketchEntityRef, b: SketchEntityRef` | entity ids |
+| `angle` | `a: SketchEntityRef, b: SketchEntityRef, angle: ParamRef` | entity ids |
+| `horizontal` | `entity: SketchEntityRef` | single entity id |
+| `vertical` | `entity: SketchEntityRef` | single entity id |
+
+Two new helper types: `SketchPointRef` (`{ entity, point: "start"|"end"|"center" }`) and `SketchEntityRef` (alias for `string`).
+
+### Zod schema (Phase 7 Task 2)
+
+`SketchConstraintSchema` is a `z.discriminatedUnion("kind", [...])` covering all 9 kinds. Exported from `ir/schema.ts`. `SketchDef` Zod schema updated to include `constraints: z.array(SketchConstraintSchema).optional()`.
+
+### Schema-tier constraint checks (Phase 7 Task 3)
+
+`validateSchemaTier` detects:
+- `schema.constraint-unresolved-entity-ref` — constraint references an entity id not in `sketch.geometry`
+- `schema.duplicate-constraint-id` — two constraints in the same sketch share an id
+
+### Tier 2: constraint validation (Phase 7 Task 4)
+
+`validateConstraintTier` in `validate/constraintTier.ts` detects:
+- `constraint.contradictory-axis` **(error)** — entity has both `horizontal` and `vertical` constraints (mutually exclusive)
+- `constraint.over-constrained` **(warn)** — total constraint DOF exceeds 2× entity DOF (heuristic; approximate until Phase 8 solver)
+
+### Plugin pipeline update (Phase 7 Task 5)
+
+`cadIrPlugin.validate` now runs Tier 2 between Tier 1 (schema) and Tier 5 (assembly):
+- Tier 2 **errors** short-circuit (return immediately, like Tier 1 errors)
+- Tier 2 **warnings** propagate alongside manufacturing-tier violations (agent sees both)
+
+### Patch ops (Phase 7 Task 6)
+
+`ModifySketchOp` union gains two new variants:
+- `{ kind: "add_constraint"; constraint: SketchConstraint }` — appends to `sketch.constraints` (defaults to `[]` if absent)
+- `{ kind: "remove_constraint"; constraintId: string }` — filters out the constraint by id
+
+`modify_sketch` tool schema updated with two new `oneOf` variants. `toolCallToPatch` in `specialists/cadIr.ts` handles both new cases.
+
+Tests: **≥ 279 passing** (`pnpm test --run`).
+
+---
+
 ## Phase 7+ deferrals
 
 The following remain out of scope after Phase 6 and will be addressed in later phases:
@@ -344,7 +401,7 @@ The following remain out of scope after Phase 6 and will be addressed in later p
 | **bend_flange real geometry** | Placeholder `pass` in Phase 5; full sheet-metal extension deferred |
 | **K-factor / flat-pattern DXF export** | Requires sheet-metal extension; Phase 7+ |
 | **AxisRef.kind === "edge" resolution** | Requires geometry (sandbox face/edge entities); deferred |
-| **Sketch constraint solver** | Sketch geometry is unconstrained free-form; a proper constraint solver is Phase 7+ |
+| **Sketch constraint solver** | Types + Tier 2 heuristic shipped in Phase 7; full DOF solver with over/under detection is Phase 8+ |
 | **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 7+ |
 | **Assembly interference / clearance checks** | Multi-part bounding-box / mesh overlap detection — Phase 7+ |
 | **GLB / STEP export via sandbox** | Sandbox currently produces STEP via `export_step()`; GLB transcode deferred |

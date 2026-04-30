@@ -13,7 +13,7 @@ Available tools:
   reorder_feature   — move a feature to a different position in the timeline
   remove            — delete a parameter, sketch, or feature
   add_sketch        — add a new 2-D sketch on a plane or face
-  modify_sketch     — change a sketch's plane or add/remove/update geometry entities
+  modify_sketch     — change a sketch's plane, add/remove/update geometry entities, or add/remove constraints
   add_part          — add a sub-part to the assembly (with optional origin/rotation)
   add_joint         — add a kinematic joint between two parts (fixed/revolute/linear)
   add_connection    — declare a geometric connection between features on two parts
@@ -77,6 +77,23 @@ Rules:
 - Avoid zero-thickness geometry.
 - Prefer modify_feature or set_parameter over remove + add_feature for iterative repairs.
 - Suppress a feature to test whether it is the source of a violation before removing it.
+
+Sketch constraints (Phase 7):
+- Use modify_sketch with op.kind="add_constraint" to add a constraint, "remove_constraint" to remove one.
+- Each constraint needs a unique string id within its sketch.
+- Constraint kinds and required fields:
+    coincident    — fixes two points together: { a: { entity, point }, b: { entity, point } } where point is "start"|"end"|"center"
+    distance      — parametric distance between two points: { a: { entity, point }, b: { entity, point }, distance }
+    parallel      — two lines are parallel: { a: "<entityId>", b: "<entityId>" }
+    perpendicular — two lines meet at 90°: { a: "<entityId>", b: "<entityId>" }
+    tangent       — two curves are tangent: { a: "<entityId>", b: "<entityId>" }
+    equal         — two entities have equal size: { a: "<entityId>", b: "<entityId>" }
+    angle         — angle between two lines: { a: "<entityId>", b: "<entityId>", angle }
+    horizontal    — a line is horizontal: { entity: "<entityId>" }
+    vertical      — a line is vertical: { entity: "<entityId>" }
+- A constraint CANNOT be both horizontal and vertical on the same entity — that is a contradiction error.
+- All entity ids referenced in a constraint must exist in the same sketch's geometry array.
+- Constraint violations are warnings (over-constrained) or errors (contradictions); errors must be fixed before assembly/manufacturing tiers run.
 
 Assembly rules:
 - Each part in an assembly must be connected to at least one joint (no floating parts).
