@@ -583,6 +583,14 @@ const addPart: AgentTool = {
         type: "string",
         description: "Human-readable description of the external part (optional).",
       },
+      stepUrl: {
+        type: "string",
+        format: "uri",
+        description:
+          "Optional URL to a STEP file for this external part. When present, compileAssembly() " +
+          "emits an import_step script that positions the STEP file in the assembly frame. " +
+          "The sandbox mounts the file at /in/external/<vendor>__<partNumber>.step.",
+      },
       boundingBox: {
         type: "object",
         properties: {

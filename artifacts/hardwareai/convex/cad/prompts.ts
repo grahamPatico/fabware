@@ -127,12 +127,17 @@ Assembly rules:
   To fix: adjust the origin of one part so there is a gap between them; ensure mating faces
   touch (share an edge) rather than penetrate. Touching faces (coincident surfaces) are fine.
 
-External (purchased) parts (Phase 9):
+External (purchased) parts (Phase 9 / Phase 18):
 - Use kind="external" on add_part to represent off-the-shelf or purchased components (fasteners,
   bearings, motors, connectors, etc.) that have no inline geometry.
 - Required fields: vendor (supplier name, e.g. "McMaster-Carr"), partNumber (catalog number).
 - Optional: description (human-readable label), boundingBox { width, height, depth } for interference checks.
-- External parts are excluded from build123d codegen but appear in the BOM (compileBom).
+- Optional (Phase 18): stepUrl — a URL to a STEP file for this part. When set, compileAssembly()
+  emits a Python import_step script that loads and positions the STEP file in the assembly frame.
+  The sandbox mounts the downloaded STEP at /in/external/<vendor>__<partNumber>.step (spaces and
+  slashes in vendor/partNumber are replaced with underscores). Phase 18 does not fetch the file —
+  it only emits the import script; the sandbox operator must supply the file at that path.
+  Without a stepUrl, external parts are excluded from build123d codegen but appear in the BOM.
 - Without a boundingBox, external parts are skipped in the AABB interference check — add one when
   placement accuracy matters (e.g. a bearing housing that could clash with adjacent geometry).
 - BOM aggregation: compileBom() walks the full assembly tree and groups external parts by

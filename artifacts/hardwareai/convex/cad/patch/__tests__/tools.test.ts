@@ -133,4 +133,11 @@ describe("CAD_IR_TOOLS", () => {
     const props = t.input_schema as { required: string[] };
     expect(props.required).toContain("id");
   });
+
+  // Phase 18: add_part external variant exposes stepUrl
+  it("add_part schema includes stepUrl field for external parts", () => {
+    const t = CAD_IR_TOOLS.find((t) => t.name === "add_part")!;
+    const text = JSON.stringify(t.input_schema);
+    expect(text).toContain("stepUrl");
+  });
 });
