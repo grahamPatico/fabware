@@ -1019,6 +1019,73 @@ Tests: **≥ 417 passing** (`pnpm test --run`).
 
 ---
 
+## Phase 19 scope (shipped) — final consolidation
+
+Phase 19 is a consolidation phase with no new runtime features. It adds a mega-integration smoke
+test that exercises every Phase 1–18 system in a single assembly, and records the final
+steady-state of the CAD IR module.
+
+### Mega-integration test (Task 1)
+
+`cad/__tests__/integration-final.test.ts` builds a realistic electronics enclosure assembly:
+
+| Part | Kind | Material | Process | Phase coverage |
+|---|---|---|---|---|
+| `body` | inline | aluminum | laser_cut | Phase 1/2/3/7/14 |
+| `lid` | inline | aluminum | laser_cut | Phase 1/5/14 |
+| `bracket` | inline | pla | print_3d | Phase 1/5/6/15/16 |
+| `heatsink` | inline | aluminum | cnc | Phase 1/15/17 |
+| `bearing` | external, stepUrl | — | — | Phase 9/18 |
+| `screw_0..3` | external | — | — | Phase 9/10 |
+
+Assembly features exercised:
+- Revolute hinge joint (lid ↔ body, 0–90°) + fixed joints for bracket, heatsink, bearing, screws — Phase 4/11
+- `bolt_pattern` connection (body ↔ lid) — Phase 4
+- Sketch constraints (`coincident` in body slot sketch) — Phase 7
+- `applyPatch` flow: `set_parameter` + inline modify, re-validate — Phase 2
+- All 5 validators run at error level with zero failures: `validateSchemaTier`, `validateConstraintTier`, `validateAssemblyTier`, `validateManufacturingTier` (per sub-part), `budgetExceeded`
+- All compilers asserted: `compileToBuild123d`, `compileAssembly`, `compileToUrdf`, `compileToMjcf`, `compileBom`, `compileCost`, `compileFabricationCost`, `compileMachineCost`, `hashIr` — Phase 1/4/5/6/9/10/12/13/18
+- `hashIr` determinism: same IR → same hash, mutated IR → different hash — Phase 1
+
+Tests: **418 passing** (`pnpm test --run`).
+
+---
+
+## Final state summary (Phases 1–19)
+
+The CAD IR module is feature-complete for the planned 19-phase scope.
+
+### What is implemented
+
+| Capability | Location | Phase |
+|---|---|---|
+| Parametric IR — expression resolver | `ir/`, `resolve/`, `expression/` | 1 |
+| Patch applier — immutable, schema-validated | `patch/apply.ts` | 1–2 |
+| All 15 feature kinds (extrude, cut_extrude, fillet, chamfer, hole ×4 types, pattern, revolve, shell, bend_flange, sweep, loft, weld_tab) | `ir/types.ts`, `codegen/features/` | 1/3/5/6 |
+| 6 sketch entity kinds (rect, circle, line, arc, polygon, spline) | `ir/types.ts`, `ir/schema.ts` | 1/15 |
+| 9 sketch constraint kinds | `ir/types.ts`, `validate/constraintTier.ts` | 7 |
+| 4-tier validation pipeline (schema→constraint→assembly→manufacturing) | `validate/` | 1/2/4/7/8 |
+| 10 manufacturing rules | `validate/rules/` | 1/3/5/14/16/17 |
+| Assembly types: InlinePartRef, ExternalPartRef (+ stepUrl), Joint, Connection | `ir/types.ts` | 4/9/18 |
+| AABB geometry + interference check + joint-range sweep | `geometry/`, `validate/rules/partsInterfere.ts`, `validate/rules/jointRangeCollision.ts` | 8/11 |
+| BOM compiler | `compile/bom.ts` | 9 |
+| Cost compiler (BOM + fabrication + machine) | `compile/cost.ts`, `fabricationCost.ts`, `machineCost.ts` | 10/12/13 |
+| Material catalog (6 materials) | `compile/materials.ts` | 12 |
+| Process catalog (5 processes) | `compile/processes.ts` | 13 |
+| build123d codegen (single-part + assembly + external STEP import) | `codegen/` | 1/5/18 |
+| URDF codegen | `codegen/compileToUrdf.ts` | 4 |
+| MJCF codegen | `codegen/compileToMjcf.ts` | 6 |
+| Revision hash (SHA-256, deterministic) | `revisions/hash.ts` | 1 |
+| Convex integration (schema tables, mutation, action) | `plugin.ts`, Convex tables | 1 |
+
+### Test count
+
+418 tests passing across 96 test files as of Phase 19.
+
+### Known deferrals
+
+---
+
 ## Phase 10+ deferrals
 
 The following remain out of scope after Phase 10 and will be addressed in later phases:
