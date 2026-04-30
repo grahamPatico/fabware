@@ -21,6 +21,7 @@ import { validateConstraintTier } from "./validate/constraintTier";
 import { validateAssemblyTier } from "./validate/assemblyTier";
 import { resolveIr } from "./resolve/resolveIr";
 import { validateManufacturingTier } from "./validate/manufacturingTier";
+import { budgetExceeded } from "./validate/rules/budgetExceeded";
 
 /**
  * Combined tier-1 (schema) + tier-4 (manufacturing) validate function.
@@ -53,15 +54,17 @@ function validate(ir: CadIr, _ctx: PartContext): Violation[] {
   }
 
   // Tier 4: manufacturing geometry checks (requires resolved IR)
+  // Budget rule operates on the original IR (BOM walks parts, not resolved features).
   // Tier 2 warnings are appended to manufacturing output so the agent sees them.
-  let mfgViolations: Violation[] = [];
+  let t2: Violation[] = constraintViolations;
+  let mfgAndBudget: Violation[] = [];
   try {
     const resolved = resolveIr(ir);
-    mfgViolations = validateManufacturingTier(resolved);
+    mfgAndBudget = [...validateManufacturingTier(resolved), ...budgetExceeded(ir)];
   } catch {
     // Resolution error (e.g. undefined parameter). Surface as a schema-tier
     // violation so the agent knows to fix the expression.
-    mfgViolations = [
+    mfgAndBudget = [
       {
         ruleId: "schema.resolution-error",
         severity: "error",
@@ -72,7 +75,7 @@ function validate(ir: CadIr, _ctx: PartContext): Violation[] {
     ];
   }
 
-  return [...constraintViolations, ...mfgViolations];
+  return [...t2, ...mfgAndBudget];
 }
 
 export const cadIrPlugin: ProcessPlugin<CadIr> = {
