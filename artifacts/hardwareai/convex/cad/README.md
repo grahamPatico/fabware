@@ -36,6 +36,10 @@ convex/cad/
 │       ├── minWallThickness.ts  — mfg.min-wall-thickness
 │       ├── boltClearance.ts          — mfg.bolt-clearance
 │       ├── minBendRadius.ts          — mfg.min-bend-radius
+│       ├── laserCutMinHole.ts        — mfg.laser-cut-min-hole (Phase 14)
+│       ├── laserCutMinSlot.ts        — mfg.laser-cut-min-slot (Phase 14)
+│       ├── print3dMinWall.ts         — mfg.print-3d-min-wall (Phase 16)
+│       ├── print3dBedSize.ts         — mfg.print-3d-bed-size (Phase 16)
 │       ├── partsInterfere.ts         — assembly.parts-interfere (Phase 8)
 │       └── jointRangeCollision.ts    — assembly.joint-range-collision (Phase 11)
 │
@@ -843,6 +847,62 @@ New shared helper `codegen/emitSketchGeometry.ts` replaces the duplicated switch
 | `patch/__tests__/tools.test.ts` | 1 (add_sketch schema includes arc/polygon/spline) |
 
 Tests: **≥ 392 passing** (`pnpm test --run`).
+
+---
+
+## Phase 16 scope (shipped)
+
+Phase 16 adds two 3-D printing manufacturing rules and wires them into `validateManufacturingTier`.
+
+### `validate/rules/print3dMinWall.ts` — `print3dMinWall` (Task 1)
+
+Rule `mfg.print-3d-min-wall`: for 3-D printed parts, every non-suppressed extrude feature's
+`distance` must be ≥ the minimum printable wall thickness for the chosen material.
+
+Per-material minimums:
+
+| Material key | Min wall (mm) | Rationale |
+|---|---|---|
+| `pla` | 1.2 | Standard 0.4 mm nozzle, 3-wall shell |
+| `abs` | 1.5 | Warping; thicker walls improve dimensional stability |
+| `nylon` | 1.0 | Flexible; achievable with fine nozzles |
+| `resin` | 0.5 | SLA/DLP high resolution |
+| (other) | 1.2 | Safe fallback matching PLA |
+
+- Only fires when `original.process === "print_3d"`.
+- Severity: `"error"`.
+- Location kind: `"feature"`.
+
+### `validate/rules/print3dBedSize.ts` — `print3dBedSize` (Task 2)
+
+Rule `mfg.print-3d-bed-size`: for 3-D printed parts, warns when the part's AABB exceeds
+the standard FDM print bed (220 × 220 × 250 mm).
+
+- AABB is computed via `computePartBbox(original)` from Phase 8 — handles null (empty parts).
+- Only fires when `original.process === "print_3d"`.
+- Severity: `"warn"` (larger machines and model-splitting are valid workarounds).
+- Location kind: `"part"`, id `"root"`.
+
+### Composition into `validateManufacturingTier` (Task 3)
+
+Both rules wired into `validateManufacturingTier(resolved, original)` via spread:
+```ts
+...print3dMinWall(resolved, original),
+...print3dBedSize(resolved, original),
+```
+
+### Tests (Tasks 1 + 2)
+
+| File | Tests |
+|---|---|
+| `validate/__tests__/rules-print3dMinWall.test.ts` | 4 tests (fires for pla < 1.2mm, boundary passes, abs uses 1.5mm threshold, inactive for other processes) |
+| `validate/__tests__/rules-print3dBedSize.test.ts` | 4 tests (fires when X exceeds bed, fires when Z exceeds bed, fits within bed passes, inactive for other processes) |
+
+### Prompts + README (Task 3)
+
+`prompts.ts` updated with Phase 16 3-D printing geometry rules section. README updated with Phase 16 scope.
+
+Tests: **≥ 399 passing** (`pnpm test --run`).
 
 ---
 

@@ -228,6 +228,28 @@ Laser-cut and sheet-metal geometry rules (Phase 14):
     - Fix: widen the slot sketch (increase the smaller rect dimension or the circle
       radius) so that min(width, height) ≥ sheet thickness.
 
+3-D printing geometry rules (Phase 16):
+- These rules fire only when process is "print_3d".
+
+  mfg.print-3d-min-wall (error): extrude thickness must be ≥ material minimum wall thickness.
+    - Per-material minimums:
+        pla    — 1.2 mm  (standard 0.4 mm nozzle, 3-wall shell)
+        abs    — 1.5 mm  (ABS warps; thicker walls improve dimensional stability)
+        nylon  — 1.0 mm  (flexible; achievable with fine nozzles)
+        resin  — 0.5 mm  (SLA/DLP resin; high resolution)
+        other  — 1.2 mm  (safe fallback matching PLA)
+    - Applies to every non-suppressed extrude feature.
+    - Fix: increase the extrude distance to at least the material minimum, or switch to a
+      material with a lower minimum (e.g. resin instead of abs).
+
+  mfg.print-3d-bed-size (warn): part AABB must fit within 220×220×250 mm.
+    - The standard FDM print bed is 220×220 mm (X×Y) with a maximum build height of 250 mm.
+    - AABB is computed from extrude and revolve features (conservative estimate).
+    - Severity is "warn" (not "error") — larger parts are printable on bigger machines or
+      by splitting the model, but the user should be informed.
+    - Fix: scale the part down, split it into printable sub-parts and join with hardware,
+      or specify a larger-format printer (which removes this constraint).
+
 If a validation report says a feature failed, propose ONE patch (the smallest possible)
 to fix it. Prefer set_parameter over rewriting features.
 `;

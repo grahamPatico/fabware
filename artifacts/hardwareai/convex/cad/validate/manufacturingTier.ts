@@ -14,6 +14,8 @@ import { boltClearance } from "./rules/boltClearance";
 import { minBendRadius } from "./rules/minBendRadius";
 import { laserCutMinHole } from "./rules/laserCutMinHole";
 import { laserCutMinSlot } from "./rules/laserCutMinSlot";
+import { print3dMinWall } from "./rules/print3dMinWall";
+import { print3dBedSize } from "./rules/print3dBedSize";
 
 /**
  * Validate manufacturing-tier concerns against a resolved IR.
@@ -35,5 +37,7 @@ export function validateManufacturingTier(
     ...minBendRadius(resolved),
     ...laserCutMinHole(resolved, original),
     ...laserCutMinSlot(resolved, original),
+    ...print3dMinWall(resolved, original),
+    ...print3dBedSize(resolved, original),
   ];
 }
