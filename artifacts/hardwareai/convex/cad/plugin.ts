@@ -64,7 +64,7 @@ export const cadIrPlugin: ProcessPlugin<CadIr> = {
   // The specialist forks on `part.useCadIr` to route to the CAD IR pipeline.
   kind: "sheet_metal",
 
-  dslSchema: CadIrSchema,
+  dslSchema: CadIrSchema as import("zod/v4").ZodType<CadIr>,
 
   tools: CAD_IR_TOOLS,
   systemPromptFragment: cadIrSystemPromptFragment,

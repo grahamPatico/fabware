@@ -117,15 +117,64 @@ export const FeatureSchema = z.discriminatedUnion("kind", [
   HoleFeature, PatternFeature,
 ]);
 
-export const CadIrSchema = z.object({
-  schemaVersion: z.literal(1),
-  units: z.enum(["mm", "in"]),
-  parameters: z.record(Snake, ParameterDef),
-  sketches: z.record(Snake, SketchDef),
-  features: z.array(FeatureSchema),
-  entities: z.object({
-    faces: z.record(z.string(), z.object({ feature: Snake, tag: z.string(), topologyHash: z.string() })),
-    edges: z.record(z.string(), z.object({ feature: Snake, tag: z.string(), topologyHash: z.string() })),
-    vertices: z.record(z.string(), z.object({ feature: Snake, tag: z.string() })),
+// ── Phase 4: Assembly schemas ────────────────────────────────────────────────
+
+// CadIrSchema is self-referential through PartRef.ir. To break the TS cycle
+// we annotate CadIrSchema as z.ZodType<unknown> and use z.lazy() for PartRef.
+// Callers that need a typed CadIr use `as CadIr` at the parse boundary.
+
+export const CadIrSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.object({
+    schemaVersion: z.literal(1),
+    units: z.enum(["mm", "in"]),
+    parameters: z.record(Snake, ParameterDef),
+    sketches: z.record(Snake, SketchDef),
+    features: z.array(FeatureSchema),
+    entities: z.object({
+      faces: z.record(z.string(), z.object({ feature: Snake, tag: z.string(), topologyHash: z.string() })),
+      edges: z.record(z.string(), z.object({ feature: Snake, tag: z.string(), topologyHash: z.string() })),
+      vertices: z.record(z.string(), z.object({ feature: Snake, tag: z.string() })),
+    }).optional(),
+    // Phase 4 assembly fields (optional)
+    parts: z.record(Snake, PartRefSchema).optional(),
+    joints: z.record(Snake, JointSchema).optional(),
+    connections: z.array(ConnectionSchema).optional(),
+  })
+);
+
+// PartRef references CadIrSchema recursively — must use z.lazy
+const PartRefSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.object({
+    id: Snake,
+    ir: CadIrSchema,
+    origin: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
+    rotation: z.object({ rx: z.number(), ry: z.number(), rz: z.number() }).optional(),
+  })
+);
+
+const AxisRefSchema = z.union([
+  z.object({ kind: z.literal("standard"), axis: z.enum(["x", "y", "z"]) }),
+  z.object({ kind: z.literal("edge"), part: Snake, feature: Snake, query: EdgeQuery }),
+]);
+
+const JointSchema = z.object({
+  id: Snake,
+  parent: Snake,
+  child: Snake,
+  type: z.enum(["fixed", "revolute", "linear"]),
+  axis: AxisRefSchema.optional(),
+  limits: z.object({
+    lower: z.number(),
+    upper: z.number(),
+    unit: z.enum(["deg", "rad", "mm", "in"]),
   }).optional(),
+  origin: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
+});
+
+const ConnectionSchema = z.object({
+  partA: Snake,
+  featureA: Snake,
+  partB: Snake,
+  featureB: Snake,
+  type: z.enum(["face_mate", "bolt_pattern", "snap_fit"]),
 });
