@@ -365,6 +365,36 @@ describe("CadIr process field — Phase 13", () => {
   });
 });
 
+// ── Phase 17: cncToolDiameter field schema tests ─────────────────────────────
+
+describe("CadIr.cncToolDiameter field — Phase 17", () => {
+  it("accepts a valid cncToolDiameter (positive, ≤ 50)", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [],
+      process: "cnc",
+      cncToolDiameter: 6.35,
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+
+  it("rejects cncToolDiameter > 50", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [],
+      process: "cnc",
+      cncToolDiameter: 51,
+    };
+    expect(() => CadIrSchema.parse(ir)).toThrow();
+  });
+});
+
 // ── Phase 3: HoleFeature sub-type schema tests ───────────────────────────────
 
 const baseHoleIr = {

@@ -247,6 +247,13 @@ export interface CadIr {
    * Defaults to "none" (no machine cost) when absent.
    */
   process?: import("../compile/processes").ProcessName;
+  /**
+   * Phase 17: optional CNC end-mill tool diameter in mm.
+   * Used by CNC-specific geometry rules (mfg.cnc-min-internal-corner,
+   * mfg.cnc-pocket-too-deep). Must be positive and ≤ 50 mm.
+   * Defaults to 6.35 mm (1/4" end mill) when absent and process === "cnc".
+   */
+  cncToolDiameter?: number;
 }
 
 // ── Phase 4 / Phase 9: Assembly types ───────────────────────────────────────

@@ -230,6 +230,8 @@ export const CadIrSchema: z.ZodType<unknown> = z.lazy(() =>
     material: z.string().min(1).optional(),
     // Phase 13: optional manufacturing process for machine-cost estimation
     process: z.enum(["laser_cut", "cnc", "print_3d", "sheet_metal_bend", "none"]).optional(),
+    // Phase 17: optional CNC end-mill tool diameter in mm (positive, ≤ 50)
+    cncToolDiameter: z.number().positive().max(50).optional(),
   })
 );
 
