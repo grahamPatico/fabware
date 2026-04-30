@@ -10,6 +10,7 @@ export default defineConfig({
       "convex/plugins/**/*.test.ts",
       "convex/orchestrator/**/*.test.ts",
       "convex/specialists/**/*.test.ts",
+      "convex/cad/**/*.test.ts",
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
     ],
