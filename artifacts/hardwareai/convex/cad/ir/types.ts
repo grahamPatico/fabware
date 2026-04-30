@@ -220,6 +220,13 @@ export interface CadIr {
    * Defaults to "aluminum" (6061) when absent.
    */
   material?: string;
+  /**
+   * Phase 13: optional manufacturing process for machine-cost estimation.
+   * Must be a ProcessName from BUILTIN_PROCESSES, e.g. "laser_cut", "cnc",
+   * "print_3d", "sheet_metal_bend", or "none".
+   * Defaults to "none" (no machine cost) when absent.
+   */
+  process?: import("../compile/processes").ProcessName;
 }
 
 // ── Phase 4 / Phase 9: Assembly types ───────────────────────────────────────

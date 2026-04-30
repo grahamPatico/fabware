@@ -337,6 +337,34 @@ describe("WeldTabFeature schema — Phase 6", () => {
   });
 });
 
+// ── Phase 13: process field schema tests ────────────────────────────────────
+
+describe("CadIr process field — Phase 13", () => {
+  it("accepts a valid process value 'laser_cut'", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [],
+      process: "laser_cut",
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+
+  it("rejects an invalid process value", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [],
+      process: "plasma_cut", // not in the enum
+    };
+    expect(() => CadIrSchema.parse(ir)).toThrow();
+  });
+});
+
 // ── Phase 3: HoleFeature sub-type schema tests ───────────────────────────────
 
 const baseHoleIr = {

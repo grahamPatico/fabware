@@ -218,6 +218,8 @@ export const CadIrSchema: z.ZodType<unknown> = z.lazy(() =>
     budget: z.number().positive().optional(),
     // Phase 12: optional material key for fabrication-cost estimation
     material: z.string().min(1).optional(),
+    // Phase 13: optional manufacturing process for machine-cost estimation
+    process: z.enum(["laser_cut", "cnc", "print_3d", "sheet_metal_bend", "none"]).optional(),
   })
 );
 
