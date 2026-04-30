@@ -314,6 +314,117 @@ const modifySketch: AgentTool = {
   },
 };
 
+// ── Phase 4: Assembly tools ──────────────────────────────────────────────────
+
+const addPart: AgentTool = {
+  name: "add_part",
+  description:
+    "Add a sub-part to the assembly. Each part has a unique snake_case id and an inline CadIr that defines its geometry. Optionally supply origin (x/y/z translation in assembly units) and rotation (rx/ry/rz Euler angles in degrees).",
+  input_schema: {
+    type: "object",
+    properties: {
+      id: { type: "string", pattern: SNAKE_PATTERN, description: "unique snake_case part id" },
+      ir: {
+        type: "object",
+        description: "Inline CadIr for the sub-part. Must have schemaVersion, units, parameters, sketches, features.",
+        additionalProperties: true,
+      },
+      origin: {
+        type: "object",
+        properties: {
+          x: { type: "number" },
+          y: { type: "number" },
+          z: { type: "number" },
+        },
+        required: ["x", "y", "z"],
+      },
+      rotation: {
+        type: "object",
+        properties: {
+          rx: { type: "number", description: "rotation about X axis (degrees)" },
+          ry: { type: "number", description: "rotation about Y axis (degrees)" },
+          rz: { type: "number", description: "rotation about Z axis (degrees)" },
+        },
+        required: ["rx", "ry", "rz"],
+      },
+    },
+    required: ["id", "ir"],
+  },
+};
+
+const addJoint: AgentTool = {
+  name: "add_joint",
+  description:
+    "Add a kinematic joint between two parts in the assembly. Types: fixed (rigid), revolute (rotation), linear (prismatic translation). Supply axis and limits for non-fixed joints.",
+  input_schema: {
+    type: "object",
+    properties: {
+      id: { type: "string", pattern: SNAKE_PATTERN, description: "unique snake_case joint id" },
+      parent: { type: "string", pattern: SNAKE_PATTERN, description: "parent part id" },
+      child: { type: "string", pattern: SNAKE_PATTERN, description: "child part id" },
+      type: { type: "string", enum: ["fixed", "revolute", "linear"] },
+      axis: {
+        oneOf: [
+          {
+            type: "object",
+            properties: {
+              kind: { const: "standard" },
+              axis: { type: "string", enum: ["x", "y", "z"] },
+            },
+            required: ["kind", "axis"],
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "edge" },
+              part: { type: "string", pattern: SNAKE_PATTERN },
+              feature: { type: "string", pattern: SNAKE_PATTERN },
+              query: { type: "string" },
+            },
+            required: ["kind", "part", "feature", "query"],
+          },
+        ],
+      },
+      limits: {
+        type: "object",
+        properties: {
+          lower: { type: "number" },
+          upper: { type: "number" },
+          unit: { type: "string", enum: ["deg", "rad", "mm", "in"] },
+        },
+        required: ["lower", "upper", "unit"],
+      },
+      origin: {
+        type: "object",
+        properties: {
+          x: { type: "number" },
+          y: { type: "number" },
+          z: { type: "number" },
+        },
+        required: ["x", "y", "z"],
+      },
+    },
+    required: ["id", "parent", "child", "type"],
+  },
+};
+
+const addConnection: AgentTool = {
+  name: "add_connection",
+  description:
+    "Declare a geometric/interface connection between two features on different parts. Types: face_mate (mating planar faces), bolt_pattern (bolted joint), snap_fit (snap-fit interface).",
+  input_schema: {
+    type: "object",
+    properties: {
+      partA: { type: "string", pattern: SNAKE_PATTERN },
+      featureA: { type: "string", pattern: SNAKE_PATTERN },
+      partB: { type: "string", pattern: SNAKE_PATTERN },
+      featureB: { type: "string", pattern: SNAKE_PATTERN },
+      type: { type: "string", enum: ["face_mate", "bolt_pattern", "snap_fit"] },
+    },
+    required: ["partA", "featureA", "partB", "featureB", "type"],
+  },
+};
+
 export const CAD_IR_TOOLS: AgentTool[] = [
   setParameter,
   addFeature,
@@ -324,4 +435,8 @@ export const CAD_IR_TOOLS: AgentTool[] = [
   remove,
   addSketch,
   modifySketch,
+  // Phase 4: assembly tools
+  addPart,
+  addJoint,
+  addConnection,
 ];

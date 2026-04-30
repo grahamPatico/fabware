@@ -12,10 +12,14 @@ const ALL_TOOL_NAMES = [
   "remove",
   "add_sketch",
   "modify_sketch",
+  // Phase 4 assembly tools
+  "add_part",
+  "add_joint",
+  "add_connection",
 ];
 
 describe("CAD_IR_TOOLS", () => {
-  it("exports exactly 9 tools covering all CAD IR operations", () => {
+  it("exports exactly 12 tools covering all CAD IR operations", () => {
     const names = CAD_IR_TOOLS.map((t) => t.name).sort();
     expect(names).toEqual([...ALL_TOOL_NAMES].sort());
   });
