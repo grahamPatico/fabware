@@ -17,6 +17,7 @@ import { CadIrSchema } from "./ir/schema";
 import { CAD_IR_TOOLS } from "./patch/tools";
 import { cadIrSystemPromptFragment } from "./prompts";
 import { validateSchemaTier } from "./validate/schemaTier";
+import { validateAssemblyTier } from "./validate/assemblyTier";
 import { resolveIr } from "./resolve/resolveIr";
 import { validateManufacturingTier } from "./validate/manufacturingTier";
 
@@ -33,8 +34,14 @@ function validate(ir: CadIr, _ctx: PartContext): Violation[] {
   const schemaViolations = validateSchemaTier(ir);
   if (schemaViolations.length > 0) {
     // Don't attempt resolution when the IR has structural errors;
-    // tier-4 results would be unreliable.
+    // later tier results would be unreliable.
     return schemaViolations;
+  }
+
+  // Tier 5: assembly topology checks (floating parts, over-constrained groups)
+  const assemblyViolations = validateAssemblyTier(ir);
+  if (assemblyViolations.length > 0) {
+    return assemblyViolations;
   }
 
   // Tier 4: manufacturing geometry checks (requires resolved IR)
