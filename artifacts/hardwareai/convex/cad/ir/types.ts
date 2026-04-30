@@ -78,13 +78,30 @@ export interface ChamferFeature extends BaseFeature {
   distance: ParamRef;
 }
 
+export interface CounterSinkSpec {
+  angle: ParamRef;   // included angle in degrees, e.g. 82 or 90
+  diameter: ParamRef; // outer (large) diameter of the countersink
+}
+
+export interface CounterBoreSpec {
+  diameter: ParamRef; // counterbore diameter (> hole diameter)
+  depth: ParamRef;    // counterbore depth
+}
+
+export interface ThreadSpec {
+  spec: string; // e.g. "M6x1.0", "1/4-20"
+}
+
 export interface HoleFeature extends BaseFeature {
   kind: "hole";
   face: FaceRef;
   positions: Point2D[];
   diameter: ParamRef;
   depth?: ParamRef;
-  type: "simple"; // countersink/counterbore/threaded come in Phase 3
+  type: "simple" | "countersink" | "counterbore" | "threaded";
+  countersink?: CounterSinkSpec;
+  counterbore?: CounterBoreSpec;
+  thread?: ThreadSpec;
 }
 
 export interface PatternFeature extends BaseFeature {
