@@ -19,7 +19,7 @@ import type { Id } from "../_generated/dataModel";
 import { cadIrPlugin } from "../cad/plugin";
 import { applyPatch } from "../cad/patch/apply";
 import type { Patch } from "../cad/patch/types";
-import type { CadIr, Feature, SketchDef, SketchEntity } from "../cad/ir/types";
+import type { CadIr, Feature, SketchDef, SketchEntity, PartRef, Joint, Connection } from "../cad/ir/types";
 import type { ParameterDef } from "../cad/ir/types";
 import { emptyIr } from "../cad/ir/empty";
 import { compileToBuild123d } from "../cad/codegen/compileToBuild123d";
@@ -130,6 +130,56 @@ function toolCallToPatch(tool: { name: string; input: unknown }): Patch | null {
       default:
         return null;
     }
+  }
+
+  // ── Phase 4: Assembly tool dispatchers ──────────────────────────────────────
+
+  if (tool.name === "add_part") {
+    if (typeof inp?.id !== "string" || !inp?.ir || typeof inp.ir !== "object") return null;
+    const part: PartRef = {
+      id: inp.id,
+      ir: inp.ir as CadIr,
+      origin: inp.origin as PartRef["origin"],
+      rotation: inp.rotation as PartRef["rotation"],
+    };
+    return { kind: "add_part", part };
+  }
+
+  if (tool.name === "add_joint") {
+    if (
+      typeof inp?.id !== "string" ||
+      typeof inp?.parent !== "string" ||
+      typeof inp?.child !== "string" ||
+      typeof inp?.type !== "string"
+    ) return null;
+    const joint: Joint = {
+      id: inp.id,
+      parent: inp.parent,
+      child: inp.child,
+      type: inp.type as Joint["type"],
+      axis: inp.axis as Joint["axis"],
+      limits: inp.limits as Joint["limits"],
+      origin: inp.origin as Joint["origin"],
+    };
+    return { kind: "add_joint", joint };
+  }
+
+  if (tool.name === "add_connection") {
+    if (
+      typeof inp?.partA !== "string" ||
+      typeof inp?.featureA !== "string" ||
+      typeof inp?.partB !== "string" ||
+      typeof inp?.featureB !== "string" ||
+      typeof inp?.type !== "string"
+    ) return null;
+    const connection: Connection = {
+      partA: inp.partA,
+      featureA: inp.featureA,
+      partB: inp.partB,
+      featureB: inp.featureB,
+      type: inp.type as Connection["type"],
+    };
+    return { kind: "add_connection", connection };
   }
 
   return null;
