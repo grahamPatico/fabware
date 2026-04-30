@@ -1,6 +1,6 @@
 # `convex/cad` — CAD Intermediate Representation Module
 
-Phase 3 implementation of the CAD IR pipeline for Fabware hardware-AI.
+Phase 4 implementation of the CAD IR pipeline for Fabware hardware-AI.
 
 ---
 
@@ -21,8 +21,9 @@ convex/cad/
 │   └── resolveIr.ts      — resolveIr(): evaluates all ParamRefs → ResolvedIr
 │
 ├── validate/
-│   ├── schemaTier.ts     — Tier-1: structural / schema rules (duplicate ids, missing refs)
+│   ├── schemaTier.ts     — Tier-1: structural / schema rules (duplicate ids, missing refs, joint refs)
 │   ├── geometryTier.ts   — Tier-2 / Tier-3: geometry sanity (positive dims, etc.)
+│   ├── assemblyTier.ts   — Tier-5: assembly topology rules (floating parts, over-constrained groups)
 │   └── manufacturingTier.ts — Tier-4: manufacturing rules (hole-edge-distance, …)
 │
 ├── patch/
@@ -32,6 +33,7 @@ convex/cad/
 │
 ├── codegen/
 │   ├── compileToBuild123d.ts — Compiles ResolvedIr → build123d Python script
+│   ├── compileToUrdf.ts      — Compiles CadIr assembly → URDF XML string
 │   ├── emitParameters.ts     — Parameter variable declarations
 │   ├── emitFeature.ts        — Dispatches to per-kind emitters
 │   └── features/
@@ -49,8 +51,8 @@ convex/cad/
 ├── revisions/
 │   └── hash.ts           — Deterministic revision hash for CadIr snapshots
 │
-├── plugin.ts             — cadIrPlugin: validates CadIr via all four tiers
-└── prompts.ts            — System prompt fragment for the CAD IR specialist agent
+├── plugin.ts             — cadIrPlugin: validates CadIr via schema, assembly, and manufacturing tiers
+└── prompts.ts            — System prompt fragment for the CAD IR specialist agent (includes assembly rules)
 ```
 
 ---
@@ -117,11 +119,74 @@ Wired into `validateManufacturingTier()` alongside `holeEdgeDistance` and `minWa
 
 System prompt updated to explain all 4 hole types, required sub-objects, and the `mfg.bolt-clearance` constraint.
 
-Tests: **≥ 199 passing** (`pnpm test --run`).
+Tests: **≥ 221 passing** (`pnpm test --run`).
 
 ---
 
-## Phase 2 scope (shipped)
+## Phase 4 scope (shipped)
+
+Phase 4 adds multi-part assembly support to the CAD IR pipeline.
+
+### Assembly types (Phase 4 Task 1)
+
+`CadIr` gains three optional fields: `parts`, `joints`, `connections`.
+
+| Type | Description |
+|---|---|
+| `PartRef` | A sub-part placed in an assembly: `{ id, ir, origin?, rotation? }`. `ir` is a nested `CadIr`. |
+| `Joint` | Kinematic connection: `{ id, parent, child, type, axis?, limits?, origin? }`. Types: `fixed`, `revolute`, `linear`. |
+| `Connection` | Geometric/interface mating: `{ partA, featureA, partB, featureB, type }`. Types: `face_mate`, `bolt_pattern`, `snap_fit`. |
+| `AxisRef` | Either `{ kind: "standard", axis: "x"/"y"/"z" }` or `{ kind: "edge", ... }` (requires geometry). |
+
+### Zod schemas with `z.lazy` (Phase 4 Task 2)
+
+`CadIrSchema` is now wrapped in `z.lazy()` to support recursive `PartRef.ir` references. Annotated as `ZodType<unknown>` at the boundary; callers use `as CadIr` casts.
+
+### Schema-tier checks (Phase 4 Task 3)
+
+`validateSchemaTier` detects:
+- `schema.joint-missing-part` — joint parent/child references an unknown part id
+- `schema.duplicate-joint-id` — two joints share the same id
+- `schema.connection-missing-part` — connection references an unknown part id
+
+### Tier 5: assembly validator (Phase 4 Task 4)
+
+`validateAssemblyTier` in `validate/assemblyTier.ts` detects:
+- `assembly.floating-part` — a part in a multi-part assembly has no joints
+- `assembly.over-constrained-rigid-group` — a cycle of fixed joints over-constrains a rigid group (detected via Union-Find)
+
+Wired into `cadIrPlugin.validate` between schema-tier and manufacturing-tier.
+
+### URDF compiler (Phase 4 Task 5)
+
+`compileToUrdf(ir, robotName)` in `codegen/compileToUrdf.ts` emits URDF XML:
+- Each `parts` entry → `<link name="..."/>`
+- Each `joints` entry → `<joint type="...">` with `<parent>`, `<child>`, `<origin>`, `<axis>`, `<limit>`
+- Unit conversions: mm→m (÷1000), in→m (×0.0254), deg→rad (×π/180)
+- `AxisRef.kind === "edge"` defaults to `0 0 1` (geometry resolution not yet available)
+
+### 3 new patch types + applier (Phase 4 Tasks 6–7)
+
+| Patch | Description |
+|---|---|
+| `add_part` | Adds a `PartRef` to `ir.parts[id]` |
+| `add_joint` | Appends a `Joint` to `ir.joints[id]`; schema-tier catches missing part refs |
+| `add_connection` | Appends a `Connection` to `ir.connections[]` |
+
+### 3 new tools (Phase 4 Tasks 8–9)
+
+`CAD_IR_TOOLS` now exports **12 tools** (was 9). New tools: `add_part`, `add_joint`, `add_connection`. Wired into `toolCallToPatch` in the specialist.
+
+### Hinged-box integration test (Phase 4 Task 11)
+
+`cad/__tests__/assembly-mock.test.ts` proves:
+1. Adding parts before joints yields `assembly.floating-part` violations for both parts.
+2. Adding a revolute hinge joint resolves both violations.
+3. `compileToUrdf` produces correct URDF with `<link>` elements, revolute `<joint>`, axis, and converted limits/origin.
+
+---
+
+## Phase 3 scope (shipped)
 
 Phase 2 extended the CAD IR pipeline with richer patch coverage, manufacturing rule decomposition, and a harder integration test:
 
@@ -167,20 +232,21 @@ Tests: **182 passing** (`pnpm test --run`).
 
 ---
 
-## Phase 4+ deferrals
+## Phase 5+ deferrals
 
-The following remain out of scope after Phase 3 and will be addressed in later phases:
+The following remain out of scope after Phase 4 and will be addressed in later phases:
 
 | Feature | Notes |
 |---|---|
 | **Threaded / countersink / counterbore holes** | ✅ Shipped in Phase 3 |
+| **Multi-part assembly joints + URDF** | ✅ Shipped in Phase 4 |
 | **Sheet-metal IR** — bends, K-factor, flat-pattern | Separate IR subtree; out of scope for solid-body phases |
-| **Multi-body / assembly joints** | `JointId` type exists; assembly features deferred |
-| **Sketch constraint solver** | Sketch geometry is unconstrained free-form in Phase 1–2; a proper constraint solver is Phase 3+ |
-| **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 3+ |
-| **Assembly graph** | Multi-part mating / interference checks — Phase 3+ |
+| **AxisRef.kind === "edge" resolution** | Requires geometry (sandbox face/edge entities); deferred |
+| **Sketch constraint solver** | Sketch geometry is unconstrained free-form; a proper constraint solver is Phase 5+ |
+| **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 5+ |
+| **Assembly interference / clearance checks** | Multi-part bounding-box / mesh overlap detection — Phase 5+ |
 | **GLB / STEP export via sandbox** | Sandbox currently produces STEP via `export_step()`; GLB transcode deferred |
 | **Streaming codegen** | Single-pass string builder today; chunked/streamed output for large IRs deferred |
-| **AI-driven repair loop (production)** | Phase 2 has a mock multitool repair loop; real Claude-powered production loop is Phase 3+ |
-| **Convex file storage for build artifacts** | Future phase will store STEP/GLB in Convex file storage and link to `cadIrRevisions` |
+| **AI-driven repair loop (production)** | Mock repair loops tested; real Claude-powered production loop is Phase 5+ |
+| **Convex file storage for build artifacts** | Future phase will store STEP/GLB in Convex file storage |
 | **Version diffing / merge** | Revision hashes exist; structural diff / 3-way merge deferred |

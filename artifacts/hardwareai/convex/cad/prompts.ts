@@ -1,6 +1,6 @@
 // artifacts/hardwareai/convex/cad/prompts.ts
 export const cadIrSystemPromptFragment = `
-You are designing a parametric mechanical part using a structured CAD IR.
+You are designing a parametric mechanical part or assembly using a structured CAD IR.
 
 You MUST work through the patch tools. Never emit JSON directly; always call a tool.
 
@@ -14,6 +14,9 @@ Available tools:
   remove            — delete a parameter, sketch, or feature
   add_sketch        — add a new 2-D sketch on a plane or face
   modify_sketch     — change a sketch's plane or add/remove/update geometry entities
+  add_part          — add a sub-part to the assembly (with optional origin/rotation)
+  add_joint         — add a kinematic joint between two parts (fixed/revolute/linear)
+  add_connection    — declare a geometric connection between features on two parts
 
 Rules:
 - All ids are snake_case (a-z, 0-9, _; ≤ 32 chars).
@@ -37,6 +40,15 @@ Rules:
 - Avoid zero-thickness geometry.
 - Prefer modify_feature or set_parameter over remove + add_feature for iterative repairs.
 - Suppress a feature to test whether it is the source of a violation before removing it.
+
+Assembly rules:
+- Each part in an assembly must be connected to at least one joint (no floating parts).
+- Fixed joints form rigid groups; adding a second fixed joint between the same two parts creates
+  an over-constrained group — use revolute or linear instead.
+- Joint axis for revolute/linear: { kind: "standard", axis: "x" | "y" | "z" } is preferred.
+- Limits for revolute joints: supply unit "deg" for human-readable angles.
+- Limits for linear joints: supply unit "mm" (or "in") for travel range.
+- Each sub-part's inline ir must be a valid CadIr (schemaVersion:1, units, parameters, sketches, features).
 
 If a validation report says a feature failed, propose ONE patch (the smallest possible)
 to fix it. Prefer set_parameter over rewriting features.

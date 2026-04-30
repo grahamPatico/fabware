@@ -58,9 +58,10 @@ describe("cadIrPlugin", () => {
     expect(cadIrPlugin.kind).toBe("sheet_metal");
   });
 
-  it("exposes all 9 patch tools", () => {
+  it("exposes all 12 patch tools", () => {
     expect(cadIrPlugin.tools.map(t => t.name).sort()).toEqual([
-      "add_feature", "add_sketch", "modify_feature", "modify_sketch",
+      "add_connection", "add_feature", "add_joint", "add_part",
+      "add_sketch", "modify_feature", "modify_sketch",
       "remove", "reorder_feature", "set_parameter", "suppress", "unsuppress",
     ]);
   });
