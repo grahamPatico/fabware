@@ -210,18 +210,43 @@ export interface CadIr {
   connections?: Connection[];
 }
 
-// ── Phase 4: Assembly types ──────────────────────────────────────────────────
+// ── Phase 4 / Phase 9: Assembly types ───────────────────────────────────────
 
-/** Reference to a child part sub-assembly placed in an assembly. */
-export interface PartRef {
+/**
+ * Inline part reference — the geometry is defined by a nested CadIr.
+ * `kind` is optional for backward compatibility with Phase 4 IRs that omit it.
+ */
+export interface InlinePartRef {
   id: PartId;
+  kind?: "inline";
   /** Inline CadIr for the sub-part. Recursive — assembles from IRs all the way down. */
   ir: CadIr;
   /** Translation offset of the part origin in the assembly frame (in assembly units). */
-  origin?: { x: number; y: number; z: number };
+  origin?: { x: ParamRef; y: ParamRef; z: ParamRef };
   /** Euler rotation of the part in the assembly frame (degrees: rx, ry, rz). */
-  rotation?: { rx: number; ry: number; rz: number };
+  rotation?: { rx: ParamRef; ry: ParamRef; rz: ParamRef };
 }
+
+/**
+ * External (purchased/off-the-shelf) part reference — no inline geometry;
+ * identified by vendor + part number for BOM aggregation.
+ */
+export interface ExternalPartRef {
+  id: PartId;
+  kind: "external";
+  vendor: string;
+  partNumber: string;
+  description?: string;
+  /** Translation offset of the part origin in the assembly frame (in assembly units). */
+  origin?: { x: ParamRef; y: ParamRef; z: ParamRef };
+  /** Euler rotation of the part in the assembly frame (degrees: rx, ry, rz). */
+  rotation?: { rx: ParamRef; ry: ParamRef; rz: ParamRef };
+  /** Declared bounding box for interference checks (no actual geometry). */
+  boundingBox?: { width: ParamRef; height: ParamRef; depth: ParamRef };
+}
+
+/** Reference to a child part placed in an assembly — inline geometry or external purchased part. */
+export type PartRef = InlinePartRef | ExternalPartRef;
 
 /**
  * Axis reference: either a named standard axis or a geometry query.
