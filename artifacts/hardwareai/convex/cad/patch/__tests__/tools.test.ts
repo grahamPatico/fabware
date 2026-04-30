@@ -30,10 +30,13 @@ describe("CAD_IR_TOOLS", () => {
     expect(props.required).toEqual(expect.arrayContaining(["id", "value"]));
   });
 
-  it("add_feature schema covers all six feature kinds", () => {
+  it("add_feature schema covers all nine feature kinds", () => {
     const t = CAD_IR_TOOLS.find((t) => t.name === "add_feature")!;
     const text = JSON.stringify(t.input_schema);
-    for (const kind of ["extrude", "cut_extrude", "fillet", "chamfer", "hole", "pattern"]) {
+    for (const kind of [
+      "extrude", "cut_extrude", "fillet", "chamfer", "hole", "pattern",
+      "revolve", "shell", "bend_flange",
+    ]) {
       expect(text).toContain(kind);
     }
   });

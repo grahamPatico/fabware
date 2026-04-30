@@ -153,6 +153,60 @@ const addFeature: AgentTool = {
             },
             required: ["kind", "id", "source", "axis", "count", "spacing"],
           },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "revolve" },
+              id: { type: "string", pattern: SNAKE_PATTERN },
+              profile: { type: "string", pattern: SNAKE_PATTERN, description: "sketch id to revolve" },
+              axis: { type: "string", enum: ["x", "y", "z"], description: "axis of revolution" },
+              angle: { oneOf: [{ type: "number" }, { type: "string" }], description: "revolution arc in degrees (0 < angle ≤ 360)" },
+            },
+            required: ["kind", "id", "profile", "axis", "angle"],
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "shell" },
+              id: { type: "string", pattern: SNAKE_PATTERN },
+              thickness: { oneOf: [{ type: "number" }, { type: "string" }], description: "shell wall thickness" },
+              removedFaces: {
+                type: "array",
+                minItems: 1,
+                items: {
+                  type: "object",
+                  properties: {
+                    feature: { type: "string", pattern: SNAKE_PATTERN },
+                    tag: { type: "string", description: "face tag, e.g. top or bottom" },
+                  },
+                  required: ["feature", "tag"],
+                },
+                description: "faces to open (remove) during shelling — at least one required",
+              },
+            },
+            required: ["kind", "id", "thickness", "removedFaces"],
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "bend_flange" },
+              id: { type: "string", pattern: SNAKE_PATTERN },
+              face: {
+                type: "object",
+                properties: {
+                  feature: { type: "string", pattern: SNAKE_PATTERN },
+                  tag: { type: "string" },
+                },
+                required: ["feature", "tag"],
+                description: "face to bend from",
+              },
+              angle: { oneOf: [{ type: "number" }, { type: "string" }], description: "bend angle in degrees" },
+              radius: { oneOf: [{ type: "number" }, { type: "string" }], description: "inner bend radius (must be ≥ sheet thickness)" },
+              length: { oneOf: [{ type: "number" }, { type: "string" }], description: "flange length" },
+              thickness: { oneOf: [{ type: "number" }, { type: "string" }], description: "sheet thickness" },
+            },
+            required: ["kind", "id", "face", "angle", "radius", "length", "thickness"],
+          },
         ],
       },
     },

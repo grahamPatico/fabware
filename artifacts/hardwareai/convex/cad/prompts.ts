@@ -37,6 +37,23 @@ Rules:
                   counterbore.diameter must be ≥ 1.2 × hole diameter (manufacturing rule mfg.bolt-clearance).
     threaded    — tapped hole; supply thread: { spec } e.g. "M6x1.0" or "1/4-20". The pilot hole
                   diameter should match the tap drill size for the given spec.
+- Revolve features:
+    revolve     — sweep a profile sketch around an axis (x/y/z). Supply angle in degrees (0 < angle ≤ 360).
+                  A full rotation is angle=360; a half-shell is angle=180.
+                  Creates a new body (like extrude with operation=new_body).
+- Shell features:
+    shell       — hollow out a solid body to a uniform wall thickness. Supply thickness (a number or
+                  parameter name) and at least one removedFaces entry (the faces to open). Face tags:
+                  "top" (highest Z face) and "bottom" (lowest Z face) are resolved automatically.
+                  Minimum wall thickness applies (default 2 mm).
+- Sheet-metal bend features:
+    bend_flange — add a flanged bend to a sheet-metal part. Supply:
+                  face        — the face to bend from: { feature: "<id>", tag: "<tag>" }
+                  angle       — bend angle in degrees (e.g. 90 for a right-angle flange)
+                  radius      — inner bend radius; must be ≥ sheet thickness (mfg.min-bend-radius rule)
+                  length      — flange length
+                  thickness   — sheet thickness (must match the actual part thickness)
+                  Codegen for bend_flange emits a placeholder; geometry is not yet solid.
 - Avoid zero-thickness geometry.
 - Prefer modify_feature or set_parameter over remove + add_feature for iterative repairs.
 - Suppress a feature to test whether it is the source of a violation before removing it.
