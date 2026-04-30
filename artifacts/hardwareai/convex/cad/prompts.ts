@@ -103,6 +103,12 @@ Assembly rules:
 - Limits for revolute joints: supply unit "deg" for human-readable angles.
 - Limits for linear joints: supply unit "mm" (or "in") for travel range.
 - Each sub-part's inline ir must be a valid CadIr (schemaVersion:1, units, parameters, sketches, features).
+- assembly.parts-interfere (Tier 5): reports when two parts' bounding boxes overlap.
+    severity "error"  — neither part is rotated (bbox is exact; overlap is definitive).
+    severity "warn"   — at least one part is rotated (bbox is a conservative sphere expansion;
+                        may be a false positive — verify with exact geometry if needed).
+  To fix: adjust the origin of one part so there is a gap between them; ensure mating faces
+  touch (share an edge) rather than penetrate. Touching faces (coincident surfaces) are fine.
 
 If a validation report says a feature failed, propose ONE patch (the smallest possible)
 to fix it. Prefer set_parameter over rewriting features.

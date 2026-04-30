@@ -20,12 +20,22 @@ convex/cad/
 ├── resolve/
 │   └── resolveIr.ts      — resolveIr(): evaluates all ParamRefs → ResolvedIr
 │
+├── geometry/                                              — Phase 8
+│   ├── partBbox.ts       — computePartBbox(): AABB from extrude/revolve features; AABB type
+│   └── transform.ts      — transformBbox(): translate + conservative sphere-expand for rotation
+│
 ├── validate/
 │   ├── schemaTier.ts     — Tier-1: structural / schema rules (duplicate ids, missing refs, joint refs, constraint refs)
 │   ├── constraintTier.ts — Tier-2: sketch constraint rules (contradictions, DOF heuristic) — Phase 7
 │   ├── geometryTier.ts   — Tier-3: geometry sanity (positive dims, etc.)
-│   ├── assemblyTier.ts   — Tier-5: assembly topology rules (floating parts, over-constrained groups)
-│   └── manufacturingTier.ts — Tier-4: manufacturing rules (hole-edge-distance, …)
+│   ├── assemblyTier.ts   — Tier-5: assembly topology rules (floating parts, over-constrained groups, AABB interference)
+│   ├── manufacturingTier.ts — Tier-4: manufacturing rules (hole-edge-distance, …)
+│   └── rules/
+│       ├── holeEdgeDistance.ts  — mfg.hole-edge-distance
+│       ├── minWallThickness.ts  — mfg.min-wall-thickness
+│       ├── boltClearance.ts     — mfg.bolt-clearance
+│       ├── minBendRadius.ts     — mfg.min-bend-radius
+│       └── partsInterfere.ts    — assembly.parts-interfere (Phase 8)
 │
 ├── patch/
 │   ├── types.ts          — Patch union type (set_parameter, add_feature, …)
@@ -388,9 +398,49 @@ Tests: **≥ 279 passing** (`pnpm test --run`).
 
 ---
 
-## Phase 7+ deferrals
+## Phase 8 scope (shipped)
 
-The following remain out of scope after Phase 6 and will be addressed in later phases:
+Phase 8 adds bounding-box geometry helpers and a Tier 5 interference rule for assembly part pairs.
+
+### `geometry/partBbox.ts` — `computePartBbox` (Task 1)
+
+`computePartBbox(ir: CadIr): AABB | null` walks the part's resolved features and builds an AABB:
+- **`extrude`**: rect/circle sketch geometry × `distance` in the Z direction
+- **`revolve`**: conservative cylinder — profile bbox revolved 360° enclosed in an axis-aligned cylinder
+- All other feature kinds (cut, fillet, chamfer, hole, etc.) are skipped (they modify/subtract, not grow)
+
+Returns `null` if the part has no extrude or revolve features.
+
+`AABB` type is exported from this module; `transform.ts` and `partsInterfere.ts` import from here.
+
+### `geometry/transform.ts` — `transformBbox` (Task 2)
+
+`transformBbox(local, origin, rotation?): AABB` places a local AABB into the assembly frame:
+- **No rotation** (undefined or all-zero): pure translation by `origin` (exact result)
+- **Any rotation component non-zero**: expand to a sphere centered at the local bbox center
+  with radius = bbox half-diagonal length, then translate. Always a superset of the rotated box.
+
+### `validate/rules/partsInterfere.ts` — `partsInterfere` (Task 3)
+
+Tier 5 rule `assembly.parts-interfere`: checks every pair of parts in `ir.parts` for AABB overlap.
+- Overlap test uses strict inequality — touching parts (coincident faces) are not flagged.
+- Severity `"error"` when neither part is rotated (bbox is exact).
+- Severity `"warn"` when at least one part is rotated (conservative sphere expansion may be a false positive).
+
+Composed into `validateAssemblyTier()` via `out.push(...partsInterfere(ir))`.
+
+### Prompts update (Task 4)
+
+`prompts.ts` system prompt fragment updated with `assembly.parts-interfere` rule documentation
+(severity meanings, fix guidance, touching-face clarification).
+
+Tests: **≥ 291 passing** (`pnpm test --run`).
+
+---
+
+## Phase 8+ deferrals
+
+The following remain out of scope after Phase 8 and will be addressed in later phases:
 
 | Feature | Notes |
 |---|---|
@@ -403,7 +453,7 @@ The following remain out of scope after Phase 6 and will be addressed in later p
 | **AxisRef.kind === "edge" resolution** | Requires geometry (sandbox face/edge entities); deferred |
 | **Sketch constraint solver** | Types + Tier 2 heuristic shipped in Phase 7; full DOF solver with over/under detection is Phase 8+ |
 | **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 7+ |
-| **Assembly interference / clearance checks** | Multi-part bounding-box / mesh overlap detection — Phase 7+ |
+| **Assembly interference / clearance checks** | ✅ AABB interference check shipped in Phase 8; exact mesh overlap deferred |
 | **GLB / STEP export via sandbox** | Sandbox currently produces STEP via `export_step()`; GLB transcode deferred |
 | **Streaming codegen** | Single-pass string builder today; chunked/streamed output for large IRs deferred |
 | **AI-driven repair loop (production)** | Mock repair loops tested; real Claude-powered production loop is Phase 7+ |
