@@ -207,6 +207,59 @@ const addFeature: AgentTool = {
             },
             required: ["kind", "id", "face", "angle", "radius", "length", "thickness"],
           },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "sweep" },
+              id: { type: "string", pattern: SNAKE_PATTERN },
+              profile: { type: "string", pattern: SNAKE_PATTERN, description: "cross-section sketch id" },
+              path: { type: "string", pattern: SNAKE_PATTERN, description: "sweep-path sketch id (typically contains a line or spline)" },
+            },
+            required: ["kind", "id", "profile", "path"],
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "loft" },
+              id: { type: "string", pattern: SNAKE_PATTERN },
+              profiles: {
+                type: "array",
+                minItems: 2,
+                items: { type: "string", pattern: SNAKE_PATTERN },
+                description: "ordered list of ≥ 2 profile sketch ids to loft through",
+              },
+            },
+            required: ["kind", "id", "profiles"],
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "weld_tab" },
+              id: { type: "string", pattern: SNAKE_PATTERN },
+              face: {
+                type: "object",
+                properties: {
+                  feature: { type: "string", pattern: SNAKE_PATTERN },
+                  tag: { type: "string" },
+                },
+                required: ["feature", "tag"],
+                description: "host face to attach the tab to",
+              },
+              length: { oneOf: [{ type: "number" }, { type: "string" }], description: "tab length" },
+              width: { oneOf: [{ type: "number" }, { type: "string" }], description: "tab width" },
+              thickness: { oneOf: [{ type: "number" }, { type: "string" }], description: "tab thickness" },
+              position: {
+                type: "object",
+                properties: {
+                  x: { oneOf: [{ type: "number" }, { type: "string" }] },
+                  y: { oneOf: [{ type: "number" }, { type: "string" }] },
+                },
+                required: ["x", "y"],
+                description: "2-D offset of tab centre on the face",
+              },
+            },
+            required: ["kind", "id", "face", "length", "width", "thickness", "position"],
+          },
         ],
       },
     },
