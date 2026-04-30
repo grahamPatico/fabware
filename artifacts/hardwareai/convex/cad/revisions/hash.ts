@@ -5,6 +5,7 @@
 //   - Content-sensitive: any value change produces a different hash.
 //   - Order-insensitive for object keys: Records are sorted before hashing
 //     so that key insertion order never affects the result.
+"use node";
 
 import { createHash } from "node:crypto";
 import type { CadIr } from "../ir/types";

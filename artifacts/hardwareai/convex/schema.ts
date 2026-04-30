@@ -101,6 +101,8 @@ export default defineSchema({
       v.literal("failed"),
     )),
     lastValidationAt: v.optional(v.number()),
+    useCadIr: v.optional(v.boolean()),
+    headRevisionHash: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project", ["projectId"]),
@@ -303,4 +305,43 @@ export default defineSchema({
     ),
     payload: v.any(),
   }).index("by_project_at", ["projectId", "at"]),
+
+  // --- CAD IR: revision history per part ---
+  cad_revisions: defineTable({
+    partId: v.id("parts"),
+    hash: v.string(),
+    parent: v.union(v.string(), v.null()),
+    patch: v.optional(v.any()),
+    ir: v.any(),
+    author: v.union(v.literal("user"), v.literal("agent"), v.literal("system")),
+    agentTurn: v.optional(v.object({
+      sessionId: v.string(),
+      turn: v.number(),
+      toolName: v.string(),
+    })),
+    createdAt: v.number(),
+    executionStatus: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+      v.literal("cached"),
+    ),
+    artifactsRefId: v.optional(v.id("cad_revision_artifacts")),
+    violations: v.array(v.any()),
+  })
+    .index("by_part", ["partId"])
+    .index("by_part_hash", ["partId", "hash"])
+    .index("by_part_createdAt", ["partId", "createdAt"]),
+
+  // --- CAD IR: storage refs for revision build artifacts ---
+  cad_revision_artifacts: defineTable({
+    revisionHash: v.string(),
+    stepStorageId: v.optional(v.id("_storage")),
+    stlStorageId: v.optional(v.id("_storage")),
+    glbStorageId: v.optional(v.id("_storage")),
+    dxfStorageId: v.optional(v.id("_storage")),
+    entitiesStorageId: v.optional(v.id("_storage")),
+    logStorageId: v.optional(v.id("_storage")),
+  }).index("by_hash", ["revisionHash"]),
 });
