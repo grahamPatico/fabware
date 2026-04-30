@@ -36,3 +36,15 @@ describe("CadIrSchema", () => {
     expect(() => CadIrSchema.parse(ir)).toThrow();
   });
 });
+
+import { emptyIr } from "../empty";
+
+describe("emptyIr", () => {
+  it("returns a valid IR that round-trips through CadIrSchema", () => {
+    const ir = emptyIr("mm");
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+    expect(ir.schemaVersion).toBe(1);
+    expect(ir.units).toBe("mm");
+    expect(ir.features).toEqual([]);
+  });
+});
