@@ -75,4 +75,32 @@ describe("applyPatch", () => {
     expect(r.schemaViolations.some(v => v.ruleId === "schema.unresolved-feature-ref")).toBe(true);
     expect(r.ir.features).toHaveLength(0);
   });
+
+  // ── Task 2: suppress / unsuppress ────────────────────────────────────────
+
+  it("suppress sets the suppressed flag on a feature", () => {
+    const parent: CadIr = {
+      ...emptyIr("mm"),
+      sketches: { s: { id: "s", plane: "XY", geometry: [] } },
+      features: [{ kind: "extrude", id: "e", profile: "s", distance: 3, operation: "new_body" }],
+    };
+    const r = applyPatch(parent, { kind: "suppress", featureId: "e" });
+    expect(r.schemaViolations).toEqual([]);
+    expect(r.ir.features[0].suppressed).toBe(true);
+  });
+
+  it("unsuppress clears the suppressed flag", () => {
+    const parent: CadIr = {
+      ...emptyIr("mm"),
+      sketches: { s: { id: "s", plane: "XY", geometry: [] } },
+      features: [{ kind: "extrude", id: "e", profile: "s", distance: 3, operation: "new_body", suppressed: true }],
+    };
+    const r = applyPatch(parent, { kind: "unsuppress", featureId: "e" });
+    expect(r.ir.features[0].suppressed).toBe(false);
+  });
+
+  it("suppress on a missing feature returns a violation", () => {
+    const r = applyPatch(emptyIr("mm"), { kind: "suppress", featureId: "missing" });
+    expect(r.schemaViolations.some(v => v.ruleId === "schema.unresolved-feature-ref")).toBe(true);
+  });
 });

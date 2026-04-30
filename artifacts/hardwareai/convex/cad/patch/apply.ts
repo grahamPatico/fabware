@@ -11,8 +11,12 @@ export interface ApplyResult {
 }
 
 export function applyPatch(parent: CadIr, patch: Patch): ApplyResult {
-  // Pre-check: for modify_feature, guard missing target early
-  if (patch.kind === "modify_feature") {
+  // Pre-check: for patches targeting existing features, guard missing target early
+  if (
+    patch.kind === "modify_feature" ||
+    patch.kind === "suppress" ||
+    patch.kind === "unsuppress"
+  ) {
     const exists = parent.features.some(f => f.id === patch.featureId);
     if (!exists) {
       return {
@@ -20,8 +24,8 @@ export function applyPatch(parent: CadIr, patch: Patch): ApplyResult {
         schemaViolations: [{
           ruleId: "schema.unresolved-feature-ref",
           severity: "error",
-          message: `modify_feature target "${patch.featureId}" not found`,
-          agentMessage: `No feature with id "${patch.featureId}" exists. Either correct the id or use add_feature.`,
+          message: `${patch.kind} target "${patch.featureId}" not found`,
+          agentMessage: `No feature with id "${patch.featureId}" exists.`,
           location: { kind: "feature", id: patch.featureId },
         }],
       };
@@ -71,7 +75,18 @@ function applyToCandidate(parent: CadIr, patch: Patch): CadIr {
       };
     }
     case "suppress":
-    case "unsuppress":
+    case "unsuppress": {
+      const idx = parent.features.findIndex(f => f.id === patch.featureId);
+      if (idx === -1) return parent;
+      return {
+        ...parent,
+        features: [
+          ...parent.features.slice(0, idx),
+          { ...parent.features[idx], suppressed: patch.kind === "suppress" },
+          ...parent.features.slice(idx + 1),
+        ],
+      };
+    }
     case "reorder_feature":
     case "remove":
       throw new Error(`patch kind "${patch.kind}" not yet implemented`);
