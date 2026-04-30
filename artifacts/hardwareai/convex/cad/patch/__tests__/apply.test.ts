@@ -304,4 +304,61 @@ describe("applyPatch", () => {
     });
     expect(r.schemaViolations.some((v) => v.ruleId === "schema.unresolved-sketch-ref")).toBe(true);
   });
+
+  // ── Phase 4: Assembly patches ─────────────────────────────────────────────
+
+  it("add_part adds a part to the assembly", () => {
+    const r = applyPatch(emptyIr("mm"), {
+      kind: "add_part",
+      part: { id: "base", ir: emptyIr("mm") },
+    });
+    expect(r.schemaViolations).toEqual([]);
+    expect(r.ir.parts?.["base"]).toBeDefined();
+    expect(r.ir.parts?.["base"].id).toBe("base");
+  });
+
+  it("add_joint adds a joint to the assembly", () => {
+    const parent: CadIr = {
+      ...emptyIr("mm"),
+      parts: {
+        base: { id: "base", ir: emptyIr("mm") },
+        lid: { id: "lid", ir: emptyIr("mm") },
+      },
+    };
+    const r = applyPatch(parent, {
+      kind: "add_joint",
+      joint: { id: "hinge", parent: "base", child: "lid", type: "revolute" },
+    });
+    expect(r.schemaViolations).toEqual([]);
+    expect(r.ir.joints?.["hinge"]).toBeDefined();
+  });
+
+  it("add_joint with missing part reference is caught by schema-tier validator", () => {
+    // Parent IR has no parts at all — joint references missing parts
+    const r = applyPatch(emptyIr("mm"), {
+      kind: "add_joint",
+      joint: { id: "j1", parent: "missing_a", child: "missing_b", type: "fixed" },
+    });
+    // Should have schema violations (joint-missing-part)
+    expect(r.schemaViolations.some(v => v.ruleId === "schema.joint-missing-part")).toBe(true);
+    // IR reverts to parent (no joints)
+    expect(r.ir.joints).toBeUndefined();
+  });
+
+  it("add_connection adds a connection to the assembly", () => {
+    const parent: CadIr = {
+      ...emptyIr("mm"),
+      parts: {
+        base: { id: "base", ir: emptyIr("mm") },
+        lid: { id: "lid", ir: emptyIr("mm") },
+      },
+    };
+    const r = applyPatch(parent, {
+      kind: "add_connection",
+      connection: { partA: "base", featureA: "ex1", partB: "lid", featureB: "ex1", type: "face_mate" },
+    });
+    expect(r.schemaViolations).toEqual([]);
+    expect(r.ir.connections).toHaveLength(1);
+    expect(r.ir.connections?.[0].type).toBe("face_mate");
+  });
 });

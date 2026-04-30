@@ -241,5 +241,25 @@ function applyToCandidate(parent: CadIr, patch: Patch): CadIr {
       }
       return parent;
     }
+
+    // ── Phase 4: Assembly patches ────────────────────────────────────────────
+
+    case "add_part":
+      return {
+        ...parent,
+        parts: { ...(parent.parts ?? {}), [patch.part.id]: patch.part },
+      };
+
+    case "add_joint":
+      return {
+        ...parent,
+        joints: { ...(parent.joints ?? {}), [patch.joint.id]: patch.joint },
+      };
+
+    case "add_connection":
+      return {
+        ...parent,
+        connections: [...(parent.connections ?? []), patch.connection],
+      };
   }
 }
