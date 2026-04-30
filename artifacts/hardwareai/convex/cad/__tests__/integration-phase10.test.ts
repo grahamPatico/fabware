@@ -302,10 +302,19 @@ describe("Phase 10 integration smoke test — hinged enclosure with M6 fasteners
     expect(nutLine!.quantity).toBe(4);
 
     // ── Phase 10: cost compiler ──────────────────────────────────────────────
-    // 4 × $0.42 (screws) + 4 × $0.15 (nuts) = $1.68 + $0.60 = $2.28
+    // BOM: 4 × $0.42 (screws) + 4 × $0.15 (nuts) = $1.68 + $0.60 = $2.28
+    //
+    // Phase 12 fabrication cost (both inline parts default to aluminum 6061):
+    //   body: 100×80×30 = 240,000 mm³ = 240 cm³ × 2.7 g/cm³ / 1000 = 0.648 kg × $8/kg = $5.184
+    //   lid:  100×80×10 = 80,000 mm³  = 80 cm³  × 2.7 g/cm³ / 1000 = 0.216 kg × $8/kg = $1.728
+    //   fabrication total = $5.184 + $1.728 = $6.912
+    //
+    // totalUsd = $2.28 + $6.912 = $9.192
     const cost = compileCost(ir, BUILTIN_PRICING);
     expect(cost.hasMissingPrices).toBe(false);
     expect(cost.totalKnown).toBeCloseTo(2.28, 6);
+    expect(cost.fabricationTotalUsd).toBeCloseTo(6.912, 3);
+    expect(cost.totalUsd).toBeCloseTo(9.192, 3);
     // Two cost lines
     expect(cost.lines).toHaveLength(2);
 

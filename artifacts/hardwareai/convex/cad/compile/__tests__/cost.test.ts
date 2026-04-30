@@ -1,5 +1,5 @@
 // convex/cad/compile/__tests__/cost.test.ts
-// Phase 10 Task 1 — compileCost + BUILTIN_PRICING tests
+// Phase 10 Task 1 + Phase 12 Task 5 — compileCost + BUILTIN_PRICING tests
 
 import { describe, expect, it } from "vitest";
 import { compileCost, BUILTIN_PRICING } from "../cost";
@@ -66,5 +66,48 @@ describe("compileCost", () => {
     const result = compileCost(ir, customPricing);
     expect(result.lines[0].unitCost).toBe(1.00);
     expect(result.totalKnown).toBeCloseTo(1.00, 6);
+  });
+});
+
+describe("compileCost Phase 12 — totalUsd includes fabrication", () => {
+  it("totalUsd = BOM cost + fabrication cost for assembly with inline parts", () => {
+    // Inline part: 80×60×3 mm aluminum = 14,400 mm³ = 14.4 cm³
+    // mass = 14.4 × 2.7 / 1000 = 0.03888 kg
+    // fab cost = 0.03888 × 8 = $0.31104
+    //
+    // External: 1 × M6 SHCS @ $0.42
+    // BOM totalKnown = $0.42
+    // totalUsd = $0.42 + $0.31104 = $0.73104
+    const inlineIr: CadIr = {
+      schemaVersion: 1,
+      units: "mm",
+      parameters: {},
+      sketches: {
+        sk: {
+          id: "sk",
+          plane: "XY",
+          geometry: [
+            { kind: "rect", id: "r", center: { x: 0, y: 0 }, width: 80, height: 60 },
+          ],
+        },
+      },
+      features: [
+        { kind: "extrude", id: "ex", profile: "sk", distance: 3, operation: "new_body" },
+      ],
+      material: "aluminum",
+    };
+
+    const ir: CadIr = {
+      ...emptyIr("mm"),
+      parts: {
+        body: { id: "body", kind: "inline", ir: inlineIr },
+        screw: { id: "screw", kind: "external", vendor: "McMaster-Carr", partNumber: "91290A115" },
+      },
+    };
+
+    const result = compileCost(ir, BUILTIN_PRICING);
+    expect(result.totalKnown).toBeCloseTo(0.42, 6);
+    expect(result.fabricationTotalUsd).toBeCloseTo(0.31104, 4);
+    expect(result.totalUsd).toBeCloseTo(0.42 + 0.31104, 4);
   });
 });

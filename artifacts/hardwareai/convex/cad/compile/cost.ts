@@ -1,14 +1,19 @@
 // convex/cad/compile/cost.ts
 //
-// Cost compiler — Phase 10.
+// Cost compiler — Phase 10 + Phase 12.
 //
 // Walks a CadIr assembly, looks up each ExternalPartRef by vendor+partNumber in
 // a PricingDb, and returns a CostResult summarising per-line and total cost.
 //
+// Phase 12 addition: totalUsd now includes fabrication cost for inline parts
+// (computed by compileFabricationCost). totalKnown is the BOM-only total
+// (external parts with known prices); totalUsd = totalKnown + fabricationTotalUsd.
+//
 // Parts without a price entry are reported with unitCost undefined and excluded
-// from the total.
+// from totalKnown (but not from totalUsd, since fabrication cost is always known).
 
 import type { CadIr, ExternalPartRef } from "../ir/types";
+import { compileFabricationCost } from "./fabricationCost";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -29,10 +34,20 @@ export interface CostLine {
 
 export interface CostResult {
   lines: CostLine[];
-  /** Sum of all known line totals (USD). Lines with no price data are excluded. */
+  /** Sum of all known BOM line totals (USD). Lines with no price data are excluded. */
   totalKnown: number;
   /** True if at least one external part had no price in the PricingDb. */
   hasMissingPrices: boolean;
+  /**
+   * Phase 12: fabrication cost for inline parts (USD).
+   * Based on estimated volume × material density × cost-per-kg.
+   */
+  fabricationTotalUsd: number;
+  /**
+   * Phase 12: total cost = totalKnown (BOM) + fabricationTotalUsd (fabrication).
+   * Replaces bare totalKnown as the canonical total cost estimate.
+   */
+  totalUsd: number;
 }
 
 // ── Built-in pricing database ─────────────────────────────────────────────────
@@ -131,5 +146,10 @@ export function compileCost(ir: CadIr, pricing: PricingDb = BUILTIN_PRICING): Co
     return a.partNumber.localeCompare(b.partNumber);
   });
 
-  return { lines, totalKnown, hasMissingPrices };
+  // Phase 12: add fabrication cost for inline parts
+  const fabResult = compileFabricationCost(ir);
+  const fabricationTotalUsd = fabResult.totalUsd;
+  const totalUsd = totalKnown + fabricationTotalUsd;
+
+  return { lines, totalKnown, hasMissingPrices, fabricationTotalUsd, totalUsd };
 }
