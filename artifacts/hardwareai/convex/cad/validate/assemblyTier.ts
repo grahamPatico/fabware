@@ -10,6 +10,7 @@
 import type { CadIr } from "../ir/types";
 import type { Violation } from "../../plugins/types";
 import { partsInterfere } from "./rules/partsInterfere";
+import { jointRangeCollision } from "./rules/jointRangeCollision";
 
 function v(ruleId: string, message: string, agent: string): Violation {
   return { ruleId, severity: "error", message, agentMessage: agent };
@@ -98,6 +99,9 @@ export function validateAssemblyTier(ir: CadIr): Violation[] {
 
   // ── Rule 3: parts interference (AABB check) ───────────────────────────────
   out.push(...partsInterfere(ir));
+
+  // ── Rule 4: joint range collision (swept AABB check) ─────────────────────
+  out.push(...jointRangeCollision(ir));
 
   return out;
 }
