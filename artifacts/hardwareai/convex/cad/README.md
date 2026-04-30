@@ -33,16 +33,20 @@ convex/cad/
 │
 ├── codegen/
 │   ├── compileToBuild123d.ts — Compiles ResolvedIr → build123d Python script
+│   ├── compileAssembly.ts    — Compiles multi-part CadIr → Record<PartId, Python script>
 │   ├── compileToUrdf.ts      — Compiles CadIr assembly → URDF XML string
 │   ├── emitParameters.ts     — Parameter variable declarations
 │   ├── emitFeature.ts        — Dispatches to per-kind emitters
 │   └── features/
-│       ├── emitExtrude.ts
-│       ├── emitCutExtrude.ts
-│       ├── emitFillet.ts
-│       ├── emitChamfer.ts
-│       ├── emitHole.ts
-│       └── emitPattern.ts
+│       ├── extrude.ts
+│       ├── cutExtrude.ts
+│       ├── fillet.ts
+│       ├── chamfer.ts
+│       ├── hole.ts
+│       ├── pattern.ts
+│       ├── revolve.ts        — Phase 5
+│       ├── shell.ts          — Phase 5
+│       └── bendFlange.ts     — Phase 5 (placeholder codegen)
 │
 ├── executor/
 │   ├── runSandbox.ts     — Python sandbox runner (executes build123d scripts)
@@ -120,6 +124,57 @@ Wired into `validateManufacturingTier()` alongside `holeEdgeDistance` and `minWa
 System prompt updated to explain all 4 hole types, required sub-objects, and the `mfg.bolt-clearance` constraint.
 
 Tests: **≥ 221 passing** (`pnpm test --run`).
+
+---
+
+## Phase 5 scope (shipped)
+
+Phase 5 extends the CAD IR with three new feature kinds, a new manufacturing validation rule,
+and a per-part assembly codegen entry point.
+
+### New feature kinds (Phase 5 Tasks 1–5)
+
+| Kind | Description |
+|---|---|
+| `revolve` | Sweeps a profile sketch around an axis (x/y/z) by an angle in degrees (0 < angle ≤ 360). Creates a new body. |
+| `shell` | Hollows a solid to a uniform wall thickness, opening one or more faces. `tag: "top"` → highest-Z face; `tag: "bottom"` → lowest-Z face. |
+| `bend_flange` | Adds a flanged bend to a sheet-metal part. Codegen emits a descriptive comment + `pass` placeholder (real bend geometry deferred to a sheet-metal extension). |
+
+All three kinds are added to:
+- `Feature` discriminated union in `ir/types.ts`
+- `FeatureSchema` Zod discriminated union in `ir/schema.ts`
+- `resolveIr()` in `resolve/resolveIr.ts`
+- `emitFeature()` dispatch in `codegen/emitFeature.ts`
+- `add_feature` tool schema in `patch/tools.ts`
+- CAD IR system prompt fragment in `prompts.ts`
+
+### Codegen emitters (Phase 5 Task 2)
+
+| Feature | Python produced |
+|---|---|
+| `revolve` | `with BuildPart() as <id>:` / `revolve(revolution_arc=<angle>)` |
+| `shell` | `shell(<parent>.part, amount=-<t>, openings=[<face_selectors>])` |
+| `bend_flange` | `# bend_flange <id>: ...` comment + `pass` placeholder |
+
+Revolve angle is in degrees in the IR; `revolution_arc` in build123d is also degrees — no conversion needed.
+
+### `mfg.min-bend-radius` rule (Phase 5 Task 5)
+
+New rule in `validate/rules/minBendRadius.ts`:
+
+> For a `bend_flange` feature, `radius` must be ≥ `thickness`.
+
+Bending to a radius tighter than the sheet thickness causes cracking along the bend line.
+Wired into `validateManufacturingTier()` alongside the existing rules.
+
+### `compileAssembly` entry point (Phase 5 Task 6)
+
+`compileAssembly(ir)` in `codegen/compileAssembly.ts` iterates `ir.parts` and returns
+`Record<PartId, string>` — one build123d Python script per part. Returns `{}` when
+`ir.parts` is undefined (single-part IR). Existing callers of `compileToBuild123d` are
+unaffected.
+
+Tests: **≥ 244 passing** (`pnpm test --run`).
 
 ---
 
@@ -232,21 +287,23 @@ Tests: **182 passing** (`pnpm test --run`).
 
 ---
 
-## Phase 5+ deferrals
+## Phase 6+ deferrals
 
-The following remain out of scope after Phase 4 and will be addressed in later phases:
+The following remain out of scope after Phase 5 and will be addressed in later phases:
 
 | Feature | Notes |
 |---|---|
 | **Threaded / countersink / counterbore holes** | ✅ Shipped in Phase 3 |
 | **Multi-part assembly joints + URDF** | ✅ Shipped in Phase 4 |
-| **Sheet-metal IR** — bends, K-factor, flat-pattern | Separate IR subtree; out of scope for solid-body phases |
+| **Revolve / shell / bend_flange codegen + validation** | ✅ Shipped in Phase 5 |
+| **bend_flange real geometry** | Placeholder `pass` in Phase 5; full sheet-metal extension deferred |
+| **K-factor / flat-pattern DXF export** | Requires sheet-metal extension; Phase 6+ |
 | **AxisRef.kind === "edge" resolution** | Requires geometry (sandbox face/edge entities); deferred |
-| **Sketch constraint solver** | Sketch geometry is unconstrained free-form; a proper constraint solver is Phase 5+ |
-| **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 5+ |
-| **Assembly interference / clearance checks** | Multi-part bounding-box / mesh overlap detection — Phase 5+ |
+| **Sketch constraint solver** | Sketch geometry is unconstrained free-form; a proper constraint solver is Phase 6+ |
+| **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 6+ |
+| **Assembly interference / clearance checks** | Multi-part bounding-box / mesh overlap detection — Phase 6+ |
 | **GLB / STEP export via sandbox** | Sandbox currently produces STEP via `export_step()`; GLB transcode deferred |
 | **Streaming codegen** | Single-pass string builder today; chunked/streamed output for large IRs deferred |
-| **AI-driven repair loop (production)** | Mock repair loops tested; real Claude-powered production loop is Phase 5+ |
+| **AI-driven repair loop (production)** | Mock repair loops tested; real Claude-powered production loop is Phase 6+ |
 | **Convex file storage for build artifacts** | Future phase will store STEP/GLB in Convex file storage |
 | **Version diffing / merge** | Revision hashes exist; structural diff / 3-way merge deferred |
