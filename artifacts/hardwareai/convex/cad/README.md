@@ -722,6 +722,71 @@ Tests: **≥ 372 passing** (`pnpm test --run`).
 
 ---
 
+## Phase 14 scope (shipped)
+
+Phase 14 adds two laser-cut / sheet-metal geometry rules and refactors `validateManufacturingTier` to accept both the resolved and original IRs so that process-specific rules can read the unresolved `process` string field.
+
+### `validateManufacturingTier` signature update (Task 3)
+
+Previous signature: `validateManufacturingTier(ir: ResolvedIr): Violation[]`
+New signature: `validateManufacturingTier(resolved: ResolvedIr, original: CadIr): Violation[]`
+
+The four existing rules (`holeEdgeDistance`, `minWallThickness`, `boltClearance`, `minBendRadius`) only read the resolved IR and keep their current `(ir: ResolvedIr)` signatures unchanged.
+
+The one caller in `convex/cad/plugin.ts` was updated:
+```ts
+// Before
+mfgAndBudget = [...validateManufacturingTier(resolved), ...budgetExceeded(ir)];
+// After
+mfgAndBudget = [...validateManufacturingTier(resolved, ir), ...budgetExceeded(ir)];
+```
+
+Four existing test files that called `validateManufacturingTier` directly were updated to pass the original IR alongside the resolved one.
+
+### `validate/rules/laserCutMinHole.ts` — `laserCutMinHole` (Task 1)
+
+Rule `mfg.laser-cut-min-hole`: for laser-cut and sheet-metal-bend parts, every hole's diameter must be ≥ the part's sheet thickness (the first non-suppressed `extrude` feature's `distance`).
+
+- Only fires when `original.process ∈ { "laser_cut", "sheet_metal_bend" }`.
+- Sheet thickness = `distance` of the first non-suppressed `extrude` feature.
+- Fires once per `hole` feature that violates the constraint.
+- Location kind: `"hole"`.
+
+Wired into `validateManufacturingTier()` via spread:
+```ts
+...laserCutMinHole(resolved, original),
+```
+
+### `validate/rules/laserCutMinSlot.ts` — `laserCutMinSlot` (Task 2)
+
+Rule `mfg.laser-cut-min-slot`: for laser-cut and sheet-metal-bend parts, every `cut_extrude` feature's profile sketch narrowest dimension must be ≥ the part's sheet thickness.
+
+- Only fires when `original.process ∈ { "laser_cut", "sheet_metal_bend" }`.
+- Narrowest dimension: `min(width, height)` for rect entities; `2 × radius` for circle entities.
+- Line entities are skipped (no meaningful width to check).
+- At most one violation is emitted per `cut_extrude` — the inner entity loop `break`s after the first failing entity.
+- Location kind: `"slot"`.
+
+Wired into `validateManufacturingTier()` via spread:
+```ts
+...laserCutMinSlot(resolved, original),
+```
+
+### Tests (Tasks 1 + 2)
+
+| File | Tests |
+|---|---|
+| `validate/__tests__/rules-laserCutMinHole.test.ts` | 4 tests (fires for laser_cut, fires for sheet_metal_bend, boundary passes, inactive for cnc) |
+| `validate/__tests__/rules-laserCutMinSlot.test.ts` | 4 tests (fires for laser_cut, fires for sheet_metal_bend, boundary passes, inactive for print_3d) |
+
+### Prompts + README (Task 4)
+
+`prompts.ts` updated with Phase 14 laser-cut geometry rules section. README updated with Phase 14 scope.
+
+Tests: **≥ 380 passing** (`pnpm test --run`).
+
+---
+
 ## Phase 10+ deferrals
 
 The following remain out of scope after Phase 10 and will be addressed in later phases:

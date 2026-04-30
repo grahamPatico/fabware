@@ -192,6 +192,25 @@ Manufacturing process and machine cost (Phase 13):
   reduce the cut perimeter (fewer slots/holes, simpler profiles), reduce bend count,
   or set process="none" for parts that need no dedicated machine step.
 
+Laser-cut and sheet-metal geometry rules (Phase 14):
+- These rules fire only when process is "laser_cut" or "sheet_metal_bend".
+- Sheet thickness is read from the first non-suppressed extrude feature's distance.
+
+  mfg.laser-cut-min-hole (error): hole diameter must be ≥ sheet thickness.
+    - Applies to all hole features on a laser-cut or sheet-metal-bend part.
+    - Holes smaller than the sheet thickness cannot be punched/cut cleanly —
+      the laser spot or punch cannot fit through the material.
+    - Fix: increase hole diameter to at least the sheet thickness, or reduce
+      the sheet thickness (first extrude distance).
+
+  mfg.laser-cut-min-slot (error): cut_extrude narrowest dimension must be ≥ sheet thickness.
+    - Applies to all cut_extrude features on a laser-cut or sheet-metal-bend part.
+    - The narrowest dimension is min(width, height) for rect profiles, or 2×radius
+      for circle profiles. Line entities in a slot sketch are skipped.
+    - Slots narrower than the sheet thickness cannot be cut cleanly.
+    - Fix: widen the slot sketch (increase the smaller rect dimension or the circle
+      radius) so that min(width, height) ≥ sheet thickness.
+
 If a validation report says a feature failed, propose ONE patch (the smallest possible)
 to fix it. Prefer set_parameter over rewriting features.
 `;
