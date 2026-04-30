@@ -71,5 +71,59 @@ export function validateSchemaTier(ir: CadIr): Violation[] {
     }
   }
 
+  // ── Phase 4: Joint / Connection checks ──────────────────────────────────────
+
+  const partIds = new Set<string>(Object.keys(ir.parts ?? {}));
+
+  if (ir.joints) {
+    const seenJointIds = new Set<string>();
+    for (const [, joint] of Object.entries(ir.joints)) {
+      // Duplicate joint ids
+      if (seenJointIds.has(joint.id)) {
+        out.push(v(
+          "schema.duplicate-joint-id",
+          `Joint id "${joint.id}" is duplicated`,
+          `Rename one of the joints with id "${joint.id}".`,
+        ));
+      }
+      seenJointIds.add(joint.id);
+
+      // Joint parent/child must reference known parts
+      if (!partIds.has(joint.parent)) {
+        out.push(v(
+          "schema.joint-missing-part",
+          `Joint "${joint.id}" references unknown parent part "${joint.parent}"`,
+          `Add a part with id "${joint.parent}" or fix the joint's parent reference.`,
+        ));
+      }
+      if (!partIds.has(joint.child)) {
+        out.push(v(
+          "schema.joint-missing-part",
+          `Joint "${joint.id}" references unknown child part "${joint.child}"`,
+          `Add a part with id "${joint.child}" or fix the joint's child reference.`,
+        ));
+      }
+    }
+  }
+
+  if (ir.connections) {
+    for (const conn of ir.connections) {
+      if (!partIds.has(conn.partA)) {
+        out.push(v(
+          "schema.connection-missing-part",
+          `Connection references unknown part "${conn.partA}"`,
+          `Add a part with id "${conn.partA}" or fix the connection's partA reference.`,
+        ));
+      }
+      if (!partIds.has(conn.partB)) {
+        out.push(v(
+          "schema.connection-missing-part",
+          `Connection references unknown part "${conn.partB}"`,
+          `Add a part with id "${conn.partB}" or fix the connection's partB reference.`,
+        ));
+      }
+    }
+  }
+
   return out;
 }

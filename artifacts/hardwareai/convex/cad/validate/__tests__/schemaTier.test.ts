@@ -51,4 +51,51 @@ describe("validateSchemaTier", () => {
     }));
     expect(v.some(x => x.ruleId === "schema.forward-feature-ref")).toBe(true);
   });
+
+  // ── Phase 4: Joint / Connection schema checks ─────────────────────────────
+
+  it("detects joint referencing a missing parent part", () => {
+    const v = validateSchemaTier(ir({
+      parts: { lid: { id: "lid", ir: emptyIr("mm") } },
+      joints: {
+        hinge: {
+          id: "hinge",
+          parent: "base", // "base" not in parts
+          child: "lid",
+          type: "revolute",
+        },
+      },
+    }));
+    expect(v.some(x => x.ruleId === "schema.joint-missing-part")).toBe(true);
+  });
+
+  it("detects joint referencing a missing child part", () => {
+    const v = validateSchemaTier(ir({
+      parts: { base: { id: "base", ir: emptyIr("mm") } },
+      joints: {
+        hinge: {
+          id: "hinge",
+          parent: "base",
+          child: "lid", // "lid" not in parts
+          type: "fixed",
+        },
+      },
+    }));
+    expect(v.some(x => x.ruleId === "schema.joint-missing-part")).toBe(true);
+  });
+
+  it("detects duplicate joint ids", () => {
+    const v = validateSchemaTier(ir({
+      parts: {
+        base: { id: "base", ir: emptyIr("mm") },
+        lid: { id: "lid", ir: emptyIr("mm") },
+      },
+      joints: {
+        // Both joints have the same id "hinge"
+        hinge: { id: "hinge", parent: "base", child: "lid", type: "fixed" },
+        hinge2: { id: "hinge", parent: "base", child: "lid", type: "revolute" },
+      },
+    }));
+    expect(v.some(x => x.ruleId === "schema.duplicate-joint-id")).toBe(true);
+  });
 });
