@@ -14,7 +14,7 @@ Available tools:
   remove            — delete a parameter, sketch, or feature
   add_sketch        — add a new 2-D sketch on a plane or face
   modify_sketch     — change a sketch's plane, add/remove/update geometry entities, or add/remove constraints
-  add_part          — add a sub-part to the assembly (with optional origin/rotation)
+  add_part          — add a sub-part to the assembly: inline (with ir) or external (with vendor+partNumber)
   add_joint         — add a kinematic joint between two parts (fixed/revolute/linear)
   add_connection    — declare a geometric connection between features on two parts
 
@@ -109,6 +109,18 @@ Assembly rules:
                         may be a false positive — verify with exact geometry if needed).
   To fix: adjust the origin of one part so there is a gap between them; ensure mating faces
   touch (share an edge) rather than penetrate. Touching faces (coincident surfaces) are fine.
+
+External (purchased) parts (Phase 9):
+- Use kind="external" on add_part to represent off-the-shelf or purchased components (fasteners,
+  bearings, motors, connectors, etc.) that have no inline geometry.
+- Required fields: vendor (supplier name, e.g. "McMaster-Carr"), partNumber (catalog number).
+- Optional: description (human-readable label), boundingBox { width, height, depth } for interference checks.
+- External parts are excluded from build123d codegen but appear in the BOM (compileBom).
+- Without a boundingBox, external parts are skipped in the AABB interference check — add one when
+  placement accuracy matters (e.g. a bearing housing that could clash with adjacent geometry).
+- BOM aggregation: compileBom() walks the full assembly tree and groups external parts by
+  vendor + partNumber, counting duplicates. Use consistent vendor/partNumber strings to ensure
+  correct BOM quantities (e.g. use the same McMaster-Carr part number for every identical screw).
 
 If a validation report says a feature failed, propose ONE patch (the smallest possible)
 to fix it. Prefer set_parameter over rewriting features.

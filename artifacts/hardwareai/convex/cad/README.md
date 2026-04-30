@@ -42,9 +42,12 @@ convex/cad/
 │   ├── apply.ts          — applyPatch(): immutable patch application + schema validation
 │   └── tools.ts          — Claude tool-call definitions for patch operations
 │
+├── compile/                                                   — Phase 9
+│   └── bom.ts            — compileBom(): recursive BOM aggregation (ExternalPartRef → BomLine[])
+│
 ├── codegen/
 │   ├── compileToBuild123d.ts — Compiles ResolvedIr → build123d Python script
-│   ├── compileAssembly.ts    — Compiles multi-part CadIr → Record<PartId, Python script>
+│   ├── compileAssembly.ts    — Compiles multi-part CadIr → Record<PartId, Python script> (skips externals)
 │   ├── compileToUrdf.ts      — Compiles CadIr assembly → URDF XML string
 │   ├── compileToMjcf.ts      — Compiles CadIr assembly → MJCF XML string (Phase 6)
 │   ├── emitParameters.ts     — Parameter variable declarations
@@ -438,9 +441,66 @@ Tests: **≥ 291 passing** (`pnpm test --run`).
 
 ---
 
-## Phase 8+ deferrals
+---
 
-The following remain out of scope after Phase 8 and will be addressed in later phases:
+## Phase 9 scope (shipped)
+
+Phase 9 extends the `PartRef` type to support purchased / off-the-shelf (external) parts, adds a
+BOM compiler, and wires external parts into the AABB interference check.
+
+### `PartRef` union (Task 1)
+
+`PartRef` is now a union type `InlinePartRef | ExternalPartRef`:
+
+| Type | Key fields | Use |
+|---|---|---|
+| `InlinePartRef` | `id`, `ir: CadIr`, `kind?: "inline"` | Sub-assemblies with inline geometry (Phase 4 default; backward compat: `kind` is optional) |
+| `ExternalPartRef` | `id`, `kind: "external"`, `vendor`, `partNumber`, `description?`, `boundingBox?` | Purchased / off-the-shelf parts (fasteners, bearings, etc.) |
+
+Both variants share `origin?` and `rotation?` (now typed as `{ x: ParamRef; y: ParamRef; z: ParamRef }` etc.).
+
+### Zod schema (Task 2)
+
+`PartRefSchema` now uses `z.union([InlinePartRefSchema, ExternalPartRefSchema])`. `z.discriminatedUnion`
+is NOT used because `InlinePartRef.kind` is optional — discriminated union requires a required discriminator.
+
+### AABB interference (Task 4)
+
+`partsInterfere` updated to handle both variants:
+- **External with no `boundingBox`**: skipped (no geometry to check).
+- **External with `boundingBox`**: uses a synthetic AABB `[-w/2, w/2] × [-h/2, h/2] × [0, d]`.
+- **Inline**: existing `computePartBbox(ir)` path unchanged.
+
+### BOM compiler — `compile/bom.ts` (Task 5)
+
+`compileBom(ir: CadIr): BomLine[]` recursively walks the assembly tree:
+- External parts aggregate by `vendor + "::" + partNumber` key (quantity ++)
+- Inline parts are recursed into (nested assemblies contribute their external parts)
+- Result sorted by vendor then partNumber
+
+### `add_part` tool schema (Task 6)
+
+`add_part` now accepts both inline and external part fields. `id` is the only required field;
+`ir` is required for inline parts, `vendor` + `partNumber` for external parts.
+`boundingBox` is exposed as an optional field for external parts.
+
+### Specialist `toolCallToPatch` (Task 7)
+
+`toolCallToPatch` for `add_part` updated to dispatch on `kind === "external"` and build the
+correct `ExternalPartRef` or `InlinePartRef` shape. No breaking change to existing inline paths.
+
+### `compileAssembly` (Task 8 / fixup)
+
+`compileAssembly` skips external parts (`kind === "external"`) — they have no inline geometry
+to compile to build123d Python.
+
+Tests: **≥ 303 passing** (`pnpm test --run`).
+
+---
+
+## Phase 9+ deferrals
+
+The following remain out of scope after Phase 9 and will be addressed in later phases:
 
 | Feature | Notes |
 |---|---|
@@ -448,14 +508,17 @@ The following remain out of scope after Phase 8 and will be addressed in later p
 | **Multi-part assembly joints + URDF** | ✅ Shipped in Phase 4 |
 | **Revolve / shell / bend_flange codegen + validation** | ✅ Shipped in Phase 5 |
 | **Sweep / loft / weld_tab codegen + MJCF compiler** | ✅ Shipped in Phase 6 |
+| **PartRef union + BOM compiler** | ✅ Shipped in Phase 9 |
 | **bend_flange real geometry** | Placeholder `pass` in Phase 5; full sheet-metal extension deferred |
-| **K-factor / flat-pattern DXF export** | Requires sheet-metal extension; Phase 7+ |
+| **K-factor / flat-pattern DXF export** | Requires sheet-metal extension; Phase 9+ |
 | **AxisRef.kind === "edge" resolution** | Requires geometry (sandbox face/edge entities); deferred |
-| **Sketch constraint solver** | Types + Tier 2 heuristic shipped in Phase 7; full DOF solver with over/under detection is Phase 8+ |
-| **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 7+ |
+| **Sketch constraint solver** | Types + Tier 2 heuristic shipped in Phase 7; full DOF solver deferred |
+| **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 9+ |
 | **Assembly interference / clearance checks** | ✅ AABB interference check shipped in Phase 8; exact mesh overlap deferred |
 | **GLB / STEP export via sandbox** | Sandbox currently produces STEP via `export_step()`; GLB transcode deferred |
 | **Streaming codegen** | Single-pass string builder today; chunked/streamed output for large IRs deferred |
-| **AI-driven repair loop (production)** | Mock repair loops tested; real Claude-powered production loop is Phase 7+ |
+| **AI-driven repair loop (production)** | Mock repair loops tested; real Claude-powered production loop deferred |
 | **Convex file storage for build artifacts** | Future phase will store STEP/GLB in Convex file storage |
 | **Version diffing / merge** | Revision hashes exist; structural diff / 3-way merge deferred |
+| **BOM export (CSV / PDF)** | `compileBom()` returns `BomLine[]`; CSV/PDF export is Phase 10+ |
+| **BOM line-item costing** | `BomLine` has no cost field yet; integration with supplier APIs deferred |
