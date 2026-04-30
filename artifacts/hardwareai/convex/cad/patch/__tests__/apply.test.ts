@@ -149,4 +149,48 @@ describe("applyPatch", () => {
     // ir reverts to parent
     expect(r.ir.features.map(f => f.id)).toEqual(["base", "f"]);
   });
+
+  // ── Task 4: remove ────────────────────────────────────────────────────────
+
+  it("remove deletes a parameter", () => {
+    const parent: CadIr = { ...emptyIr("mm"), parameters: { x: { id: "x", value: 1 } } };
+    const r = applyPatch(parent, { kind: "remove", entityType: "parameter", id: "x" });
+    expect(r.schemaViolations).toEqual([]);
+    expect(r.ir.parameters).toEqual({});
+  });
+
+  it("remove deletes a sketch", () => {
+    const parent: CadIr = {
+      ...emptyIr("mm"),
+      sketches: { s: { id: "s", plane: "XY", geometry: [] } },
+    };
+    const r = applyPatch(parent, { kind: "remove", entityType: "sketch", id: "s" });
+    expect(r.ir.sketches).toEqual({});
+  });
+
+  it("remove deletes a feature", () => {
+    const parent: CadIr = {
+      ...emptyIr("mm"),
+      sketches: { s: { id: "s", plane: "XY", geometry: [] } },
+      features: [
+        { kind: "extrude", id: "e1", profile: "s", distance: 3, operation: "new_body" },
+        { kind: "extrude", id: "e2", profile: "s", distance: 3, operation: "new_body" },
+      ],
+    };
+    const r = applyPatch(parent, { kind: "remove", entityType: "feature", id: "e1" });
+    expect(r.ir.features.map(f => f.id)).toEqual(["e2"]);
+  });
+
+  it("remove that orphans a reference is rejected", () => {
+    const parent: CadIr = {
+      ...emptyIr("mm"),
+      sketches: { s: { id: "s", plane: "XY", geometry: [] } },
+      features: [
+        { kind: "extrude", id: "base", profile: "s", distance: 3, operation: "new_body" },
+        { kind: "fillet", id: "f", edges: [{ feature: "base", query: "all" }], radius: 1 },
+      ],
+    };
+    const r = applyPatch(parent, { kind: "remove", entityType: "feature", id: "base" });
+    expect(r.schemaViolations.some(v => v.ruleId === "schema.unresolved-feature-ref")).toBe(true);
+  });
 });

@@ -133,7 +133,22 @@ function applyToCandidate(parent: CadIr, patch: Patch): CadIr {
         features: [...remaining.slice(0, toIdx), moved, ...remaining.slice(toIdx)],
       };
     }
-    case "remove":
-      throw new Error(`patch kind "${patch.kind}" not yet implemented`);
+    case "remove": {
+      if (patch.entityType === "parameter") {
+        const { [patch.id]: _removed, ...rest } = parent.parameters;
+        return { ...parent, parameters: rest };
+      }
+      if (patch.entityType === "sketch") {
+        const { [patch.id]: _removed, ...rest } = parent.sketches;
+        return { ...parent, sketches: rest };
+      }
+      if (patch.entityType === "feature") {
+        return {
+          ...parent,
+          features: parent.features.filter(f => f.id !== patch.id),
+        };
+      }
+      return parent;
+    }
   }
 }
