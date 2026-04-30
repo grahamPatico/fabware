@@ -19,7 +19,7 @@ import type { Id } from "../_generated/dataModel";
 import { cadIrPlugin } from "../cad/plugin";
 import { applyPatch } from "../cad/patch/apply";
 import type { Patch } from "../cad/patch/types";
-import type { CadIr, Feature, SketchDef, SketchEntity, PartRef, Joint, Connection, SketchConstraint } from "../cad/ir/types";
+import type { CadIr, Feature, SketchDef, SketchEntity, PartRef, Joint, Connection, SketchConstraint, ExternalPartRef } from "../cad/ir/types";
 import type { ParameterDef } from "../cad/ir/types";
 import { emptyIr } from "../cad/ir/empty";
 import { compileToBuild123d } from "../cad/codegen/compileToBuild123d";
@@ -141,9 +141,28 @@ function toolCallToPatch(tool: { name: string; input: unknown }): Patch | null {
   // ── Phase 4: Assembly tool dispatchers ──────────────────────────────────────
 
   if (tool.name === "add_part") {
-    if (typeof inp?.id !== "string" || !inp?.ir || typeof inp.ir !== "object") return null;
+    if (typeof inp?.id !== "string") return null;
+    // Phase 9: support both inline (ir field) and external (vendor+partNumber) variants.
+    const isExternal = inp?.kind === "external";
+    if (isExternal) {
+      if (typeof inp?.vendor !== "string" || typeof inp?.partNumber !== "string") return null;
+      const part: PartRef = {
+        id: inp.id,
+        kind: "external",
+        vendor: inp.vendor,
+        partNumber: inp.partNumber,
+        description: typeof inp.description === "string" ? inp.description : undefined,
+        origin: inp.origin as PartRef["origin"],
+        rotation: inp.rotation as PartRef["rotation"],
+        boundingBox: inp.boundingBox as ExternalPartRef["boundingBox"],
+      };
+      return { kind: "add_part", part };
+    }
+    // Inline variant (default)
+    if (!inp?.ir || typeof inp.ir !== "object") return null;
     const part: PartRef = {
       id: inp.id,
+      kind: inp.kind === "inline" ? "inline" : undefined,
       ir: inp.ir as CadIr,
       origin: inp.origin as PartRef["origin"],
       rotation: inp.rotation as PartRef["rotation"],
