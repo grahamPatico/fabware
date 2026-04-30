@@ -19,7 +19,7 @@ import type { Id } from "../_generated/dataModel";
 import { cadIrPlugin } from "../cad/plugin";
 import { applyPatch } from "../cad/patch/apply";
 import type { Patch } from "../cad/patch/types";
-import type { CadIr, Feature } from "../cad/ir/types";
+import type { CadIr, Feature, SketchDef, SketchEntity } from "../cad/ir/types";
 import type { ParameterDef } from "../cad/ir/types";
 import { emptyIr } from "../cad/ir/empty";
 import { compileToBuild123d } from "../cad/codegen/compileToBuild123d";
@@ -62,6 +62,74 @@ function toolCallToPatch(tool: { name: string; input: unknown }): Patch | null {
     if (!inp?.feature || typeof inp.feature !== "object") return null;
     // Trust the agent — applyPatch will schema-validate the result.
     return { kind: "add_feature", feature: inp.feature as Feature };
+  }
+
+  if (tool.name === "modify_feature") {
+    if (typeof inp?.featureId !== "string" || !inp?.changes || typeof inp.changes !== "object") return null;
+    return { kind: "modify_feature", featureId: inp.featureId, changes: inp.changes as Partial<Feature> };
+  }
+
+  if (tool.name === "suppress") {
+    if (typeof inp?.featureId !== "string") return null;
+    return { kind: "suppress", featureId: inp.featureId };
+  }
+
+  if (tool.name === "unsuppress") {
+    if (typeof inp?.featureId !== "string") return null;
+    return { kind: "unsuppress", featureId: inp.featureId };
+  }
+
+  if (tool.name === "reorder_feature") {
+    if (typeof inp?.featureId !== "string") return null;
+    return {
+      kind: "reorder_feature",
+      featureId: inp.featureId,
+      beforeFeatureId: typeof inp.beforeFeatureId === "string" ? inp.beforeFeatureId : undefined,
+      afterFeatureId: typeof inp.afterFeatureId === "string" ? inp.afterFeatureId : undefined,
+    };
+  }
+
+  if (tool.name === "remove") {
+    if (
+      typeof inp?.entityType !== "string" ||
+      !["parameter", "sketch", "feature"].includes(inp.entityType) ||
+      typeof inp?.id !== "string"
+    ) {
+      return null;
+    }
+    return {
+      kind: "remove",
+      entityType: inp.entityType as "parameter" | "sketch" | "feature",
+      id: inp.id,
+    };
+  }
+
+  if (tool.name === "add_sketch") {
+    if (!inp?.sketch || typeof inp.sketch !== "object") return null;
+    return { kind: "add_sketch", sketch: inp.sketch as SketchDef };
+  }
+
+  if (tool.name === "modify_sketch") {
+    if (typeof inp?.sketchId !== "string" || !inp?.op || typeof inp.op !== "object") return null;
+    const op = inp.op as Record<string, unknown>;
+    if (typeof op.kind !== "string") return null;
+
+    switch (op.kind) {
+      case "set_plane":
+        if (!op.plane) return null;
+        return { kind: "modify_sketch", sketchId: inp.sketchId, op: { kind: "set_plane", plane: op.plane as import("../cad/ir/types").PlaneRef } };
+      case "add_entity":
+        if (!op.entity || typeof op.entity !== "object") return null;
+        return { kind: "modify_sketch", sketchId: inp.sketchId, op: { kind: "add_entity", entity: op.entity as SketchEntity } };
+      case "remove_entity":
+        if (typeof op.entityId !== "string") return null;
+        return { kind: "modify_sketch", sketchId: inp.sketchId, op: { kind: "remove_entity", entityId: op.entityId } };
+      case "modify_entity":
+        if (typeof op.entityId !== "string" || !op.changes) return null;
+        return { kind: "modify_sketch", sketchId: inp.sketchId, op: { kind: "modify_entity", entityId: op.entityId, changes: op.changes as Partial<SketchEntity> } };
+      default:
+        return null;
+    }
   }
 
   return null;

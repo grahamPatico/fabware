@@ -11,6 +11,36 @@ export interface ApplyResult {
 }
 
 export function applyPatch(parent: CadIr, patch: Patch): ApplyResult {
+  // Pre-check: for modify_sketch, guard missing sketch early
+  if (patch.kind === "modify_sketch") {
+    if (!parent.sketches[patch.sketchId]) {
+      return {
+        ir: parent,
+        schemaViolations: [{
+          ruleId: "schema.unresolved-sketch-ref",
+          severity: "error",
+          message: `Sketch "${patch.sketchId}" not found`,
+          agentMessage: `No sketch with id "${patch.sketchId}" exists. Check the sketch id and try again.`,
+        }],
+      };
+    }
+  }
+
+  // Pre-check: for add_sketch, guard duplicate sketch id
+  if (patch.kind === "add_sketch") {
+    if (parent.sketches[patch.sketch.id]) {
+      return {
+        ir: parent,
+        schemaViolations: [{
+          ruleId: "schema.duplicate-sketch-id",
+          severity: "error",
+          message: `Sketch id "${patch.sketch.id}" already exists`,
+          agentMessage: `A sketch with id "${patch.sketch.id}" already exists. Use a unique id.`,
+        }],
+      };
+    }
+  }
+
   // Pre-check: for patches targeting existing features, guard missing target early
   if (
     patch.kind === "modify_feature" ||
@@ -146,6 +176,67 @@ function applyToCandidate(parent: CadIr, patch: Patch): CadIr {
         return {
           ...parent,
           features: parent.features.filter(f => f.id !== patch.id),
+        };
+      }
+      return parent;
+    }
+
+    case "add_sketch":
+      return {
+        ...parent,
+        sketches: { ...parent.sketches, [patch.sketch.id]: patch.sketch },
+      };
+
+    case "modify_sketch": {
+      const sketch = parent.sketches[patch.sketchId];
+      if (!sketch) return parent;
+
+      const op = patch.op;
+      if (op.kind === "set_plane") {
+        return {
+          ...parent,
+          sketches: {
+            ...parent.sketches,
+            [patch.sketchId]: { ...sketch, plane: op.plane },
+          },
+        };
+      }
+      if (op.kind === "add_entity") {
+        return {
+          ...parent,
+          sketches: {
+            ...parent.sketches,
+            [patch.sketchId]: {
+              ...sketch,
+              geometry: [...sketch.geometry, op.entity],
+            },
+          },
+        };
+      }
+      if (op.kind === "remove_entity") {
+        return {
+          ...parent,
+          sketches: {
+            ...parent.sketches,
+            [patch.sketchId]: {
+              ...sketch,
+              geometry: sketch.geometry.filter((g) => g.id !== op.entityId),
+            },
+          },
+        };
+      }
+      if (op.kind === "modify_entity") {
+        const geometry = sketch.geometry.map((g) =>
+          g.id === op.entityId
+            ? ({ ...g, ...op.changes } as never)
+            : g,
+        );
+        return {
+          ...parent,
+          sketches: {
+            ...parent.sketches,
+            [patch.sketchId]: { ...sketch, geometry },
+          },
         };
       }
       return parent;

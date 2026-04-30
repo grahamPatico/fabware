@@ -193,4 +193,115 @@ describe("applyPatch", () => {
     const r = applyPatch(parent, { kind: "remove", entityType: "feature", id: "base" });
     expect(r.schemaViolations.some(v => v.ruleId === "schema.unresolved-feature-ref")).toBe(true);
   });
+
+  // ── Task 5: add_sketch ────────────────────────────────────────────────────
+
+  it("add_sketch adds a new sketch", () => {
+    const r = applyPatch(emptyIr("mm"), {
+      kind: "add_sketch",
+      sketch: { id: "sk1", plane: "XY", geometry: [] },
+    });
+    expect(r.schemaViolations).toEqual([]);
+    expect(r.ir.sketches["sk1"]).toBeDefined();
+  });
+
+  it("add_sketch rejects duplicate sketch id", () => {
+    const ir: CadIr = {
+      ...emptyIr("mm"),
+      sketches: { sk1: { id: "sk1", plane: "XY", geometry: [] } },
+    };
+    const r = applyPatch(ir, {
+      kind: "add_sketch",
+      sketch: { id: "sk1", plane: "XZ", geometry: [] },
+    });
+    expect(r.schemaViolations.some((v) => v.ruleId === "schema.duplicate-sketch-id")).toBe(true);
+  });
+
+  // ── Task 6: modify_sketch ─────────────────────────────────────────────────
+
+  it("modify_sketch set_plane changes the plane", () => {
+    const ir: CadIr = {
+      ...emptyIr("mm"),
+      sketches: { sk1: { id: "sk1", plane: "XY", geometry: [] } },
+    };
+    const r = applyPatch(ir, {
+      kind: "modify_sketch",
+      sketchId: "sk1",
+      op: { kind: "set_plane", plane: "XZ" },
+    });
+    expect(r.schemaViolations).toEqual([]);
+    expect(r.ir.sketches["sk1"].plane).toBe("XZ");
+  });
+
+  it("modify_sketch add_entity appends to geometry", () => {
+    const ir: CadIr = {
+      ...emptyIr("mm"),
+      sketches: { sk1: { id: "sk1", plane: "XY", geometry: [] } },
+    };
+    const r = applyPatch(ir, {
+      kind: "modify_sketch",
+      sketchId: "sk1",
+      op: {
+        kind: "add_entity",
+        entity: { kind: "circle", id: "c1", center: { x: 0, y: 0 }, radius: 10 },
+      },
+    });
+    expect(r.schemaViolations).toEqual([]);
+    expect(r.ir.sketches["sk1"].geometry).toHaveLength(1);
+  });
+
+  it("modify_sketch remove_entity removes from geometry", () => {
+    const ir: CadIr = {
+      ...emptyIr("mm"),
+      sketches: {
+        sk1: {
+          id: "sk1",
+          plane: "XY",
+          geometry: [
+            { kind: "circle", id: "c1", center: { x: 0, y: 0 }, radius: 10 },
+            { kind: "circle", id: "c2", center: { x: 5, y: 5 }, radius: 5 },
+          ],
+        },
+      },
+    };
+    const r = applyPatch(ir, {
+      kind: "modify_sketch",
+      sketchId: "sk1",
+      op: { kind: "remove_entity", entityId: "c1" },
+    });
+    expect(r.schemaViolations).toEqual([]);
+    expect(r.ir.sketches["sk1"].geometry).toHaveLength(1);
+    expect(r.ir.sketches["sk1"].geometry[0].id).toBe("c2");
+  });
+
+  it("modify_sketch modify_entity updates entity fields", () => {
+    const ir: CadIr = {
+      ...emptyIr("mm"),
+      sketches: {
+        sk1: {
+          id: "sk1",
+          plane: "XY",
+          geometry: [{ kind: "circle", id: "c1", center: { x: 0, y: 0 }, radius: 10 }],
+        },
+      },
+    };
+    const r = applyPatch(ir, {
+      kind: "modify_sketch",
+      sketchId: "sk1",
+      op: { kind: "modify_entity", entityId: "c1", changes: { radius: 20 } },
+    });
+    expect(r.schemaViolations).toEqual([]);
+    const circle = r.ir.sketches["sk1"].geometry[0];
+    expect((circle as { radius: number }).radius).toBe(20);
+  });
+
+  it("modify_sketch returns unresolved-sketch-ref for missing sketch", () => {
+    const ir = emptyIr("mm");
+    const r = applyPatch(ir, {
+      kind: "modify_sketch",
+      sketchId: "ghost",
+      op: { kind: "set_plane", plane: "XZ" },
+    });
+    expect(r.schemaViolations.some((v) => v.ruleId === "schema.unresolved-sketch-ref")).toBe(true);
+  });
 });

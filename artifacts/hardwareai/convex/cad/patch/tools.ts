@@ -137,4 +137,168 @@ const addFeature: AgentTool = {
   },
 };
 
-export const CAD_IR_TOOLS: AgentTool[] = [setParameter, addFeature];
+const modifyFeature: AgentTool = {
+  name: "modify_feature",
+  description:
+    "Update fields on an existing feature in the timeline. Only supply the fields you want to change — all others are preserved. Cannot change the feature's kind.",
+  input_schema: {
+    type: "object",
+    properties: {
+      featureId: { type: "string", pattern: SNAKE_PATTERN, description: "id of the feature to modify" },
+      changes: {
+        type: "object",
+        description: "Partial feature fields to merge. Must not include 'kind'.",
+        additionalProperties: true,
+      },
+    },
+    required: ["featureId", "changes"],
+  },
+};
+
+const suppress: AgentTool = {
+  name: "suppress",
+  description: "Suppress a feature (exclude it from the build without removing it). The feature remains in the timeline but is skipped during execution.",
+  input_schema: {
+    type: "object",
+    properties: {
+      featureId: { type: "string", pattern: SNAKE_PATTERN, description: "id of the feature to suppress" },
+    },
+    required: ["featureId"],
+  },
+};
+
+const unsuppress: AgentTool = {
+  name: "unsuppress",
+  description: "Unsuppress a previously-suppressed feature, restoring it to the active build.",
+  input_schema: {
+    type: "object",
+    properties: {
+      featureId: { type: "string", pattern: SNAKE_PATTERN, description: "id of the feature to unsuppress" },
+    },
+    required: ["featureId"],
+  },
+};
+
+const reorderFeature: AgentTool = {
+  name: "reorder_feature",
+  description:
+    "Move a feature to a different position in the timeline. Specify beforeFeatureId to insert before that feature, or afterFeatureId to insert after it. If neither is specified, the feature moves to the end. The validator will reject forward references.",
+  input_schema: {
+    type: "object",
+    properties: {
+      featureId: { type: "string", pattern: SNAKE_PATTERN, description: "id of the feature to move" },
+      beforeFeatureId: { type: "string", pattern: SNAKE_PATTERN, description: "insert before this feature id" },
+      afterFeatureId: { type: "string", pattern: SNAKE_PATTERN, description: "insert after this feature id" },
+    },
+    required: ["featureId"],
+  },
+};
+
+const remove: AgentTool = {
+  name: "remove",
+  description:
+    "Remove a parameter, sketch, or feature from the IR. Will be rejected if other entities still reference the removed entity.",
+  input_schema: {
+    type: "object",
+    properties: {
+      entityType: { type: "string", enum: ["parameter", "sketch", "feature"] },
+      id: { type: "string", pattern: SNAKE_PATTERN, description: "id of the entity to remove" },
+    },
+    required: ["entityType", "id"],
+  },
+};
+
+const addSketch: AgentTool = {
+  name: "add_sketch",
+  description:
+    "Add a new sketch to the IR. A sketch defines a 2-D profile on a plane (XY, XZ, YZ, or a face). Features like extrude and cut_extrude reference sketches by id.",
+  input_schema: {
+    type: "object",
+    properties: {
+      sketch: {
+        type: "object",
+        properties: {
+          id: { type: "string", pattern: SNAKE_PATTERN, description: "unique snake_case sketch id" },
+          plane: {
+            oneOf: [
+              { type: "string", enum: ["XY", "XZ", "YZ"] },
+              {
+                type: "object",
+                properties: { face: { type: "string", description: "<featureId>.<tag>" } },
+                required: ["face"],
+              },
+            ],
+          },
+          geometry: {
+            type: "array",
+            items: {
+              type: "object",
+              description: "SketchEntity: rect, circle, or line",
+            },
+          },
+        },
+        required: ["id", "plane", "geometry"],
+      },
+    },
+    required: ["sketch"],
+  },
+};
+
+const modifySketch: AgentTool = {
+  name: "modify_sketch",
+  description:
+    "Modify an existing sketch: change its plane, add/remove/update geometry entities. Use op.kind to choose the operation.",
+  input_schema: {
+    type: "object",
+    properties: {
+      sketchId: { type: "string", pattern: SNAKE_PATTERN, description: "id of the sketch to modify" },
+      op: {
+        oneOf: [
+          {
+            type: "object",
+            properties: { kind: { const: "set_plane" }, plane: { oneOf: [{ type: "string", enum: ["XY", "XZ", "YZ"] }, { type: "object", properties: { face: { type: "string" } }, required: ["face"] }] } },
+            required: ["kind", "plane"],
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "add_entity" },
+              entity: { type: "object", description: "SketchEntity (rect/circle/line)", additionalProperties: true },
+            },
+            required: ["kind", "entity"],
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "remove_entity" },
+              entityId: { type: "string", description: "id of the entity to remove" },
+            },
+            required: ["kind", "entityId"],
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "modify_entity" },
+              entityId: { type: "string", description: "id of the entity to modify" },
+              changes: { type: "object", description: "partial entity fields", additionalProperties: true },
+            },
+            required: ["kind", "entityId", "changes"],
+          },
+        ],
+      },
+    },
+    required: ["sketchId", "op"],
+  },
+};
+
+export const CAD_IR_TOOLS: AgentTool[] = [
+  setParameter,
+  addFeature,
+  modifyFeature,
+  suppress,
+  unsuppress,
+  reorderFeature,
+  remove,
+  addSketch,
+  modifySketch,
+];
