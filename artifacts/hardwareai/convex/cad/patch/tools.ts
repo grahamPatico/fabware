@@ -377,7 +377,7 @@ const addSketch: AgentTool = {
 const modifySketch: AgentTool = {
   name: "modify_sketch",
   description:
-    "Modify an existing sketch: change its plane, add/remove/update geometry entities. Use op.kind to choose the operation.",
+    "Modify an existing sketch: change its plane, add/remove/update geometry entities, or add/remove constraints. Use op.kind to choose the operation.",
   input_schema: {
     type: "object",
     properties: {
@@ -413,6 +413,26 @@ const modifySketch: AgentTool = {
               changes: { type: "object", description: "partial entity fields", additionalProperties: true },
             },
             required: ["kind", "entityId", "changes"],
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "add_constraint" },
+              constraint: {
+                type: "object",
+                description: "SketchConstraint to add. Must have: kind (coincident|distance|parallel|perpendicular|tangent|equal|angle|horizontal|vertical), id (unique string), and kind-specific fields (a/b for pair constraints, entity for single-entity constraints, distance/angle for parametric constraints).",
+                additionalProperties: true,
+              },
+            },
+            required: ["kind", "constraint"],
+          },
+          {
+            type: "object",
+            properties: {
+              kind: { const: "remove_constraint" },
+              constraintId: { type: "string", description: "id of the constraint to remove" },
+            },
+            required: ["kind", "constraintId"],
           },
         ],
       },

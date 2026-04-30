@@ -1,5 +1,5 @@
 // artifacts/hardwareai/convex/cad/patch/types.ts
-import type { Feature, SketchDef, SketchEntity, PlaneRef, PartRef, Joint, Connection } from "../ir/types";
+import type { Feature, SketchDef, SketchEntity, PlaneRef, PartRef, Joint, Connection, SketchConstraint } from "../ir/types";
 
 export interface SetParameterPatch {
   kind: "set_parameter";
@@ -44,7 +44,9 @@ export type ModifySketchOp =
   | { kind: "set_plane"; plane: PlaneRef }
   | { kind: "add_entity"; entity: SketchEntity }
   | { kind: "remove_entity"; entityId: string }
-  | { kind: "modify_entity"; entityId: string; changes: Partial<SketchEntity> };
+  | { kind: "modify_entity"; entityId: string; changes: Partial<SketchEntity> }
+  | { kind: "add_constraint"; constraint: SketchConstraint }
+  | { kind: "remove_constraint"; constraintId: string };
 
 export interface ModifySketchPatch {
   kind: "modify_sketch";

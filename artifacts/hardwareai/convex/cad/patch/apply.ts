@@ -239,6 +239,30 @@ function applyToCandidate(parent: CadIr, patch: Patch): CadIr {
           },
         };
       }
+      if (op.kind === "add_constraint") {
+        return {
+          ...parent,
+          sketches: {
+            ...parent.sketches,
+            [patch.sketchId]: {
+              ...sketch,
+              constraints: [...(sketch.constraints ?? []), op.constraint],
+            },
+          },
+        };
+      }
+      if (op.kind === "remove_constraint") {
+        return {
+          ...parent,
+          sketches: {
+            ...parent.sketches,
+            [patch.sketchId]: {
+              ...sketch,
+              constraints: (sketch.constraints ?? []).filter((c) => c.id !== op.constraintId),
+            },
+          },
+        };
+      }
       return parent;
     }
 

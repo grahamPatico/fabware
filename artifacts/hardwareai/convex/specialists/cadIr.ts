@@ -19,7 +19,7 @@ import type { Id } from "../_generated/dataModel";
 import { cadIrPlugin } from "../cad/plugin";
 import { applyPatch } from "../cad/patch/apply";
 import type { Patch } from "../cad/patch/types";
-import type { CadIr, Feature, SketchDef, SketchEntity, PartRef, Joint, Connection } from "../cad/ir/types";
+import type { CadIr, Feature, SketchDef, SketchEntity, PartRef, Joint, Connection, SketchConstraint } from "../cad/ir/types";
 import type { ParameterDef } from "../cad/ir/types";
 import { emptyIr } from "../cad/ir/empty";
 import { compileToBuild123d } from "../cad/codegen/compileToBuild123d";
@@ -127,6 +127,12 @@ function toolCallToPatch(tool: { name: string; input: unknown }): Patch | null {
       case "modify_entity":
         if (typeof op.entityId !== "string" || !op.changes) return null;
         return { kind: "modify_sketch", sketchId: inp.sketchId, op: { kind: "modify_entity", entityId: op.entityId, changes: op.changes as Partial<SketchEntity> } };
+      case "add_constraint":
+        if (!op.constraint || typeof op.constraint !== "object") return null;
+        return { kind: "modify_sketch", sketchId: inp.sketchId, op: { kind: "add_constraint", constraint: op.constraint as SketchConstraint } };
+      case "remove_constraint":
+        if (typeof op.constraintId !== "string") return null;
+        return { kind: "modify_sketch", sketchId: inp.sketchId, op: { kind: "remove_constraint", constraintId: op.constraintId } };
       default:
         return null;
     }
