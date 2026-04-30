@@ -107,4 +107,17 @@ describe("CAD_IR_TOOLS", () => {
       expect(text).toContain(kind);
     }
   });
+
+  // Phase 9: add_part supports both inline and external variants
+  it("add_part schema accepts external variant fields (vendor, partNumber, boundingBox)", () => {
+    const t = CAD_IR_TOOLS.find((t) => t.name === "add_part")!;
+    const text = JSON.stringify(t.input_schema);
+    expect(text).toContain("vendor");
+    expect(text).toContain("partNumber");
+    expect(text).toContain("boundingBox");
+    expect(text).toContain("external");
+    // 'id' is still the only required field (both variants share it)
+    const props = t.input_schema as { required: string[] };
+    expect(props.required).toContain("id");
+  });
 });

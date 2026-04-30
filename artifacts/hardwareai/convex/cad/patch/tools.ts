@@ -441,41 +441,75 @@ const modifySketch: AgentTool = {
   },
 };
 
-// ── Phase 4: Assembly tools ──────────────────────────────────────────────────
+// ── Phase 4 / Phase 9: Assembly tools ───────────────────────────────────────
 
 const addPart: AgentTool = {
   name: "add_part",
   description:
-    "Add a sub-part to the assembly. Each part has a unique snake_case id and an inline CadIr that defines its geometry. Optionally supply origin (x/y/z translation in assembly units) and rotation (rx/ry/rz Euler angles in degrees).",
+    "Add a sub-part to the assembly. Supports two variants:\n" +
+    "  • Inline part (default): supply `ir` (a full CadIr) defining the sub-part geometry.\n" +
+    "  • External/purchased part: set kind='external' and supply vendor + partNumber instead of ir.\n" +
+    "Optionally supply origin (x/y/z translation in assembly units) and rotation (rx/ry/rz Euler angles in degrees).\n" +
+    "External parts may also declare boundingBox { width, height, depth } for interference checks.",
   input_schema: {
     type: "object",
     properties: {
       id: { type: "string", pattern: SNAKE_PATTERN, description: "unique snake_case part id" },
+      kind: {
+        type: "string",
+        enum: ["inline", "external"],
+        description: "Part kind: 'inline' (default, uses ir field) or 'external' (uses vendor/partNumber).",
+      },
+      // ── Inline fields ──────────────────────────────────────────────────────
       ir: {
         type: "object",
-        description: "Inline CadIr for the sub-part. Must have schemaVersion, units, parameters, sketches, features.",
+        description: "Inline CadIr for the sub-part. Required when kind is 'inline' (or omitted). Must have schemaVersion, units, parameters, sketches, features.",
         additionalProperties: true,
       },
+      // ── External fields ────────────────────────────────────────────────────
+      vendor: {
+        type: "string",
+        description: "Supplier / manufacturer name (required for external parts, e.g. 'McMaster-Carr').",
+      },
+      partNumber: {
+        type: "string",
+        description: "Supplier part number (required for external parts, e.g. '91290A115').",
+      },
+      description: {
+        type: "string",
+        description: "Human-readable description of the external part (optional).",
+      },
+      boundingBox: {
+        type: "object",
+        properties: {
+          width:  { oneOf: [{ type: "number" }, { type: "string" }], description: "overall width" },
+          height: { oneOf: [{ type: "number" }, { type: "string" }], description: "overall height" },
+          depth:  { oneOf: [{ type: "number" }, { type: "string" }], description: "overall depth" },
+        },
+        required: ["width", "height", "depth"],
+        description: "Declared bounding box for external parts (used by interference checks).",
+      },
+      // ── Common optional fields ─────────────────────────────────────────────
       origin: {
         type: "object",
         properties: {
-          x: { type: "number" },
-          y: { type: "number" },
-          z: { type: "number" },
+          x: { oneOf: [{ type: "number" }, { type: "string" }] },
+          y: { oneOf: [{ type: "number" }, { type: "string" }] },
+          z: { oneOf: [{ type: "number" }, { type: "string" }] },
         },
         required: ["x", "y", "z"],
       },
       rotation: {
         type: "object",
         properties: {
-          rx: { type: "number", description: "rotation about X axis (degrees)" },
-          ry: { type: "number", description: "rotation about Y axis (degrees)" },
-          rz: { type: "number", description: "rotation about Z axis (degrees)" },
+          rx: { oneOf: [{ type: "number" }, { type: "string" }], description: "rotation about X axis (degrees)" },
+          ry: { oneOf: [{ type: "number" }, { type: "string" }], description: "rotation about Y axis (degrees)" },
+          rz: { oneOf: [{ type: "number" }, { type: "string" }], description: "rotation about Z axis (degrees)" },
         },
         required: ["rx", "ry", "rz"],
       },
     },
-    required: ["id", "ir"],
+    required: ["id"],
   },
 };
 
