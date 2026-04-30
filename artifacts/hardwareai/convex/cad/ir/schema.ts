@@ -217,14 +217,43 @@ export const CadIrSchema: z.ZodType<unknown> = z.lazy(() =>
   })
 );
 
-// PartRef references CadIrSchema recursively — must use z.lazy
-const PartRefSchema: z.ZodType<unknown> = z.lazy(() =>
+// ── Phase 9: PartRef union (inline | external) ───────────────────────────────
+//
+// InlinePartRef has an OPTIONAL `kind` field (for backward compat with Phase 4
+// IRs that omit it). z.discriminatedUnion cannot be used here because the
+// discriminator is optional — use z.union instead.
+//
+// Both schemas use z.lazy so that InlinePartRef.ir can reference CadIrSchema.
+
+const OriginSchema = z.object({ x: ParamRef, y: ParamRef, z: ParamRef });
+const RotationSchema = z.object({ rx: ParamRef, ry: ParamRef, rz: ParamRef });
+
+const InlinePartRefSchema: z.ZodType<unknown> = z.lazy(() =>
   z.object({
     id: Snake,
+    kind: z.literal("inline").optional(),
     ir: CadIrSchema,
-    origin: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
-    rotation: z.object({ rx: z.number(), ry: z.number(), rz: z.number() }).optional(),
+    origin: OriginSchema.optional(),
+    rotation: RotationSchema.optional(),
   })
+);
+
+const ExternalPartRefSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.object({
+    id: Snake,
+    kind: z.literal("external"),
+    vendor: z.string().min(1),
+    partNumber: z.string().min(1),
+    description: z.string().optional(),
+    origin: OriginSchema.optional(),
+    rotation: RotationSchema.optional(),
+    boundingBox: z.object({ width: ParamRef, height: ParamRef, depth: ParamRef }).optional(),
+  })
+);
+
+// PartRef references CadIrSchema recursively — must use z.lazy
+const PartRefSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.union([InlinePartRefSchema as z.ZodType<unknown>, ExternalPartRefSchema as z.ZodType<unknown>])
 );
 
 const AxisRefSchema = z.union([
