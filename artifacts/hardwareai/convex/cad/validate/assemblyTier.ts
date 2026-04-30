@@ -9,6 +9,7 @@
 
 import type { CadIr } from "../ir/types";
 import type { Violation } from "../../plugins/types";
+import { partsInterfere } from "./rules/partsInterfere";
 
 function v(ruleId: string, message: string, agent: string): Violation {
   return { ruleId, severity: "error", message, agentMessage: agent };
@@ -94,6 +95,9 @@ export function validateAssemblyTier(ir: CadIr): Violation[] {
       ));
     }
   }
+
+  // ── Rule 3: parts interference (AABB check) ───────────────────────────────
+  out.push(...partsInterfere(ir));
 
   return out;
 }
