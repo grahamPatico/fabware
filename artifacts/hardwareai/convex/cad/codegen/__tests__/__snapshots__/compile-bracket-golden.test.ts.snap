@@ -1,0 +1,26 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`compileToBuild123d — bracket golden snapshot > produces stable output for the canonical bracket IR 1`] = `
+"from build123d import *
+
+length = 120
+width = 80
+thickness = 5
+hole_d = 6
+fillet_r = 3
+
+with BuildPart() as base_extrude:
+    with BuildSketch():
+        Rectangle(120, 80)
+    extrude(amount=thickness)
+report_entities("base_extrude", base_extrude)
+
+with Locations((45, 30, 0), (-45, 30, 0), (45, -30, 0), (-45, -30, 0)):
+    Hole(radius=hole_d / 2, depth=thickness)
+report_entities("mounting_holes", base_extrude)
+
+fillet(base_extrude.edges().filter_by(Axis.Z), fillet_r)
+report_entities("edge_fillet", base_extrude)
+
+export_step(base_extrude.part, "output.step")"
+`;
