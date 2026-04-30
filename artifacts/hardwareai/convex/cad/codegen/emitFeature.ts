@@ -7,6 +7,9 @@ import { emitFillet } from "./features/fillet";
 import { emitChamfer } from "./features/chamfer";
 import { emitHole } from "./features/hole";
 import { emitPattern } from "./features/pattern";
+import { emitRevolve } from "./features/revolve";
+import { emitShell } from "./features/shell";
+import { emitBendFlange } from "./features/bendFlange";
 
 export type EmitContext = {
   /** The build123d variable name of the current "parent" body, or null if none
@@ -62,6 +65,25 @@ export function emitFeature(
     case "pattern": {
       const lines = emitPattern(f, ir, ctx.parentBodyId);
       // pattern replicates a source feature — keep same parentBodyId
+      return { lines, ctxOut: ctx };
+    }
+
+    case "revolve": {
+      const lines = emitRevolve(f, ir, ctx.parentBodyId);
+      // revolve creates a new body
+      const ctxOut: EmitContext = { parentBodyId: f.id };
+      return { lines, ctxOut };
+    }
+
+    case "shell": {
+      const lines = emitShell(f, ir, ctx.parentBodyId);
+      // shell modifies an existing body in-place
+      return { lines, ctxOut: ctx };
+    }
+
+    case "bend_flange": {
+      const lines = emitBendFlange(f, ir, ctx.parentBodyId);
+      // bend_flange modifies an existing body in-place
       return { lines, ctxOut: ctx };
     }
 

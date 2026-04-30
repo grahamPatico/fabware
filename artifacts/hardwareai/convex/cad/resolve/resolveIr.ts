@@ -88,6 +88,18 @@ export function resolveIr(ir: CadIr): ResolvedIr {
         } as Feature;
       case "pattern":
         return { ...f, spacing: evalRef(f.spacing) } as Feature;
+      case "revolve":
+        return { ...f, angle: evalRef(f.angle) } as Feature;
+      case "shell":
+        return { ...f, thickness: evalRef(f.thickness) } as Feature;
+      case "bend_flange":
+        return {
+          ...f,
+          angle: evalRef(f.angle),
+          radius: evalRef(f.radius),
+          length: evalRef(f.length),
+          thickness: evalRef(f.thickness),
+        } as Feature;
     }
   });
 
