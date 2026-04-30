@@ -58,6 +58,13 @@ describe("cadIrPlugin", () => {
     expect(cadIrPlugin.kind).toBe("sheet_metal");
   });
 
+  it("exposes all 9 patch tools", () => {
+    expect(cadIrPlugin.tools.map(t => t.name).sort()).toEqual([
+      "add_feature", "add_sketch", "modify_feature", "modify_sketch",
+      "remove", "reorder_feature", "set_parameter", "suppress", "unsuppress",
+    ]);
+  });
+
   it("validate returns no violations for a clean IR", () => {
     const violations = cadIrPlugin.validate(CLEAN_IR, { scope: null, peerParts: [] });
     expect(violations).toEqual([]);

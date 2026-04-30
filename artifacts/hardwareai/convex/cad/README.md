@@ -74,19 +74,66 @@ Tests: **≥ 151 passing** (`pnpm test --run`).
 
 ---
 
-## Phase 2+ deferrals
+## Phase 2 scope (shipped)
 
-The following are explicitly out of scope for Phase 1 and will be addressed in later phases:
+Phase 2 extended the CAD IR pipeline with richer patch coverage, manufacturing rule decomposition, and a harder integration test:
+
+### 7 new patch tools (+ prompt coverage)
+
+Phase 1 shipped `set_parameter` and `add_feature`. Phase 2 adds the remaining 7 tools, bringing the total to **9**:
+
+| Tool | Description |
+|---|---|
+| `modify_feature` | Merge partial changes into an existing feature |
+| `suppress` / `unsuppress` | Toggle features out of / back into the build |
+| `reorder_feature` | Move a feature to a different timeline position |
+| `remove` | Delete a parameter, sketch, or feature |
+| `add_sketch` | Insert a new sketch definition |
+| `modify_sketch` | Change plane or geometry entities on an existing sketch |
+
+All 9 tools are wired into `cadIrPlugin.tools` and covered by `patch/apply.ts`.
+
+### Manufacturing rules refactor
+
+`validate/manufacturingTier.ts` was refactored from a single monolithic file into a composed set of per-rule files under `validate/rules/`:
+
+- `rules/holeEdgeDistance.ts` — extracted hole-edge-distance logic (behaviour preserved exactly)
+- `rules/minWallThickness.ts` — new rule: extrude `distance` must be ≥ 2 mm
+
+`validateManufacturingTier()` now composes both rules via spread:
+
+```ts
+return [...holeEdgeDistance(ir), ...minWallThickness(ir)];
+```
+
+Adding future rules is a one-liner import + spread.
+
+### Multitool repair loop integration test
+
+`cad/__tests__/repair-loop-multitool.test.ts` proves the loop handles **two simultaneous violations** with two different patch kinds:
+
+- Turn 1: `set_parameter` fixes the thin-wall violation
+- Turn 2: `modify_feature` moves the hole to clear the edge-distance violation
+- Asserts convergence in ≤ 2 turns
+
+Tests: **182 passing** (`pnpm test --run`).
+
+---
+
+## Phase 3+ deferrals
+
+The following are explicitly out of scope for Phase 1–2 and will be addressed in later phases:
 
 | Feature | Notes |
 |---|---|
-| **Threaded / countersink / counterbore holes** | Hole `type` is locked to `"simple"` in Phase 1; richer types need kernel support |
-| **`modify_feature` / `remove` / `reorder_feature` patches** | Patch kinds are defined in types but throw in `applyPatch()` |
-| **Sheet-metal IR** — bends, K-factor, flat-pattern | Separate IR subtree; out of scope for solid-body Phase 1 |
+| **Threaded / countersink / counterbore holes** | Hole `type` is locked to `"simple"`; richer types need kernel support |
+| **Sheet-metal IR** — bends, K-factor, flat-pattern | Separate IR subtree; out of scope for solid-body phases |
 | **Multi-body / assembly joints** | `JointId` type exists; assembly features deferred |
-| **Geometry-tier rules beyond Phase 1** | Tier-3 slot reserved; rules for min wall thickness, draft angles, etc. |
-| **GLB / STEP export via sandbox** | Sandbox currently produces STEP via `export_step()`; GLB transcode deferred to Phase 2 |
+| **Sketch constraint solver** | Sketch geometry is unconstrained free-form in Phase 1–2; a proper constraint solver is Phase 3+ |
+| **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 3+ |
+| **Assembly graph** | Multi-part mating / interference checks — Phase 3+ |
+| **GLB / STEP export via sandbox** | Sandbox currently produces STEP via `export_step()`; GLB transcode deferred |
 | **Streaming codegen** | Single-pass string builder today; chunked/streamed output for large IRs deferred |
-| **AI-driven repair loop (production)** | Phase 1 has a mock repair loop test; real Claude-powered loop is Phase 2 |
-| **Convex file storage for build artifacts** | Phase 2 will store STEP/GLB in Convex file storage and link to `cadIrRevisions` |
+| **AI-driven repair loop (production)** | Phase 2 has a mock multitool repair loop; real Claude-powered production loop is Phase 3+ |
+| **Convex file storage for build artifacts** | Future phase will store STEP/GLB in Convex file storage and link to `cadIrRevisions` |
 | **Version diffing / merge** | Revision hashes exist; structural diff / 3-way merge deferred |
