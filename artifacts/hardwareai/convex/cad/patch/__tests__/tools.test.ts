@@ -34,6 +34,22 @@ describe("CAD_IR_TOOLS", () => {
     }
   });
 
+  it("add_feature hole schema includes all 4 hole sub-types and sub-object schemas", () => {
+    const t = CAD_IR_TOOLS.find((t) => t.name === "add_feature")!;
+    const text = JSON.stringify(t.input_schema);
+    for (const subtype of ["simple", "countersink", "counterbore", "threaded"]) {
+      expect(text).toContain(subtype);
+    }
+    // Verify the three sub-object keys are present
+    expect(text).toContain('"countersink"');
+    expect(text).toContain('"counterbore"');
+    expect(text).toContain('"thread"');
+    // Verify sub-object property descriptions for countersink angle and counterbore depth
+    expect(text).toContain("included angle in degrees");
+    expect(text).toContain("counterbore depth");
+    expect(text).toContain("thread specification");
+  });
+
   it("modify_feature requires featureId and changes", () => {
     const t = CAD_IR_TOOLS.find((t) => t.name === "modify_feature")!;
     const props = t.input_schema as { required: string[] };

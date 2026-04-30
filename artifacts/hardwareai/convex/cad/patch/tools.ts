@@ -95,7 +95,7 @@ const addFeature: AgentTool = {
             properties: {
               kind: { const: "hole" },
               id: { type: "string", pattern: SNAKE_PATTERN },
-              type: { const: "simple" },
+              type: { enum: ["simple", "countersink", "counterbore", "threaded"] },
               face: {
                 type: "object",
                 properties: { feature: { type: "string", pattern: SNAKE_PATTERN }, tag: { type: "string" } },
@@ -115,6 +115,29 @@ const addFeature: AgentTool = {
               },
               diameter: { oneOf: [{ type: "number" }, { type: "string" }] },
               depth: { oneOf: [{ type: "number" }, { type: "string" }] },
+              countersink: {
+                type: "object",
+                properties: {
+                  angle: { oneOf: [{ type: "number" }, { type: "string" }], description: "included angle in degrees, e.g. 82 or 90" },
+                  diameter: { oneOf: [{ type: "number" }, { type: "string" }], description: "outer (large) diameter of the countersink" },
+                },
+                required: ["angle", "diameter"],
+              },
+              counterbore: {
+                type: "object",
+                properties: {
+                  diameter: { oneOf: [{ type: "number" }, { type: "string" }], description: "counterbore diameter (must be > hole diameter)" },
+                  depth: { oneOf: [{ type: "number" }, { type: "string" }], description: "counterbore depth" },
+                },
+                required: ["diameter", "depth"],
+              },
+              thread: {
+                type: "object",
+                properties: {
+                  spec: { type: "string", description: "thread specification, e.g. \"M6x1.0\" or \"1/4-20\"" },
+                },
+                required: ["spec"],
+              },
             },
             required: ["kind", "id", "type", "face", "positions", "diameter"],
           },
