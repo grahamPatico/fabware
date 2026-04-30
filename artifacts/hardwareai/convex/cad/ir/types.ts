@@ -130,4 +130,53 @@ export interface CadIr {
   sketches:   Record<SketchId, SketchDef>;
   features:   Feature[];
   entities?: EntityRegistry;
+  // Phase 4: assembly fields (optional — single-part IRs omit them)
+  parts?:       Record<PartId, PartRef>;
+  joints?:      Record<JointId, Joint>;
+  connections?: Connection[];
+}
+
+// ── Phase 4: Assembly types ──────────────────────────────────────────────────
+
+/** Reference to a child part sub-assembly placed in an assembly. */
+export interface PartRef {
+  id: PartId;
+  /** Inline CadIr for the sub-part. Recursive — assembles from IRs all the way down. */
+  ir: CadIr;
+  /** Translation offset of the part origin in the assembly frame (in assembly units). */
+  origin?: { x: number; y: number; z: number };
+  /** Euler rotation of the part in the assembly frame (degrees: rx, ry, rz). */
+  rotation?: { rx: number; ry: number; rz: number };
+}
+
+/**
+ * Axis reference: either a named standard axis or a geometry query.
+ * The URDF compiler uses "standard" axes (x/y/z); "edge" requires geometry resolution.
+ */
+export type AxisRef =
+  | { kind: "standard"; axis: "x" | "y" | "z" }
+  | { kind: "edge"; part: PartId; feature: FeatureId; query: EdgeQuery };
+
+/** Kinematic joint between two parts in an assembly. */
+export interface Joint {
+  id: JointId;
+  parent: PartId;
+  child: PartId;
+  type: "fixed" | "revolute" | "linear";
+  axis?: AxisRef;
+  limits?: {
+    lower: number;
+    upper: number;
+    unit: "deg" | "rad" | "mm" | "in";
+  };
+  origin?: { x: number; y: number; z: number };
+}
+
+/** Geometric/interface connection between two features (e.g. mating faces). */
+export interface Connection {
+  partA: PartId;
+  featureA: FeatureId;
+  partB: PartId;
+  featureB: FeatureId;
+  type: "face_mate" | "bolt_pattern" | "snap_fit";
 }
