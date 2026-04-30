@@ -1,6 +1,6 @@
 # `convex/cad` — CAD Intermediate Representation Module
 
-Phase 1 implementation of the CAD IR pipeline for Fabware hardware-AI.
+Phase 3 implementation of the CAD IR pipeline for Fabware hardware-AI.
 
 ---
 
@@ -74,6 +74,53 @@ Tests: **≥ 151 passing** (`pnpm test --run`).
 
 ---
 
+## Phase 3 scope (shipped)
+
+Phase 3 extends hole features with four subtypes, a new manufacturing rule, richer tool schemas, and codegen for non-simple hole variants.
+
+### Hole sub-types
+
+`HoleFeature.type` is now a 4-value enum: `"simple" | "countersink" | "counterbore" | "threaded"`.
+
+Three new optional sub-object fields are added to `HoleFeature`:
+
+| Field | Type | Required when |
+|---|---|---|
+| `countersink` | `{ angle, diameter }` | `type === "countersink"` |
+| `counterbore` | `{ diameter, depth }` | `type === "counterbore"` |
+| `thread` | `{ spec }` | `type === "threaded"` |
+
+Schema validation (Zod `superRefine`) rejects any hole that declares a sub-type without its required sub-object. Thread `spec` must match `M<n>x<pitch>` or `<n>/<d>-<tpi>` format (e.g. `"M6x1.0"`, `"1/4-20"`).
+
+### Codegen — `emitHole` dispatch
+
+`emitHole` now switches on `f.type`:
+
+| Type | Python call |
+|---|---|
+| `simple` | `Hole(radius=d/2, depth=...)` |
+| `countersink` | `CounterSinkHole(radius=d/2, counter_sink_radius=cs.d/2, depth=..., counter_sink_angle=cs.angle)` |
+| `counterbore` | `CounterBoreHole(radius=d/2, counter_bore_radius=cb.d/2, counter_bore_depth=cb.depth, depth=...)` |
+| `threaded` | `# threaded hole: spec=<spec>` + `Hole(radius=d/2, depth=...)` |
+
+### `mfg.bolt-clearance` manufacturing rule
+
+New rule in `validate/rules/boltClearance.ts`:
+
+> For a `counterbore` hole, `counterbore.diameter` must be ≥ `1.2 × pilot diameter`.
+
+Wired into `validateManufacturingTier()` alongside `holeEdgeDistance` and `minWallThickness`.
+
+### Tool schema + system prompt
+
+`add_feature` JSON Schema updated: hole `type` changed from `{ const: "simple" }` to `{ enum: [...4 types] }` with optional `countersink`, `counterbore`, and `thread` sub-object schemas.
+
+System prompt updated to explain all 4 hole types, required sub-objects, and the `mfg.bolt-clearance` constraint.
+
+Tests: **≥ 199 passing** (`pnpm test --run`).
+
+---
+
 ## Phase 2 scope (shipped)
 
 Phase 2 extended the CAD IR pipeline with richer patch coverage, manufacturing rule decomposition, and a harder integration test:
@@ -120,13 +167,13 @@ Tests: **182 passing** (`pnpm test --run`).
 
 ---
 
-## Phase 3+ deferrals
+## Phase 4+ deferrals
 
-The following are explicitly out of scope for Phase 1–2 and will be addressed in later phases:
+The following remain out of scope after Phase 3 and will be addressed in later phases:
 
 | Feature | Notes |
 |---|---|
-| **Threaded / countersink / counterbore holes** | Hole `type` is locked to `"simple"`; richer types need kernel support |
+| **Threaded / countersink / counterbore holes** | ✅ Shipped in Phase 3 |
 | **Sheet-metal IR** — bends, K-factor, flat-pattern | Separate IR subtree; out of scope for solid-body phases |
 | **Multi-body / assembly joints** | `JointId` type exists; assembly features deferred |
 | **Sketch constraint solver** | Sketch geometry is unconstrained free-form in Phase 1–2; a proper constraint solver is Phase 3+ |
