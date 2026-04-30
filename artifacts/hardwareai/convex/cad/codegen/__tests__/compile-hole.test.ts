@@ -50,4 +50,47 @@ describe("compileToBuild123d — hole", () => {
     expect(py).toContain("with Locations(");
     expect(py).toContain("report_entities(\"mounting_holes\", extrude_base)");
   });
+
+  it("emits CounterSinkHole for type=countersink", () => {
+    const ir = resolveIr({
+      ...emptyIr("mm"),
+      parameters: {
+        thickness: { id: "thickness", value: 5 },
+        hole_d: { id: "hole_d", value: 5 },
+      },
+      sketches: {
+        s: {
+          id: "s",
+          plane: "XY" as const,
+          geometry: [
+            { kind: "rect" as const, id: "r1", center: { x: 0, y: 0 }, width: 80, height: 80 },
+          ],
+        },
+      },
+      features: [
+        {
+          kind: "extrude" as const,
+          id: "extrude_base",
+          profile: "s",
+          distance: "thickness",
+          operation: "new_body" as const,
+        },
+        {
+          kind: "hole" as const,
+          id: "cs_hole",
+          type: "countersink" as const,
+          face: { feature: "extrude_base", tag: "top" },
+          positions: [{ x: 0, y: 0 }],
+          diameter: "hole_d",
+          depth: "thickness",
+          countersink: { angle: 90, diameter: 10 },
+        },
+      ],
+    });
+
+    const py = compileToBuild123d(ir);
+    expect(py).toContain("CounterSinkHole(");
+    expect(py).toContain("counter_sink_radius=");
+    expect(py).toContain("counter_sink_angle=90");
+  });
 });
