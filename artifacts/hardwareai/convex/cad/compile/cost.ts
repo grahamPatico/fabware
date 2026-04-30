@@ -14,6 +14,7 @@
 
 import type { CadIr, ExternalPartRef } from "../ir/types";
 import { compileFabricationCost } from "./fabricationCost";
+import { compileMachineCost, type MachineCostLine } from "./machineCost";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -44,7 +45,14 @@ export interface CostResult {
    */
   fabricationTotalUsd: number;
   /**
-   * Phase 12: total cost = totalKnown (BOM) + fabricationTotalUsd (fabrication).
+   * Phase 13: machine cost lines for inline parts that declare a manufacturing
+   * process (laser_cut, cnc, print_3d, sheet_metal_bend). Parts with
+   * process="none" or no process are excluded from this list.
+   */
+  machine: MachineCostLine[];
+  /**
+   * Phase 12+13: total cost = totalKnown (BOM) + fabricationTotalUsd (fabrication)
+   * + machineTotalUsd (machine processing).
    * Replaces bare totalKnown as the canonical total cost estimate.
    */
   totalUsd: number;
@@ -149,7 +157,19 @@ export function compileCost(ir: CadIr, pricing: PricingDb = BUILTIN_PRICING): Co
   // Phase 12: add fabrication cost for inline parts
   const fabResult = compileFabricationCost(ir);
   const fabricationTotalUsd = fabResult.totalUsd;
-  const totalUsd = totalKnown + fabricationTotalUsd;
 
-  return { lines, totalKnown, hasMissingPrices, fabricationTotalUsd, totalUsd };
+  // Phase 13: add machine cost for inline parts that declare a process
+  const machineResult = compileMachineCost(ir);
+  const machineTotalUsd = machineResult.totalUsd;
+
+  const totalUsd = totalKnown + fabricationTotalUsd + machineTotalUsd;
+
+  return {
+    lines,
+    totalKnown,
+    hasMissingPrices,
+    fabricationTotalUsd,
+    machine: machineResult.perPart,
+    totalUsd,
+  };
 }

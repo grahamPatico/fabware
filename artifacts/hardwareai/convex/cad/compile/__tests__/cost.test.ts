@@ -111,3 +111,52 @@ describe("compileCost Phase 12 — totalUsd includes fabrication", () => {
     expect(result.totalUsd).toBeCloseTo(0.42 + 0.31104, 4);
   });
 });
+
+describe("compileCost Phase 13 — totalUsd includes machine cost", () => {
+  it("totalUsd = BOM + fabrication + machine cost when process is declared", () => {
+    // Inline part: 80×60 rect, laser_cut
+    //   perimeter = 2×(80+60) = 280 mm
+    //   machine cost: setupUsd=15 + 280×0.005 = 15 + 1.4 = $16.4
+    //
+    // Inline part material: aluminum, 80×60×3 = 14,400 mm³
+    //   fab cost: 0.03888 kg × $8 = $0.31104
+    //
+    // External: 1 × M6 SHCS @ $0.42
+    //
+    // totalUsd = 0.42 + 0.31104 + 16.4 = $17.13104
+    const inlineIr: CadIr = {
+      schemaVersion: 1,
+      units: "mm",
+      parameters: {},
+      sketches: {
+        sk: {
+          id: "sk",
+          plane: "XY",
+          geometry: [
+            { kind: "rect", id: "r", center: { x: 0, y: 0 }, width: 80, height: 60 },
+          ],
+        },
+      },
+      features: [
+        { kind: "extrude", id: "ex", profile: "sk", distance: 3, operation: "new_body" },
+      ],
+      material: "aluminum",
+      process: "laser_cut",
+    };
+
+    const ir: CadIr = {
+      ...emptyIr("mm"),
+      parts: {
+        body: { id: "body", kind: "inline", ir: inlineIr },
+        screw: { id: "screw", kind: "external", vendor: "McMaster-Carr", partNumber: "91290A115" },
+      },
+    };
+
+    const result = compileCost(ir, BUILTIN_PRICING);
+    expect(result.totalKnown).toBeCloseTo(0.42, 6);
+    expect(result.fabricationTotalUsd).toBeCloseTo(0.31104, 4);
+    expect(result.machine).toHaveLength(1);
+    expect(result.machine[0]!.costUsd).toBeCloseTo(16.4, 6);
+    expect(result.totalUsd).toBeCloseTo(0.42 + 0.31104 + 16.4, 4);
+  });
+});
