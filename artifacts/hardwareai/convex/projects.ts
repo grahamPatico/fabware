@@ -229,3 +229,27 @@ export const setUseNewHarness = mutation({
     }
   },
 });
+
+/**
+ * Toggle the CAD IR pipeline on a single part. When enabled the orchestrator
+ * dispatches the cadIr specialist instead of the legacy sheet-metal specialist.
+ *
+ * Scheduling a tick after toggling ensures the orchestrator re-evaluates the
+ * part's status immediately (e.g. if the part is already pending and its
+ * project has useNewHarness enabled, it will be dispatched right away).
+ */
+export const setUseCadIr = mutation({
+  args: {
+    partId: v.id("parts"),
+    enabled: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const part = await ctx.db.get(args.partId);
+    if (!part) throw new Error(`Part ${args.partId} not found`);
+    await ctx.db.patch(args.partId, { useCadIr: args.enabled, updatedAt: Date.now() });
+    // Re-tick so the orchestrator picks up the flag change immediately.
+    await ctx.scheduler.runAfter(0, internal.orchestrator.tick.tick, {
+      projectId: part.projectId,
+    });
+  },
+});
