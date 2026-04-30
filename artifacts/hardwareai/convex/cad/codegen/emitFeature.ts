@@ -4,6 +4,7 @@ import type { ResolvedIr } from "../resolve/resolveIr";
 import { emitExtrude } from "./features/extrude";
 import { emitCutExtrude } from "./features/cutExtrude";
 import { emitFillet } from "./features/fillet";
+import { emitChamfer } from "./features/chamfer";
 
 export type EmitContext = {
   /** The build123d variable name of the current "parent" body, or null if none
@@ -41,6 +42,12 @@ export function emitFeature(
     case "fillet": {
       const lines = emitFillet(f, ir, ctx.parentBodyId);
       // fillet modifies the parent body in-place — keep same parentBodyId
+      return { lines, ctxOut: ctx };
+    }
+
+    case "chamfer": {
+      const lines = emitChamfer(f, ir, ctx.parentBodyId);
+      // chamfer modifies the parent body in-place — keep same parentBodyId
       return { lines, ctxOut: ctx };
     }
 
