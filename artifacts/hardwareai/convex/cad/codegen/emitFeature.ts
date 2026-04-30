@@ -3,6 +3,7 @@ import type { Feature } from "../ir/types";
 import type { ResolvedIr } from "../resolve/resolveIr";
 import { emitExtrude } from "./features/extrude";
 import { emitCutExtrude } from "./features/cutExtrude";
+import { emitFillet } from "./features/fillet";
 
 export type EmitContext = {
   /** The build123d variable name of the current "parent" body, or null if none
@@ -34,6 +35,12 @@ export function emitFeature(
     case "cut_extrude": {
       const lines = emitCutExtrude(f, ir, ctx.parentBodyId);
       // cut_extrude modifies the parent body — keep same parentBodyId
+      return { lines, ctxOut: ctx };
+    }
+
+    case "fillet": {
+      const lines = emitFillet(f, ir, ctx.parentBodyId);
+      // fillet modifies the parent body in-place — keep same parentBodyId
       return { lines, ctxOut: ctx };
     }
 
