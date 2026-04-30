@@ -20,9 +20,10 @@ convex/cad/
 ├── resolve/
 │   └── resolveIr.ts      — resolveIr(): evaluates all ParamRefs → ResolvedIr
 │
-├── geometry/                                              — Phase 8
+├── geometry/                                              — Phase 8 / Phase 11
 │   ├── partBbox.ts       — computePartBbox(): AABB from extrude/revolve features; AABB type
-│   └── transform.ts      — transformBbox(): translate + conservative sphere-expand for rotation
+│   ├── transform.ts      — transformBbox(): translate + conservative sphere-expand for rotation
+│   └── jointPose.ts      — sampleJointPoses() + applyPoseToBbox() — Phase 11
 │
 ├── validate/
 │   ├── schemaTier.ts     — Tier-1: structural / schema rules (duplicate ids, missing refs, joint refs, constraint refs)
@@ -33,9 +34,10 @@ convex/cad/
 │   └── rules/
 │       ├── holeEdgeDistance.ts  — mfg.hole-edge-distance
 │       ├── minWallThickness.ts  — mfg.min-wall-thickness
-│       ├── boltClearance.ts     — mfg.bolt-clearance
-│       ├── minBendRadius.ts     — mfg.min-bend-radius
-│       └── partsInterfere.ts    — assembly.parts-interfere (Phase 8)
+│       ├── boltClearance.ts          — mfg.bolt-clearance
+│       ├── minBendRadius.ts          — mfg.min-bend-radius
+│       ├── partsInterfere.ts         — assembly.parts-interfere (Phase 8)
+│       └── jointRangeCollision.ts    — assembly.joint-range-collision (Phase 11)
 │
 ├── patch/
 │   ├── types.ts          — Patch union type (set_parameter, add_feature, …)
@@ -563,6 +565,40 @@ Tests: **≥ 317 passing** (`pnpm test --run`).
 
 ---
 
+## Phase 11 scope (shipped)
+
+Phase 11 adds joint pose sampling and a swept-range collision rule to the assembly tier.
+
+### `geometry/jointPose.ts` — pose sampler (Task 1)
+
+`sampleJointPoses(joint, n=5): JointPose[]` samples n poses linearly across the joint's motion limits:
+- **Revolute**: degrees stored; axis = world axis (x/y/z); rotation applied to the named axis, translation zero.
+- **Linear**: mm stored (or in × 25.4 if `unit="in"`); axis = world axis; translation applied, rotation zero.
+- **Fixed / no limits**: returns a single resting pose `{ rotation: {rx:0,ry:0,rz:0}, translation: {x:0,y:0,z:0} }`.
+
+`applyPoseToBbox(bbox, pose): AABB` delegates to `transformBbox(bbox, pose.translation, pose.rotation)`.
+
+### `validate/rules/jointRangeCollision.ts` — `jointRangeCollision` (Task 2)
+
+Tier 5 rule `assembly.joint-range-collision`: for each revolute or linear joint with limits:
+1. Pre-computes static bboxes for all parts (reused across joints).
+2. Computes child's local bbox and applies child's static origin offset (translation only).
+3. Samples 5 poses; for each pose applies the pose to the origin-shifted child bbox.
+4. Checks the swept bbox against every other part's static bbox (excluding joint endpoints — parent and child are always skipped).
+5. Emits a **warn** violation per (joint, other-part) pair that has any pose overlap.
+
+Severity is always `"warn"` (conservative AABB expansion; false positives are expected for large sweeps near adjacent geometry).
+
+Composed into `validateAssemblyTier()` via `out.push(...jointRangeCollision(ir))`.
+
+### Prompts + README (Task 3)
+
+`prompts.ts` updated with `assembly.joint-range-collision` rule documentation. README updated with Phase 11 scope.
+
+Tests: **≥ 329 passing** (`pnpm test --run`).
+
+---
+
 ## Phase 10+ deferrals
 
 The following remain out of scope after Phase 10 and will be addressed in later phases:
@@ -580,7 +616,7 @@ The following remain out of scope after Phase 10 and will be addressed in later 
 | **AxisRef.kind === "edge" resolution** | Requires geometry (sandbox face/edge entities); deferred |
 | **Sketch constraint solver** | Types + Tier 2 heuristic shipped in Phase 7; full DOF solver deferred |
 | **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 10+ |
-| **Assembly interference / clearance checks** | ✅ AABB interference check shipped in Phase 8; exact mesh overlap deferred |
+| **Assembly interference / clearance checks** | ✅ AABB interference shipped in Phase 8; ✅ Joint range sweep check shipped in Phase 11; exact mesh overlap deferred |
 | **GLB / STEP export via sandbox** | Sandbox currently produces STEP via `export_step()`; GLB transcode deferred |
 | **Streaming codegen** | Single-pass string builder today; chunked/streamed output for large IRs deferred |
 | **AI-driven repair loop (production)** | Mock repair loops tested; real Claude-powered production loop deferred |

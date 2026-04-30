@@ -139,6 +139,16 @@ Cost estimation and budgeting (Phase 10):
     This is a warning, not an error — it does not block codegen.
     To resolve: reduce part count, substitute cheaper alternatives, or raise the budget.
 
+Joint motion clearance (Phase 11):
+- assembly.joint-range-collision (warn): fires when a revolute or linear joint's child part sweeps
+  through a sampled pose that causes its bounding box to overlap another part's bounding box.
+  - 5 poses are sampled linearly across the joint's full motion range [lower, upper].
+  - The parent and child parts (the joint endpoints) are excluded from the check — they are
+    allowed to sweep near each other by design.
+  - Severity is always "warn" (bounding-box sweep is conservative; may be a false positive).
+  - To resolve: increase clearance between the sweeping part and the nearby obstacle, narrow
+    the joint limits, or reposition the conflicting part's origin.
+
 If a validation report says a feature failed, propose ONE patch (the smallest possible)
 to fix it. Prefer set_parameter over rewriting features.
 `;
