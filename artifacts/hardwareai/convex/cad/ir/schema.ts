@@ -20,6 +20,28 @@ const PlaneRef = z.union([
   z.object({ face: z.string() }),
 ]);
 
+// ── Phase 7: Sketch Constraint schemas ──────────────────────────────────────
+
+const SketchPointRef = z.object({
+  entity: z.string(),
+  point: z.enum(["start", "end", "center"]),
+});
+
+export const SketchConstraintSchema = z.discriminatedUnion("kind", [
+  // Point-ref constraints
+  z.object({ kind: z.literal("coincident"), id: z.string(), a: SketchPointRef, b: SketchPointRef }),
+  z.object({ kind: z.literal("distance"),   id: z.string(), a: SketchPointRef, b: SketchPointRef, distance: ParamRef }),
+  // Entity-ref pair constraints
+  z.object({ kind: z.literal("parallel"),      id: z.string(), a: z.string(), b: z.string() }),
+  z.object({ kind: z.literal("perpendicular"), id: z.string(), a: z.string(), b: z.string() }),
+  z.object({ kind: z.literal("tangent"),       id: z.string(), a: z.string(), b: z.string() }),
+  z.object({ kind: z.literal("equal"),         id: z.string(), a: z.string(), b: z.string() }),
+  z.object({ kind: z.literal("angle"),         id: z.string(), a: z.string(), b: z.string(), angle: ParamRef }),
+  // Single-entity constraints
+  z.object({ kind: z.literal("horizontal"), id: z.string(), entity: z.string() }),
+  z.object({ kind: z.literal("vertical"),   id: z.string(), entity: z.string() }),
+]);
+
 const SketchEntity = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("rect"),   id: Snake, center: Point2D, width: ParamRef, height: ParamRef, cornerRadius: ParamRef.optional() }),
   z.object({ kind: z.literal("circle"), id: Snake, center: Point2D, radius: ParamRef }),
@@ -30,6 +52,7 @@ const SketchDef = z.object({
   id: Snake,
   plane: PlaneRef,
   geometry: z.array(SketchEntity),
+  constraints: z.array(SketchConstraintSchema).optional(),
 });
 
 const FaceRef = z.object({ feature: Snake, tag: z.string().max(32) });
