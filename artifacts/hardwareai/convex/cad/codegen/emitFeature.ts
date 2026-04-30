@@ -5,6 +5,7 @@ import { emitExtrude } from "./features/extrude";
 import { emitCutExtrude } from "./features/cutExtrude";
 import { emitFillet } from "./features/fillet";
 import { emitChamfer } from "./features/chamfer";
+import { emitHole } from "./features/hole";
 
 export type EmitContext = {
   /** The build123d variable name of the current "parent" body, or null if none
@@ -48,6 +49,12 @@ export function emitFeature(
     case "chamfer": {
       const lines = emitChamfer(f, ir, ctx.parentBodyId);
       // chamfer modifies the parent body in-place — keep same parentBodyId
+      return { lines, ctxOut: ctx };
+    }
+
+    case "hole": {
+      const lines = emitHole(f, ir, ctx.parentBodyId);
+      // hole modifies the parent body in-place — keep same parentBodyId
       return { lines, ctxOut: ctx };
     }
 
