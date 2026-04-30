@@ -1,0 +1,304 @@
+"use node";
+
+// convex/specialists/cadIr.ts
+//
+// CAD IR specialist action. Implements the patch+execute repair loop:
+//   1. Load part + head revision IR (or build an empty IR if none exists).
+//   2. Validate tier-1 (schema) + tier-4 (manufacturing).
+//   3. If clean, run sandbox geometry execution + tier-3 (geometry) validation.
+//   4. If any violations remain, call the Anthropic agent (via runAgentTurn) for
+//      up to TURN_BUDGET turns. Each turn's tool calls are converted to typed
+//      Patch objects and applied via applyPatch.
+//   5. Write the final revision and part status; re-tick the orchestrator.
+
+import { internalAction } from "../_generated/server";
+import { internal } from "../_generated/api";
+import { v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
+
+import { cadIrPlugin } from "../cad/plugin";
+import { applyPatch } from "../cad/patch/apply";
+import type { Patch } from "../cad/patch/types";
+import type { CadIr, Feature } from "../cad/ir/types";
+import type { ParameterDef } from "../cad/ir/types";
+import { emptyIr } from "../cad/ir/empty";
+import { compileToBuild123d } from "../cad/codegen/compileToBuild123d";
+import { resolveIr } from "../cad/resolve/resolveIr";
+import { runSandbox } from "../cad/executor/runSandbox";
+import { parseEntities } from "../cad/executor/entitiesParser";
+import { validateGeometryTier } from "../cad/validate/geometryTier";
+import { hashIr } from "../cad/revisions/hash";
+import { runAgentTurn } from "../lib/anthropicClient";
+import type { Violation } from "../plugins/types";
+
+const TURN_BUDGET = 3;
+
+/**
+ * Convert an agent tool call (name + input) to a typed Patch, or null if
+ * the tool name is not recognized or the input shape is invalid.
+ */
+function toolCallToPatch(tool: { name: string; input: unknown }): Patch | null {
+  const inp = tool.input as Record<string, unknown>;
+
+  if (tool.name === "set_parameter") {
+    // The tool input matches the ParameterDef shape.
+    if (
+      typeof inp?.id !== "string" ||
+      (typeof inp?.value !== "number" && typeof inp?.value !== "string")
+    ) {
+      return null;
+    }
+    const param: ParameterDef = {
+      id: inp.id as string,
+      value: inp.value as number | string,
+      unit: inp.unit as ParameterDef["unit"],
+      description: typeof inp.description === "string" ? inp.description : undefined,
+      bounds: inp.bounds as ParameterDef["bounds"],
+    };
+    return { kind: "set_parameter", param };
+  }
+
+  if (tool.name === "add_feature") {
+    if (!inp?.feature || typeof inp.feature !== "object") return null;
+    // Trust the agent — applyPatch will schema-validate the result.
+    return { kind: "add_feature", feature: inp.feature as Feature };
+  }
+
+  return null;
+}
+
+/**
+ * Extract all face tags referenced by HoleFeature entries in a CadIr.
+ * The geometry-tier validator uses these to check that the sandbox produced
+ * the expected face entities.
+ */
+function extractRequestedFaceTags(ir: CadIr): string[] {
+  const tags: string[] = [];
+  for (const f of ir.features) {
+    if (f.kind === "hole") {
+      tags.push(`${f.face.feature}.${f.face.tag}`);
+    }
+  }
+  return tags;
+}
+
+export const run = internalAction({
+  args: { partId: v.id("parts") },
+  handler: async (ctx, args) => {
+    // ── 1. Load part + project ──────────────────────────────────────────────
+    const part = await ctx.runQuery(
+      internal.specialists.cadIrInternals._loadPartAndProject,
+      { partId: args.partId },
+    );
+
+    if (!part) {
+      // Part deleted between scheduling and dispatch; re-tick to unblock.
+      await ctx.scheduler.runAfter(0, internal.orchestrator.tick.tick, {
+        projectId: args.partId as unknown as Id<"projects">,
+      });
+      return { status: "skipped", reason: "part not found" } as const;
+    }
+
+    const projectId = part.projectId as Id<"projects">;
+    const partCtx = { scope: part.scope ?? null, peerParts: part.peerParts };
+
+    // ── 2. Build / recover the working IR ──────────────────────────────────
+    // If the part already has a head revision, use it. Otherwise start empty.
+    let ir: CadIr;
+
+    const headRev = await ctx.runQuery(
+      internal.specialists.cadIrInternals._getHeadRevision,
+      { partId: args.partId },
+    );
+
+    if (headRev?.ir) {
+      const parsed = cadIrPlugin.dslSchema.safeParse(headRev.ir);
+      ir = parsed.success ? parsed.data : emptyIr();
+    } else if (part.dslJson) {
+      // Fallback: a part may have a legacy dslJson field populated before
+      // the CAD IR pipeline existed.
+      const parsed = cadIrPlugin.dslSchema.safeParse(JSON.parse(part.dslJson));
+      ir = parsed.success ? parsed.data : emptyIr();
+    } else {
+      ir = emptyIr();
+    }
+
+    // ── 3. Repair loop ─────────────────────────────────────────────────────
+    // Each iteration:
+    //   a. Tier-1 + tier-4 validate
+    //   b. If clean → run sandbox + tier-3 validate
+    //   c. If any violations → ask agent → apply patches → repeat
+
+    let currentIr = ir;
+    let finalViolations: Violation[] = [];
+    let sandboxOk = false;
+    let sandboxLog = "";
+
+    for (let turn = 0; turn <= TURN_BUDGET; turn += 1) {
+      // a. Tier-1 + tier-4
+      const pluginViolations = cadIrPlugin.validate(currentIr, partCtx);
+
+      if (pluginViolations.length === 0) {
+        // b. Run sandbox + tier-3 geometry validation
+        let scriptPython: string;
+        try {
+          const resolved = resolveIr(currentIr);
+          scriptPython = compileToBuild123d(resolved);
+        } catch (err) {
+          finalViolations = [
+            {
+              ruleId: "schema.resolution-error",
+              severity: "error",
+              message: "Failed to resolve or compile IR",
+              agentMessage: `Could not compile IR to Python: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ];
+          break;
+        }
+
+        const sandboxResult = await runSandbox(scriptPython);
+        sandboxOk = sandboxResult.ok;
+        sandboxLog = sandboxResult.log;
+
+        const entities = parseEntities(sandboxResult.entities);
+        const requestedFaceTags = extractRequestedFaceTags(currentIr);
+        const geomViolations = validateGeometryTier({
+          log: sandboxResult.log,
+          requestedFaceTags,
+          entities,
+        });
+
+        if (geomViolations.length === 0) {
+          // All clean — write revision and exit the loop.
+          const irHash = hashIr(currentIr);
+          await ctx.runMutation(
+            internal.specialists.cadIrInternals._writeRevision,
+            {
+              partId: args.partId,
+              hash: irHash,
+              parent: headRev?.hash ?? null,
+              ir: currentIr,
+              author: "agent",
+            },
+          );
+          await ctx.runMutation(
+            internal.specialists.cadIrInternals._updateRevisionAfterExecution,
+            {
+              partId: args.partId,
+              hash: irHash,
+              executionStatus: "succeeded",
+              violations: [],
+            },
+          );
+          finalViolations = [];
+          break;
+        }
+
+        // Geometry violations — fall through to agent repair if budget remains.
+        finalViolations = geomViolations;
+        if (turn === TURN_BUDGET) break;
+      } else {
+        finalViolations = pluginViolations;
+        if (turn === TURN_BUDGET) break;
+      }
+
+      // c. Agent repair turn
+      const violationLines = finalViolations
+        .map((v, i) => `${i + 1}. [${v.ruleId}] ${v.agentMessage}`)
+        .join("\n");
+
+      const userMessage =
+        `Current CAD IR:\n\`\`\`json\n${JSON.stringify(currentIr, null, 2)}\n\`\`\`\n\n` +
+        `Violations to fix (turn ${turn + 1}/${TURN_BUDGET}):\n${violationLines}\n\n` +
+        "Respond with tool calls that minimally repair the violations.";
+
+      const agentResult = await runAgentTurn({
+        model: cadIrPlugin.defaultModel?.model ?? "claude-sonnet-4-6",
+        effort: cadIrPlugin.defaultModel?.effort ?? "med",
+        system: cadIrPlugin.systemPromptFragment,
+        tools: cadIrPlugin.tools,
+        messages: [{ role: "user", content: userMessage }],
+      });
+
+      let anyApplied = false;
+      for (const toolCall of agentResult.toolCalls) {
+        const patch = toolCallToPatch(toolCall);
+        if (!patch) continue;
+
+        const result = applyPatch(currentIr, patch);
+        if (result.schemaViolations.length === 0) {
+          currentIr = result.ir;
+          anyApplied = true;
+        }
+      }
+
+      // If the agent made no progress, stop trying.
+      if (!anyApplied) break;
+    }
+
+    // ── 4. Persist final state ──────────────────────────────────────────────
+    if (finalViolations.length > 0) {
+      // Write the current (possibly partially-repaired) IR as a failed revision.
+      const irHash = hashIr(currentIr);
+      await ctx.runMutation(
+        internal.specialists.cadIrInternals._writeRevision,
+        {
+          partId: args.partId,
+          hash: irHash,
+          parent: headRev?.hash ?? null,
+          ir: currentIr,
+          author: "agent",
+        },
+      );
+      await ctx.runMutation(
+        internal.specialists.cadIrInternals._updateRevisionAfterExecution,
+        {
+          partId: args.partId,
+          hash: irHash,
+          executionStatus: sandboxOk ? "failed" : "failed",
+          violations: finalViolations,
+        },
+      );
+
+      // Surface violations through the harness.
+      await ctx.runMutation(internal.orchestrator.violations.processViolations, {
+        projectId,
+        partId: args.partId,
+        entries: finalViolations.map((v) => ({
+          violation: v,
+          tier: "requires-judgment" as const,
+          escalate: true,
+        })),
+      });
+    }
+
+    const finalStatus = finalViolations.length === 0 ? "ok" : "escalated";
+
+    await ctx.runMutation(
+      internal.specialists.cadIrInternals._setPartStatus,
+      { partId: args.partId, status: finalStatus },
+    );
+
+    await ctx.runMutation(internal.orchestrator.planEvents.append, {
+      projectId,
+      kind: "specialist-completed",
+      payload: {
+        partId: String(args.partId),
+        details: {
+          pipeline: "cad-ir",
+          status: finalStatus,
+          violations: finalViolations.length,
+          sandboxLog: sandboxLog.slice(0, 500), // truncate for storage
+        },
+      },
+    });
+
+    // Re-tick so the phase machine re-evaluates.
+    await ctx.scheduler.runAfter(0, internal.orchestrator.tick.tick, { projectId });
+
+    return {
+      status: finalStatus,
+      violations: finalViolations.length,
+    } as const;
+  },
+});

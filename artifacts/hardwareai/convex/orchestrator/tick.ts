@@ -82,7 +82,15 @@ export const tick = internalAction({
 
       // Dispatch the right specialist for this kind. Today only sheet_metal exists;
       // future kinds get their own dispatch lines (Plan 5 = printed, Plan 6 = hardware-assembly).
-      if (partKind === "sheet_metal") {
+      const useCadIr = (partRecord as { useCadIr?: boolean } | undefined)?.useCadIr === true;
+
+      if (partKind === "sheet_metal" && useCadIr) {
+        // CAD IR pipeline — specialist only needs the partId; projectId is
+        // recovered from the part record inside the action.
+        await ctx.scheduler.runAfter(0, internal.specialists.cadIr.run, {
+          partId: action.partId as Id<"parts">,
+        });
+      } else if (partKind === "sheet_metal") {
         await ctx.scheduler.runAfter(0, internal.specialists.sheetMetal.run, {
           projectId: args.projectId,
           partId: action.partId as Id<"parts">,
