@@ -54,6 +54,26 @@ Rules:
                   length      — flange length
                   thickness   — sheet thickness (must match the actual part thickness)
                   Codegen for bend_flange emits a placeholder; geometry is not yet solid.
+- Sweep features:
+    sweep       — sweep a cross-section profile along a path curve. Supply:
+                  profile     — sketch id for the cross-section profile
+                  path        — sketch id for the sweep path (typically contains a line or arc)
+                  Creates a new body (like extrude with operation=new_body).
+                  Python: with BuildPart() / BuildSketch (profile) / BuildLine (path) / sweep(sections=, path=)
+- Loft features:
+    loft        — loft through an ordered sequence of profile sketches. Supply:
+                  profiles    — ordered list of ≥ 2 sketch ids to loft through (first to last)
+                  Creates a new body. All profiles must be defined as separate sketches.
+                  Python: with BuildPart() / multiple BuildSketch contexts / loft(sections=[...])
+- Weld-tab features:
+    weld_tab    — add a small rectangular weld tab to an existing body face. Supply:
+                  face        — host face: { feature: "<id>", tag: "<tag>" }
+                  length      — tab length
+                  width       — tab width
+                  thickness   — tab thickness
+                  position    — 2-D offset { x, y } of tab centre on the face
+                  Modifies the parent body in-place (like shell or bend_flange).
+                  Python: Locations / BuildSketch / Rectangle / extrude inside parent body context.
 - Avoid zero-thickness geometry.
 - Prefer modify_feature or set_parameter over remove + add_feature for iterative repairs.
 - Suppress a feature to test whether it is the source of a violation before removing it.

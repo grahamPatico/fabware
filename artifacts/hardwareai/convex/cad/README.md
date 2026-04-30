@@ -35,6 +35,7 @@ convex/cad/
 │   ├── compileToBuild123d.ts — Compiles ResolvedIr → build123d Python script
 │   ├── compileAssembly.ts    — Compiles multi-part CadIr → Record<PartId, Python script>
 │   ├── compileToUrdf.ts      — Compiles CadIr assembly → URDF XML string
+│   ├── compileToMjcf.ts      — Compiles CadIr assembly → MJCF XML string (Phase 6)
 │   ├── emitParameters.ts     — Parameter variable declarations
 │   ├── emitFeature.ts        — Dispatches to per-kind emitters
 │   └── features/
@@ -46,7 +47,10 @@ convex/cad/
 │       ├── pattern.ts
 │       ├── revolve.ts        — Phase 5
 │       ├── shell.ts          — Phase 5
-│       └── bendFlange.ts     — Phase 5 (placeholder codegen)
+│       ├── bendFlange.ts     — Phase 5 (placeholder codegen)
+│       ├── sweep.ts          — Phase 6
+│       ├── loft.ts           — Phase 6
+│       └── weldTab.ts        — Phase 6
 │
 ├── executor/
 │   ├── runSandbox.ts     — Python sandbox runner (executes build123d scripts)
@@ -174,7 +178,47 @@ Wired into `validateManufacturingTier()` alongside the existing rules.
 `ir.parts` is undefined (single-part IR). Existing callers of `compileToBuild123d` are
 unaffected.
 
-Tests: **≥ 244 passing** (`pnpm test --run`).
+Tests: **≥ 258 passing** (`pnpm test --run`).
+
+---
+
+## Phase 6 scope (shipped)
+
+Phase 6 extends the CAD IR with three new feature kinds (sweep, loft, weld_tab) and adds
+an MJCF physics simulator compiler alongside the existing URDF compiler.
+
+### New feature kinds (Phase 6 Tasks 1–3)
+
+| Kind | Description |
+|---|---|
+| `sweep` | Sweeps a cross-section profile sketch along a path sketch → `BuildPart/BuildSketch/BuildLine/sweep(sections=, path=)`. Creates a new body. |
+| `loft` | Lofts through an ordered list of ≥ 2 profile sketches → `BuildPart/multiple BuildSketch contexts/loft(sections=[...])`. Creates a new body. |
+| `weld_tab` | Adds a small rectangular weld tab to an existing body face → `Locations/BuildSketch/Rectangle/extrude` inside parent body context. Modifies parent body in-place. |
+
+All three kinds are added to:
+- `Feature` discriminated union in `ir/types.ts`
+- `FeatureSchema` Zod discriminated union in `ir/schema.ts` (loft enforces `profiles.min(2)`)
+- `resolveIr()` in `resolve/resolveIr.ts` (sweep/loft pass through; weld_tab resolves ParamRefs)
+- `emitFeature()` dispatch in `codegen/emitFeature.ts`
+- `add_feature` tool schema in `patch/tools.ts`
+- CAD IR system prompt fragment in `prompts.ts`
+
+### MJCF compiler (Phase 6 Task 5)
+
+`compileToMjcf(ir, modelName)` in `codegen/compileToMjcf.ts` emits MJCF XML for MuJoCo:
+- Each `parts` entry → `<body name="...">` inside `<worldbody>`
+- Joint elements live **inside the child body** (MJCF convention, unlike URDF)
+- `revolute` → `<joint type="hinge" axis="..." range="..."/>`
+- `linear`   → `<joint type="slide" axis="..." range="..."/>`
+- `fixed`    → no `<joint>` element (rigid attachment)
+- Unit conversions: mm→m (÷1000), in→m (×0.0254), deg→rad (×π/180)
+
+### `add_feature` tool schema update (Phase 6 Task 4)
+
+`add_feature` JSON Schema updated: three new `oneOf` variants added for `sweep`, `loft`,
+and `weld_tab`. `tools.test.ts` assertion updated from "nine" to "twelve" feature kinds.
+
+Tests: **≥ 258 passing** (`pnpm test --run`).
 
 ---
 
@@ -287,23 +331,24 @@ Tests: **182 passing** (`pnpm test --run`).
 
 ---
 
-## Phase 6+ deferrals
+## Phase 7+ deferrals
 
-The following remain out of scope after Phase 5 and will be addressed in later phases:
+The following remain out of scope after Phase 6 and will be addressed in later phases:
 
 | Feature | Notes |
 |---|---|
 | **Threaded / countersink / counterbore holes** | ✅ Shipped in Phase 3 |
 | **Multi-part assembly joints + URDF** | ✅ Shipped in Phase 4 |
 | **Revolve / shell / bend_flange codegen + validation** | ✅ Shipped in Phase 5 |
+| **Sweep / loft / weld_tab codegen + MJCF compiler** | ✅ Shipped in Phase 6 |
 | **bend_flange real geometry** | Placeholder `pass` in Phase 5; full sheet-metal extension deferred |
-| **K-factor / flat-pattern DXF export** | Requires sheet-metal extension; Phase 6+ |
+| **K-factor / flat-pattern DXF export** | Requires sheet-metal extension; Phase 7+ |
 | **AxisRef.kind === "edge" resolution** | Requires geometry (sandbox face/edge entities); deferred |
-| **Sketch constraint solver** | Sketch geometry is unconstrained free-form; a proper constraint solver is Phase 6+ |
-| **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 6+ |
-| **Assembly interference / clearance checks** | Multi-part bounding-box / mesh overlap detection — Phase 6+ |
+| **Sketch constraint solver** | Sketch geometry is unconstrained free-form; a proper constraint solver is Phase 7+ |
+| **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 7+ |
+| **Assembly interference / clearance checks** | Multi-part bounding-box / mesh overlap detection — Phase 7+ |
 | **GLB / STEP export via sandbox** | Sandbox currently produces STEP via `export_step()`; GLB transcode deferred |
 | **Streaming codegen** | Single-pass string builder today; chunked/streamed output for large IRs deferred |
-| **AI-driven repair loop (production)** | Mock repair loops tested; real Claude-powered production loop is Phase 6+ |
+| **AI-driven repair loop (production)** | Mock repair loops tested; real Claude-powered production loop is Phase 7+ |
 | **Convex file storage for build artifacts** | Future phase will store STEP/GLB in Convex file storage |
 | **Version diffing / merge** | Revision hashes exist; structural diff / 3-way merge deferred |
