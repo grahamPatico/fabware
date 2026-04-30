@@ -44,8 +44,12 @@ convex/cad/
 │   ├── apply.ts          — applyPatch(): immutable patch application + schema validation
 │   └── tools.ts          — Claude tool-call definitions for patch operations
 │
-├── compile/                                                   — Phase 9
-│   └── bom.ts            — compileBom(): recursive BOM aggregation (ExternalPartRef → BomLine[])
+├── compile/                                                   — Phase 9 / Phase 10 / Phase 12
+│   ├── bom.ts            — compileBom(): recursive BOM aggregation (ExternalPartRef → BomLine[])
+│   ├── cost.ts           — compileCost(): BOM pricing + fabrication cost roll-up (Phase 10/12)
+│   ├── materials.ts      — BUILTIN_MATERIALS catalog + lookupMaterial() (Phase 12)
+│   ├── volume.ts         — estimateVolume(): mm³ from extrude/cut_extrude features (Phase 12)
+│   └── fabricationCost.ts — compileFabricationCost(): per-part cost from mass × density (Phase 12)
 │
 ├── codegen/
 │   ├── compileToBuild123d.ts — Compiles ResolvedIr → build123d Python script
@@ -596,6 +600,64 @@ Composed into `validateAssemblyTier()` via `out.push(...jointRangeCollision(ir))
 `prompts.ts` updated with `assembly.joint-range-collision` rule documentation. README updated with Phase 11 scope.
 
 Tests: **≥ 329 passing** (`pnpm test --run`).
+
+---
+
+## Phase 12 scope (shipped)
+
+Phase 12 adds a material catalog, a volume estimator, and a fabrication-cost compiler. `compileCost` now returns a full cost total that includes BOM pricing plus estimated fabrication cost for inline parts.
+
+### `compile/materials.ts` — `BUILTIN_MATERIALS` + `lookupMaterial` (Task 1)
+
+`BUILTIN_MATERIALS` is a `Record<string, MaterialEntry>` with 6 common engineering materials:
+
+| Key | Material | Density (g/cm³) | Cost (USD/kg) |
+|---|---|---|---|
+| `aluminum` | Aluminum 6061 | 2.7 | $8 |
+| `steel` | Mild steel 1020 | 7.85 | $5 |
+| `stainless` | Stainless steel 304 | 8.0 | $12 |
+| `pla` | PLA (3D print) | 1.24 | $25 |
+| `abs` | ABS (3D print) | 1.05 | $22 |
+| `nylon` | Nylon PA12 | 1.01 | $30 |
+
+`lookupMaterial(name?, catalog?)` resolves case-insensitively (exact key, then substring), falling back to `DEFAULT_MATERIAL` (aluminum) when no match is found or name is absent.
+
+### `CadIr.material` field (Task 2)
+
+`CadIr` gains an optional `material?: string` field. Accepted by the Zod schema (`z.string().min(1).optional()`). Set on a sub-part's inline IR to override the assembly-level material for that part.
+
+### `compile/volume.ts` — `estimateVolume` (Task 3)
+
+`estimateVolume(ir: CadIr): number` returns the estimated manufactured volume in mm³:
+- **`extrude` (new_body / add)**: profile area × distance. Rect = w × h; circle = π × r². `cornerRadius` ignored.
+- **`cut_extrude`**: subtracts profile area × distance.
+- All other feature kinds are skipped.
+- Result clamped to 0 (`Math.max(0, ...)`).
+
+### `compile/fabricationCost.ts` — `compileFabricationCost` (Task 4)
+
+`compileFabricationCost(ir: CadIr): FabCostResult` estimates fabrication cost for all inline parts:
+- Skips external parts (already in BOM pricing).
+- For each inline part: `volume_cm3 × density / 1000 × costPerKgUsd`.
+- Top-level single-part IRs (no `parts`) emit a single `partId: "root"` entry.
+- Material resolution: `partIr.material` → `ir.material` → `DEFAULT_MATERIAL` (aluminum).
+
+### `compileCost` updated (Task 5)
+
+`CostResult` gains two new fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `fabricationTotalUsd` | `number` | Sum of all inline part fabrication costs |
+| `totalUsd` | `number` | `totalKnown` + `fabricationTotalUsd` |
+
+`totalKnown` is unchanged (BOM-only, external parts with known prices). `totalUsd` is the canonical total cost estimate.
+
+### Prompts + README (Task 6)
+
+`prompts.ts` updated with Phase 12 material catalog and fabrication cost documentation. README updated with Phase 12 scope.
+
+Tests: **≥ 345 passing** (`pnpm test --run`).
 
 ---
 

@@ -149,6 +149,29 @@ Joint motion clearance (Phase 11):
   - To resolve: increase clearance between the sweeping part and the nearby obstacle, narrow
     the joint limits, or reposition the conflicting part's origin.
 
+Material catalog and fabrication cost (Phase 12):
+- Each CadIr may carry an optional "material" field (string key) for fabrication-cost estimation.
+- Built-in materials (use the key exactly):
+    aluminum   — Aluminum 6061, 2.7 g/cm³, $8/kg
+    steel      — Mild steel 1020, 7.85 g/cm³, $5/kg
+    stainless  — Stainless steel 304, 8.0 g/cm³, $12/kg
+    pla        — PLA (3D print), 1.24 g/cm³, $25/kg
+    abs        — ABS (3D print), 1.05 g/cm³, $22/kg
+    nylon      — Nylon PA12, 1.01 g/cm³, $30/kg
+- Material defaults to "aluminum" when the field is absent or unrecognised.
+- compileFabricationCost() estimates the USD cost of each inline part:
+    volume (mm³) = sum of extrude areas × distances minus cut_extrude areas × distances
+    mass (kg)    = volume_cm3 × density / 1000
+    cost (USD)   = mass × costPerKgUsd
+- compileCost() now returns:
+    totalKnown          — BOM cost only (external parts with known prices)
+    fabricationTotalUsd — fabrication cost for all inline parts
+    totalUsd            — totalKnown + fabricationTotalUsd (the canonical total)
+- Set ir.material on a sub-part's ir to override the assembly-level material for that part.
+  Priority: part-level ir.material → root ir.material → "aluminum" fallback.
+- To reduce fabrication cost: use a lighter/cheaper material, reduce part volume
+  (thinner walls, remove material), or switch to 3D printing (pla/abs/nylon).
+
 If a validation report says a feature failed, propose ONE patch (the smallest possible)
 to fix it. Prefer set_parameter over rewriting features.
 `;
