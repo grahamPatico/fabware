@@ -2,6 +2,7 @@
 import type { ExtrudeFeature } from "../../ir/types";
 import type { ResolvedIr } from "../../resolve/resolveIr";
 import { refOrLit } from "../refOrLit";
+import { emitSketchGeometry } from "../emitSketchGeometry";
 
 /**
  * Emit build123d Python for an extrude feature.
@@ -12,6 +13,9 @@ import { refOrLit } from "../refOrLit";
  *           ...sketch geometry...
  *       extrude(amount=<distance>)
  *   report_entities("<id>", <id>)
+ *
+ * Supported sketch entity kinds: rect, circle, line, polygon, spline, arc
+ * (arc emits a comment placeholder — see emitSketchGeometry.ts for details).
  */
 export function emitExtrude(
   f: ExtrudeFeature,
@@ -27,27 +31,7 @@ export function emitExtrude(
   const sketch = ir.sketches[f.profile];
   if (sketch) {
     lines.push(`    with BuildSketch():`);
-    for (const g of sketch.geometry) {
-      switch (g.kind) {
-        case "rect":
-          if (g.cornerRadius !== undefined && g.cornerRadius > 0) {
-            lines.push(
-              `        RectangleRounded(${g.width}, ${g.height}, ${g.cornerRadius})`
-            );
-          } else {
-            lines.push(`        Rectangle(${g.width}, ${g.height})`);
-          }
-          break;
-        case "circle":
-          lines.push(`        Circle(${g.radius})`);
-          break;
-        case "line":
-          lines.push(
-            `        Line((${g.p1.x}, ${g.p1.y}), (${g.p2.x}, ${g.p2.y}))`
-          );
-          break;
-      }
-    }
+    lines.push(...emitSketchGeometry(ir, f.profile));
   }
 
   lines.push(`    extrude(amount=${distExpr})`);
