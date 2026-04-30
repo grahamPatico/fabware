@@ -26,6 +26,14 @@ Rules:
 - Default units are millimeters unless told otherwise.
 - Default minimum hole edge distance is 1.5 × hole diameter + hole diameter / 2.
 - Default minimum wall thickness is 2 mm.
+- Hole types:
+    simple      — plain through- or blind-hole; no sub-object needed.
+    countersink — tapered recess for flat-head screws; supply countersink: { angle, diameter }.
+                  Typical angles: 82° (imperial) or 90° (metric). countersink.diameter > hole diameter.
+    counterbore — flat-bottomed recess for socket-head cap screws; supply counterbore: { diameter, depth }.
+                  counterbore.diameter must be ≥ 1.2 × hole diameter (manufacturing rule mfg.bolt-clearance).
+    threaded    — tapped hole; supply thread: { spec } e.g. "M6x1.0" or "1/4-20". The pilot hole
+                  diameter should match the tap drill size for the given spec.
 - Avoid zero-thickness geometry.
 - Prefer modify_feature or set_parameter over remove + add_feature for iterative repairs.
 - Suppress a feature to test whether it is the source of a violation before removing it.
