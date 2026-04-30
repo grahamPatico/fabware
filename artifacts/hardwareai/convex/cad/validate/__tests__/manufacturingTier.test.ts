@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { validateManufacturingTier } from "../manufacturingTier";
 import type { ResolvedIr } from "../../resolve/resolveIr";
+import type { CadIr } from "../../ir/types";
+
+// Minimal original IR (no process set — process-specific rules won't fire)
+const ORIGINAL_NO_PROCESS: CadIr = {
+  schemaVersion: 1,
+  units: "mm",
+  parameters: {},
+  sketches: {},
+  features: [],
+};
 
 // Helper to build a minimal ResolvedIr with one extrude (rect profile) and one hole
 function makeIr(overrides: {
@@ -65,7 +75,7 @@ describe("validateManufacturingTier", () => {
     // threshold: 1.5 * 5 + 5/2 = 7.5 + 2.5 = 10
     // 2 < 10 → violation expected
     const resolved = makeIr({ holePositions: [{ x: 48, y: 0 }], holeDiameter: 5 });
-    const violations = validateManufacturingTier(resolved);
+    const violations = validateManufacturingTier(resolved, ORIGINAL_NO_PROCESS);
     expect(violations).toHaveLength(1);
     expect(violations[0].ruleId).toBe("mfg.hole-edge-distance");
     expect(violations[0].severity).toBe("error");
@@ -79,7 +89,7 @@ describe("validateManufacturingTier", () => {
     // threshold: 1.5 * 5 + 5/2 = 10
     // 50 >= 10 → no violation
     const resolved = makeIr({ holePositions: [{ x: 0, y: 0 }], holeDiameter: 5 });
-    const violations = validateManufacturingTier(resolved);
+    const violations = validateManufacturingTier(resolved, ORIGINAL_NO_PROCESS);
     expect(violations).toEqual([]);
   });
 });

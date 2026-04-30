@@ -102,7 +102,7 @@ function collectViolations(ir: CadIr): Violation[] {
   const schemaViols = validateSchemaTier(ir);
   if (schemaViols.length > 0) return schemaViols;
   const resolved = resolveIr(ir);
-  return validateManufacturingTier(resolved);
+  return validateManufacturingTier(resolved, ir);
 }
 
 // ---------------------------------------------------------------------------

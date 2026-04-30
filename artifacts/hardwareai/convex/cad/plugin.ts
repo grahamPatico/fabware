@@ -60,7 +60,7 @@ function validate(ir: CadIr, _ctx: PartContext): Violation[] {
   let mfgAndBudget: Violation[] = [];
   try {
     const resolved = resolveIr(ir);
-    mfgAndBudget = [...validateManufacturingTier(resolved), ...budgetExceeded(ir)];
+    mfgAndBudget = [...validateManufacturingTier(resolved, ir), ...budgetExceeded(ir)];
   } catch {
     // Resolution error (e.g. undefined parameter). Surface as a schema-tier
     // violation so the agent knows to fix the expression.

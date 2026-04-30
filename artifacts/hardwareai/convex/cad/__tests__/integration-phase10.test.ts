@@ -249,11 +249,11 @@ describe("Phase 10 integration smoke test — hinged enclosure with M6 fasteners
     // (no holes, no thin walls beyond 2 mm).
     // We run manufacturing tier on body sub-IR as a spot-check.
     const bodyResolved = resolveIr(bodyIr());
-    const mfgBodyViolations = validateManufacturingTier(bodyResolved);
+    const mfgBodyViolations = validateManufacturingTier(bodyResolved, bodyIr());
     expect(mfgBodyViolations).toHaveLength(0);
 
     const lidResolved = resolveIr(lidIr());
-    const mfgLidViolations = validateManufacturingTier(lidResolved);
+    const mfgLidViolations = validateManufacturingTier(lidResolved, lidIr());
     expect(mfgLidViolations).toHaveLength(0);
 
     // ── Phase 1: build123d codegen (single-part) ────────────────────────────
