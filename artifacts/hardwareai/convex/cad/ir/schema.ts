@@ -66,13 +66,42 @@ const FilletFeature = z.object({
 const ChamferFeature = z.object({
   ...Base, kind: z.literal("chamfer"), edges: z.array(EdgeRef).min(1), distance: ParamRef,
 });
+const THREAD_SPEC_RE = /^(M\d+(\.\d+)?(x\d+(\.\d+)?)?|\d+\/\d+-\d+)$/;
+
+const CounterSinkSpec = z.object({
+  angle: ParamRef,
+  diameter: ParamRef,
+});
+
+const CounterBoreSpec = z.object({
+  diameter: ParamRef,
+  depth: ParamRef,
+});
+
+const ThreadSpec = z.object({
+  spec: z.string().regex(THREAD_SPEC_RE, "thread spec must match e.g. M6x1.0 or 1/4-20"),
+});
+
 const HoleFeature = z.object({
   ...Base, kind: z.literal("hole"),
   face: FaceRef,
   positions: z.array(Point2D).min(1),
   diameter: ParamRef,
   depth: ParamRef.optional(),
-  type: z.literal("simple"),
+  type: z.enum(["simple", "countersink", "counterbore", "threaded"]),
+  countersink: CounterSinkSpec.optional(),
+  counterbore: CounterBoreSpec.optional(),
+  thread: ThreadSpec.optional(),
+}).superRefine((val, ctx) => {
+  if (val.type === "countersink" && !val.countersink) {
+    ctx.addIssue({ code: "custom", message: "countersink sub-object is required when type is \"countersink\"" });
+  }
+  if (val.type === "counterbore" && !val.counterbore) {
+    ctx.addIssue({ code: "custom", message: "counterbore sub-object is required when type is \"counterbore\"" });
+  }
+  if (val.type === "threaded" && !val.thread) {
+    ctx.addIssue({ code: "custom", message: "thread sub-object is required when type is \"threaded\"" });
+  }
 });
 const PatternFeature = z.object({
   ...Base, kind: z.literal("pattern"),

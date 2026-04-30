@@ -48,3 +48,87 @@ describe("emptyIr", () => {
     expect(ir.features).toEqual([]);
   });
 });
+
+// ── Phase 3: HoleFeature sub-type schema tests ───────────────────────────────
+
+const baseHoleIr = {
+  schemaVersion: 1 as const,
+  units: "mm" as const,
+  parameters: {},
+  sketches: {},
+};
+
+function makeHoleFeature(overrides: Record<string, unknown>) {
+  return {
+    ...baseHoleIr,
+    features: [
+      {
+        kind: "hole",
+        id: "h1",
+        face: { feature: "ex1", tag: "top" },
+        positions: [{ x: 0, y: 0 }],
+        diameter: 6,
+        type: "simple",
+        ...overrides,
+      },
+    ],
+  };
+}
+
+describe("HoleFeature schema — Phase 3 sub-types", () => {
+  it("accepts type=simple with no sub-objects", () => {
+    expect(() => CadIrSchema.parse(makeHoleFeature({ type: "simple" }))).not.toThrow();
+  });
+
+  it("accepts type=countersink with countersink sub-object", () => {
+    expect(() =>
+      CadIrSchema.parse(
+        makeHoleFeature({ type: "countersink", countersink: { angle: 90, diameter: 12 } }),
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects type=countersink without countersink sub-object", () => {
+    expect(() => CadIrSchema.parse(makeHoleFeature({ type: "countersink" }))).toThrow(
+      /countersink sub-object is required/,
+    );
+  });
+
+  it("accepts type=counterbore with counterbore sub-object", () => {
+    expect(() =>
+      CadIrSchema.parse(
+        makeHoleFeature({ type: "counterbore", counterbore: { diameter: 10, depth: 4 } }),
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects type=threaded without thread sub-object", () => {
+    expect(() => CadIrSchema.parse(makeHoleFeature({ type: "threaded" }))).toThrow(
+      /thread sub-object is required/,
+    );
+  });
+
+  it("accepts type=threaded with valid thread spec M6x1.0", () => {
+    expect(() =>
+      CadIrSchema.parse(
+        makeHoleFeature({ type: "threaded", thread: { spec: "M6x1.0" } }),
+      ),
+    ).not.toThrow();
+  });
+
+  it("accepts type=threaded with valid thread spec 1/4-20", () => {
+    expect(() =>
+      CadIrSchema.parse(
+        makeHoleFeature({ type: "threaded", thread: { spec: "1/4-20" } }),
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects type=threaded with invalid thread spec", () => {
+    expect(() =>
+      CadIrSchema.parse(
+        makeHoleFeature({ type: "threaded", thread: { spec: "bad-spec" } }),
+      ),
+    ).toThrow(/thread spec must match/);
+  });
+});
