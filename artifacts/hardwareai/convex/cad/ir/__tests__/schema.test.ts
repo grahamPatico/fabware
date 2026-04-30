@@ -448,3 +448,129 @@ describe("HoleFeature schema — Phase 3 sub-types", () => {
     ).toThrow(/thread spec must match/);
   });
 });
+
+// ── Phase 15: SketchEntity new kinds ────────────────────────────────────────
+
+const baseSketchIr = {
+  schemaVersion: 1 as const,
+  units: "mm" as const,
+  parameters: {},
+  features: [],
+};
+
+describe("SketchEntity arc — Phase 15", () => {
+  it("accepts a valid arc entity with center, radius, startAngle, endAngle (degrees)", () => {
+    const ir = {
+      ...baseSketchIr,
+      sketches: {
+        sk: {
+          id: "sk",
+          plane: "XY",
+          geometry: [
+            {
+              kind: "arc",
+              id: "a1",
+              center: { x: 0, y: 0 },
+              radius: 10,
+              startAngle: 0,
+              endAngle: 90,
+            },
+          ],
+        },
+      },
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+});
+
+describe("SketchEntity polygon — Phase 15", () => {
+  it("accepts a valid polygon entity with sides in [3, 64]", () => {
+    const ir = {
+      ...baseSketchIr,
+      sketches: {
+        sk: {
+          id: "sk",
+          plane: "XY",
+          geometry: [
+            {
+              kind: "polygon",
+              id: "p1",
+              center: { x: 0, y: 0 },
+              sides: 6,
+              radius: 20,
+            },
+          ],
+        },
+      },
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+
+  it("rejects polygon with sides < 3", () => {
+    const ir = {
+      ...baseSketchIr,
+      sketches: {
+        sk: {
+          id: "sk",
+          plane: "XY",
+          geometry: [
+            {
+              kind: "polygon",
+              id: "p1",
+              center: { x: 0, y: 0 },
+              sides: 2,
+              radius: 20,
+            },
+          ],
+        },
+      },
+    };
+    expect(() => CadIrSchema.parse(ir)).toThrow();
+  });
+});
+
+describe("SketchEntity spline — Phase 15", () => {
+  it("accepts a valid spline entity with ≥ 2 points", () => {
+    const ir = {
+      ...baseSketchIr,
+      sketches: {
+        sk: {
+          id: "sk",
+          plane: "XY",
+          geometry: [
+            {
+              kind: "spline",
+              id: "sp1",
+              points: [
+                { x: 0, y: 0 },
+                { x: 10, y: 5 },
+                { x: 20, y: 0 },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+
+  it("rejects a spline with fewer than 2 points", () => {
+    const ir = {
+      ...baseSketchIr,
+      sketches: {
+        sk: {
+          id: "sk",
+          plane: "XY",
+          geometry: [
+            {
+              kind: "spline",
+              id: "sp1",
+              points: [{ x: 0, y: 0 }],
+            },
+          ],
+        },
+      },
+    };
+    expect(() => CadIrSchema.parse(ir)).toThrow();
+  });
+});

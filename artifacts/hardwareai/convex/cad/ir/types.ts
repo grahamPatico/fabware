@@ -62,7 +62,27 @@ export type SketchConstraint =
 export type SketchEntity =
   | { kind: "rect"; id: string; center: Point2D; width: ParamRef; height: ParamRef; cornerRadius?: ParamRef }
   | { kind: "circle"; id: string; center: Point2D; radius: ParamRef }
-  | { kind: "line"; id: string; p1: Point2D; p2: Point2D };
+  | { kind: "line"; id: string; p1: Point2D; p2: Point2D }
+  // ── Phase 15: new sketch entity kinds ───────────────────────────────────────
+  /**
+   * Arc: a circular arc defined by a center point, radius, and start/end angles.
+   * Angles are in DEGREES (consistent with revolve/joint limits elsewhere in the IR).
+   * Arc length = r × (Math.PI / 180) × |endAngle - startAngle|
+   */
+  | { kind: "arc"; id: string; center: Point2D; radius: ParamRef; startAngle: ParamRef; endAngle: ParamRef }
+  /**
+   * Regular polygon: circumscribed regular polygon with n sides and circumradius r.
+   * Area      = (n / 2) × r² × sin(2π / n)
+   * Perimeter = n × 2 × r × sin(π / n)
+   * sides must be an integer in [3, 64].
+   */
+  | { kind: "polygon"; id: string; center: Point2D; sides: number; radius: ParamRef }
+  /**
+   * Spline: open polyline through an ordered list of ≥ 2 control points.
+   * Perimeter = sum of Euclidean segment lengths.
+   * Area contribution = 0 (open path, not enclosed).
+   */
+  | { kind: "spline"; id: string; points: Point2D[] };
 
 export interface SketchDef {
   id: SketchId;

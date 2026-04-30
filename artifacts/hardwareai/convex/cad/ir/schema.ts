@@ -46,6 +46,16 @@ const SketchEntity = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("rect"),   id: Snake, center: Point2D, width: ParamRef, height: ParamRef, cornerRadius: ParamRef.optional() }),
   z.object({ kind: z.literal("circle"), id: Snake, center: Point2D, radius: ParamRef }),
   z.object({ kind: z.literal("line"),   id: Snake, p1: Point2D, p2: Point2D }),
+  // Phase 15: arc, polygon, spline
+  //
+  // arc: angles in DEGREES (consistent with revolve angle, bend_flange angle, joint limits
+  //      throughout the IR). Arc length = r × (π/180) × |endAngle - startAngle|.
+  z.object({ kind: z.literal("arc"), id: Snake, center: Point2D, radius: ParamRef, startAngle: ParamRef, endAngle: ParamRef }),
+  // polygon: regular n-gon circumscribed in a circle of given radius.
+  //   sides must be int in [3, 64].
+  z.object({ kind: z.literal("polygon"), id: Snake, center: Point2D, sides: z.number().int().min(3).max(64), radius: ParamRef }),
+  // spline: open polyline / spline through ≥ 2 control points.
+  z.object({ kind: z.literal("spline"), id: Snake, points: z.array(Point2D).min(2) }),
 ]);
 
 const SketchDef = z.object({
