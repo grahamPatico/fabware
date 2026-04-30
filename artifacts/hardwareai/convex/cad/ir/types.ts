@@ -208,6 +208,11 @@ export interface CadIr {
   parts?:       Record<PartId, PartRef>;
   joints?:      Record<JointId, Joint>;
   connections?: Connection[];
+  /**
+   * Phase 10: optional BOM cost budget in USD.
+   * When set, the budgetExceeded rule fires if compileCost.totalKnown > budget.
+   */
+  budget?: number;
 }
 
 // ── Phase 4 / Phase 9: Assembly types ───────────────────────────────────────

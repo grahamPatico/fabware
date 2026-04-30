@@ -214,6 +214,8 @@ export const CadIrSchema: z.ZodType<unknown> = z.lazy(() =>
     parts: z.record(Snake, PartRefSchema).optional(),
     joints: z.record(Snake, JointSchema).optional(),
     connections: z.array(ConnectionSchema).optional(),
+    // Phase 10: optional cost budget in USD
+    budget: z.number().positive().optional(),
   })
 );
 
