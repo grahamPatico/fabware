@@ -787,6 +787,65 @@ Tests: **≥ 380 passing** (`pnpm test --run`).
 
 ---
 
+## Phase 15 scope (shipped)
+
+Phase 15 adds three new sketch entity kinds to `SketchEntity`: `arc`, `polygon`, and `spline`.
+
+### New `SketchEntity` kinds (Task 1)
+
+| Kind | Fields | Notes |
+|---|---|---|
+| `arc` | `center: Point2D, radius: ParamRef, startAngle: ParamRef, endAngle: ParamRef` | Angles in **degrees** (consistent with revolve angle, bend_flange angle, joint limits throughout the IR) |
+| `polygon` | `center: Point2D, sides: int(3–64), radius: ParamRef` | Regular n-gon circumscribed in a circle of given radius |
+| `spline` | `points: Point2D[]` (min 2) | Open polyline / spline through ≥ 2 control points |
+
+All three added to:
+- `SketchEntity` union in `ir/types.ts` (with JSDoc explaining angle convention and formulas)
+- `SketchEntity` Zod schema in `ir/schema.ts` (polygon uses `z.number().int().min(3).max(64)` for sides; spline uses `z.array(Point2D).min(2)`)
+- `ResolvedSketchEntity` union and switch in `resolve/resolveIr.ts` (arc/polygon resolve their ParamRefs; spline maps points through `evalP`)
+
+### Estimator updates (Task 2)
+
+`compile/volume.ts`:
+- `polygon`: area = (n/2) × r² × sin(2π/n) (circumscribed regular polygon)
+- `arc`: 0 (open path; not an enclosed region)
+- `spline`: 0 (open path)
+
+`compile/perimeter.ts`:
+- `polygon`: perimeter = n × 2 × r × sin(π/n)
+- `arc`: arc length = r × (π/180) × |endAngle − startAngle| (angles in degrees → converted to radians)
+- `spline`: sum of Euclidean segment lengths |p_{i+1} − p_i|
+
+### Codegen emitters (Task 3)
+
+New shared helper `codegen/emitSketchGeometry.ts` replaces the duplicated switch blocks in `extrude.ts` and `cutExtrude.ts`.
+
+| Entity | Python emitted |
+|---|---|
+| `polygon` | `RegularPolygon(radius=r, side_count=n)` |
+| `spline` | `Spline([(x1,y1), (x2,y2), ...])` |
+| `arc` | `# arc <id>: center=(cx,cy) r=R angle=[start..end]deg` (comment placeholder; exact `RadiusArc` construction deferred to a future phase) |
+
+### `add_sketch` tool schema + prompts (Task 4)
+
+`patch/tools.ts` `add_sketch` geometry items updated from a bare `{ type: "object", description: "..." }` to a detailed `oneOf` covering all 6 entity kinds (rect, circle, line, arc, polygon, spline) with proper required fields, descriptions, and angle-unit notes for arc.
+
+`prompts.ts` updated with a new "Sketch geometry kinds (Phase 15)" section documenting all 6 entity kinds, angle conventions, formulas, and codegen output.
+
+### Tests added
+
+| File | New tests |
+|---|---|
+| `ir/__tests__/schema.test.ts` | 5 (arc accept; polygon accept + sides<3 reject; spline accept + points<2 reject) |
+| `compile/__tests__/perimeter.test.ts` | 3 (polygon perimeter, arc length, spline perimeter) |
+| `compile/__tests__/volume.test.ts` | 1 (polygon area × depth) |
+| `codegen/__tests__/compile-sketch-entities-phase15.test.ts` | 3 (polygon → RegularPolygon, spline → Spline, arc → comment) |
+| `patch/__tests__/tools.test.ts` | 1 (add_sketch schema includes arc/polygon/spline) |
+
+Tests: **≥ 392 passing** (`pnpm test --run`).
+
+---
+
 ## Phase 10+ deferrals
 
 The following remain out of scope after Phase 10 and will be addressed in later phases:

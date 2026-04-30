@@ -94,6 +94,19 @@ describe("CAD_IR_TOOLS", () => {
     expect(props.required).toContain("sketch");
   });
 
+  // Phase 15: add_sketch geometry covers all 6 entity kinds
+  it("add_sketch geometry schema includes arc, polygon, and spline entity kinds", () => {
+    const t = CAD_IR_TOOLS.find((t) => t.name === "add_sketch")!;
+    const text = JSON.stringify(t.input_schema);
+    expect(text).toContain("arc");
+    expect(text).toContain("polygon");
+    expect(text).toContain("spline");
+    // Also verify legacy kinds are still present
+    expect(text).toContain("rect");
+    expect(text).toContain("circle");
+    expect(text).toContain("line");
+  });
+
   it("modify_sketch requires sketchId and op", () => {
     const t = CAD_IR_TOOLS.find((t) => t.name === "modify_sketch")!;
     const props = t.input_schema as { required: string[] };

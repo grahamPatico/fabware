@@ -78,6 +78,23 @@ Rules:
 - Prefer modify_feature or set_parameter over remove + add_feature for iterative repairs.
 - Suppress a feature to test whether it is the source of a violation before removing it.
 
+Sketch geometry kinds (Phase 15):
+- Use add_sketch or modify_sketch (op.kind="add_entity") to add geometry to a sketch.
+- Supported entity kinds and their required fields:
+    rect    — axis-aligned rectangle: { center: {x,y}, width, height, cornerRadius? }
+    circle  — full circle: { center: {x,y}, radius }
+    line    — line segment: { p1: {x,y}, p2: {x,y} }
+    arc     — circular arc: { center: {x,y}, radius, startAngle, endAngle }
+              Angles are in DEGREES (same convention as revolve angle, joint limits, bend_flange angle).
+              Arc length = r × (π/180) × |endAngle − startAngle|.
+              Codegen emits a comment placeholder (exact build123d arc is Phase 16+ work).
+    polygon — regular n-gon circumscribed in a circle: { center: {x,y}, sides (int 3-64), radius }
+              Area = (n/2) × r² × sin(2π/n); Perimeter = n × 2r × sin(π/n).
+              Codegen: RegularPolygon(radius=r, side_count=n).
+    spline  — open polyline through ≥ 2 control points: { points: [{x,y}, …] }
+              Perimeter = sum of segment lengths. Area contribution = 0 (open path).
+              Codegen: Spline([(x1,y1), (x2,y2), …]).
+
 Sketch constraints (Phase 7):
 - Use modify_sketch with op.kind="add_constraint" to add a constraint, "remove_constraint" to remove one.
 - Each constraint needs a unique string id within its sketch.

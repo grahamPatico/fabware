@@ -361,9 +361,113 @@ const addSketch: AgentTool = {
           },
           geometry: {
             type: "array",
+            description: "Array of SketchEntity objects. Supported kinds: rect, circle, line, arc, polygon, spline.",
             items: {
-              type: "object",
-              description: "SketchEntity: rect, circle, or line",
+              oneOf: [
+                {
+                  type: "object",
+                  description: "rect: axis-aligned rectangle",
+                  properties: {
+                    kind: { const: "rect" },
+                    id: { type: "string", pattern: SNAKE_PATTERN },
+                    center: {
+                      type: "object",
+                      properties: { x: { oneOf: [{ type: "number" }, { type: "string" }] }, y: { oneOf: [{ type: "number" }, { type: "string" }] } },
+                      required: ["x", "y"],
+                    },
+                    width: { oneOf: [{ type: "number" }, { type: "string" }] },
+                    height: { oneOf: [{ type: "number" }, { type: "string" }] },
+                    cornerRadius: { oneOf: [{ type: "number" }, { type: "string" }], description: "optional corner radius" },
+                  },
+                  required: ["kind", "id", "center", "width", "height"],
+                },
+                {
+                  type: "object",
+                  description: "circle: full circle",
+                  properties: {
+                    kind: { const: "circle" },
+                    id: { type: "string", pattern: SNAKE_PATTERN },
+                    center: {
+                      type: "object",
+                      properties: { x: { oneOf: [{ type: "number" }, { type: "string" }] }, y: { oneOf: [{ type: "number" }, { type: "string" }] } },
+                      required: ["x", "y"],
+                    },
+                    radius: { oneOf: [{ type: "number" }, { type: "string" }] },
+                  },
+                  required: ["kind", "id", "center", "radius"],
+                },
+                {
+                  type: "object",
+                  description: "line: straight line segment",
+                  properties: {
+                    kind: { const: "line" },
+                    id: { type: "string", pattern: SNAKE_PATTERN },
+                    p1: {
+                      type: "object",
+                      properties: { x: { oneOf: [{ type: "number" }, { type: "string" }] }, y: { oneOf: [{ type: "number" }, { type: "string" }] } },
+                      required: ["x", "y"],
+                    },
+                    p2: {
+                      type: "object",
+                      properties: { x: { oneOf: [{ type: "number" }, { type: "string" }] }, y: { oneOf: [{ type: "number" }, { type: "string" }] } },
+                      required: ["x", "y"],
+                    },
+                  },
+                  required: ["kind", "id", "p1", "p2"],
+                },
+                {
+                  type: "object",
+                  description: "arc: circular arc. Angles are in DEGREES (consistent with revolve/joint-limit convention).",
+                  properties: {
+                    kind: { const: "arc" },
+                    id: { type: "string", pattern: SNAKE_PATTERN },
+                    center: {
+                      type: "object",
+                      properties: { x: { oneOf: [{ type: "number" }, { type: "string" }] }, y: { oneOf: [{ type: "number" }, { type: "string" }] } },
+                      required: ["x", "y"],
+                    },
+                    radius: { oneOf: [{ type: "number" }, { type: "string" }], description: "arc radius" },
+                    startAngle: { oneOf: [{ type: "number" }, { type: "string" }], description: "start angle in degrees" },
+                    endAngle: { oneOf: [{ type: "number" }, { type: "string" }], description: "end angle in degrees" },
+                  },
+                  required: ["kind", "id", "center", "radius", "startAngle", "endAngle"],
+                },
+                {
+                  type: "object",
+                  description: "polygon: regular n-gon circumscribed in a circle of given radius. sides ∈ [3, 64].",
+                  properties: {
+                    kind: { const: "polygon" },
+                    id: { type: "string", pattern: SNAKE_PATTERN },
+                    center: {
+                      type: "object",
+                      properties: { x: { oneOf: [{ type: "number" }, { type: "string" }] }, y: { oneOf: [{ type: "number" }, { type: "string" }] } },
+                      required: ["x", "y"],
+                    },
+                    sides: { type: "integer", minimum: 3, maximum: 64, description: "number of sides (3=triangle, 4=square, 6=hexagon, …)" },
+                    radius: { oneOf: [{ type: "number" }, { type: "string" }], description: "circumradius (center to vertex)" },
+                  },
+                  required: ["kind", "id", "center", "sides", "radius"],
+                },
+                {
+                  type: "object",
+                  description: "spline: open polyline / spline through ≥ 2 control points",
+                  properties: {
+                    kind: { const: "spline" },
+                    id: { type: "string", pattern: SNAKE_PATTERN },
+                    points: {
+                      type: "array",
+                      minItems: 2,
+                      description: "ordered list of ≥ 2 control points",
+                      items: {
+                        type: "object",
+                        properties: { x: { oneOf: [{ type: "number" }, { type: "string" }] }, y: { oneOf: [{ type: "number" }, { type: "string" }] } },
+                        required: ["x", "y"],
+                      },
+                    },
+                  },
+                  required: ["kind", "id", "points"],
+                },
+              ],
             },
           },
         },
