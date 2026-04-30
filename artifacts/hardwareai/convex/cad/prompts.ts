@@ -172,6 +172,26 @@ Material catalog and fabrication cost (Phase 12):
 - To reduce fabrication cost: use a lighter/cheaper material, reduce part volume
   (thinner walls, remove material), or switch to 3D printing (pla/abs/nylon).
 
+Manufacturing process and machine cost (Phase 13):
+- Each CadIr may carry an optional "process" field (ProcessName) for machine-cost estimation.
+- Built-in processes (use the key exactly):
+    laser_cut         — Laser / plasma / waterjet cut: $15 setup + $0.005/mm cut perimeter
+    cnc               — CNC milling: $50 setup (volume removal deferred; add-on cost TBD)
+    print_3d          — 3-D printing (FDM/SLA/SLS): $5 setup + $0.0002/mm³ build volume
+    sheet_metal_bend  — Press-brake bending: $20 setup + $2 per bend_flange feature
+    none              — No machine processing (default; contributes $0 machine cost)
+- Process defaults to "none" when the field is absent — no machine cost is added.
+- compileCost() now returns:
+    totalKnown          — BOM cost only (external parts with known prices)
+    fabricationTotalUsd — material fabrication cost for all inline parts (Phase 12)
+    machine             — machine cost lines for inline parts that declare a process
+    totalUsd            — totalKnown + fabricationTotalUsd + sum(machine[*].costUsd)
+- compileMachineCost() returns per-part machine cost lines; parts with process="none"
+  or no process are excluded from the output.
+- To reduce machine cost: switch to a cheaper process (e.g. 3-D printing over CNC),
+  reduce the cut perimeter (fewer slots/holes, simpler profiles), reduce bend count,
+  or set process="none" for parts that need no dedicated machine step.
+
 If a validation report says a feature failed, propose ONE patch (the smallest possible)
 to fix it. Prefer set_parameter over rewriting features.
 `;

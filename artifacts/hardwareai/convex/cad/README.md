@@ -44,12 +44,15 @@ convex/cad/
 │   ├── apply.ts          — applyPatch(): immutable patch application + schema validation
 │   └── tools.ts          — Claude tool-call definitions for patch operations
 │
-├── compile/                                                   — Phase 9 / Phase 10 / Phase 12
+├── compile/                                                   — Phase 9 / Phase 10 / Phase 12 / Phase 13
 │   ├── bom.ts            — compileBom(): recursive BOM aggregation (ExternalPartRef → BomLine[])
-│   ├── cost.ts           — compileCost(): BOM pricing + fabrication cost roll-up (Phase 10/12)
+│   ├── cost.ts           — compileCost(): BOM pricing + fabrication + machine cost roll-up (Phase 10/12/13)
 │   ├── materials.ts      — BUILTIN_MATERIALS catalog + lookupMaterial() (Phase 12)
 │   ├── volume.ts         — estimateVolume(): mm³ from extrude/cut_extrude features (Phase 12)
-│   └── fabricationCost.ts — compileFabricationCost(): per-part cost from mass × density (Phase 12)
+│   ├── fabricationCost.ts — compileFabricationCost(): per-part cost from mass × density (Phase 12)
+│   ├── processes.ts      — BUILTIN_PROCESSES catalog + lookupProcess() (Phase 13)
+│   ├── perimeter.ts      — estimatePerimeter(): cut-path mm from extrude/cut_extrude features (Phase 13)
+│   └── machineCost.ts    — compileMachineCost(): per-part machine cost by process (Phase 13)
 │
 ├── codegen/
 │   ├── compileToBuild123d.ts — Compiles ResolvedIr → build123d Python script
@@ -658,6 +661,64 @@ Phase 12 adds a material catalog, a volume estimator, and a fabrication-cost com
 `prompts.ts` updated with Phase 12 material catalog and fabrication cost documentation. README updated with Phase 12 scope.
 
 Tests: **≥ 345 passing** (`pnpm test --run`).
+
+---
+
+## Phase 13 scope (shipped)
+
+Phase 13 adds a manufacturing process catalog, a perimeter estimator, and a machine-cost compiler. `compileCost` now returns a `machine` field and includes machine cost in `totalUsd`.
+
+### `compile/processes.ts` — `BUILTIN_PROCESSES` + `lookupProcess` (Task 1)
+
+`BUILTIN_PROCESSES` is a `Record<ProcessName, ProcessEntry>` with 5 manufacturing processes:
+
+| Key | Process | Setup (USD) | Variable rate |
+|---|---|---|---|
+| `laser_cut` | Laser / plasma / waterjet cut | $15 | $0.005/mm perimeter |
+| `cnc` | CNC milling | $50 | removeUsd=0 (deferred) |
+| `print_3d` | 3-D printing (FDM/SLA/SLS) | $5 | $0.0002/mm³ volume |
+| `sheet_metal_bend` | Press-brake bending | $20 | $2/bend_flange |
+| `none` | No machine processing | $0 | — |
+
+`lookupProcess(name?)` resolves a `ProcessName` or `undefined`, falling back to the "none" entry.
+
+### `CadIr.process` field (Task 2)
+
+`CadIr` gains an optional `process?: ProcessName` field. Accepted by the Zod schema as `z.enum([...5 process names]).optional()`. Defaults to "none" when absent (no machine cost).
+
+### `compile/perimeter.ts` — `estimatePerimeter` (Task 3)
+
+`estimatePerimeter(ir: CadIr): number` returns the total cut-path length in mm:
+- **`extrude` (new_body / add)**: profile perimeter. Rect = 2(w+h); circle = 2πr; line = Euclidean distance.
+- **`cut_extrude`**: adds interior cutout perimeter (same rules).
+- All other feature kinds and suppressed features are skipped.
+
+### `compile/machineCost.ts` — `compileMachineCost` (Task 4)
+
+`compileMachineCost(ir: CadIr): MachineCostResult` estimates machine cost for all inline parts:
+- External parts are skipped (purchased, not machine-processed).
+- Parts with `process="none"` or no process return `null` from `machineCostForPart` and are excluded from `perPart`.
+- Formula:
+  - `laser_cut`: `setupUsd + perimeter_mm × cutUsdPerMm`
+  - `cnc`: `setupUsd` (removeUsd=0 in Phase 13 v0)
+  - `print_3d`: `setupUsd + volumeMm3 × buildUsdPerMm3`
+  - `sheet_metal_bend`: `setupUsd + non-suppressed bend_flange count × bendUsdEach`
+
+### `compileCost` updated (Task 5)
+
+`CostResult` gains a new field:
+
+| Field | Type | Description |
+|---|---|---|
+| `machine` | `MachineCostLine[]` | Per-part machine cost lines (excludes process="none" parts) |
+
+`totalUsd` now includes `machineTotalUsd` in addition to BOM + fabrication costs. Parts without a declared process contribute $0 to machine cost — backward compatible.
+
+### Prompts + README (Task 6)
+
+`prompts.ts` updated with Phase 13 process catalog and machine cost documentation. README updated with Phase 13 scope.
+
+Tests: **≥ 372 passing** (`pnpm test --run`).
 
 ---
 
