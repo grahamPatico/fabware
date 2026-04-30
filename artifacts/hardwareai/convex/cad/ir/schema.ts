@@ -263,6 +263,8 @@ const ExternalPartRefSchema: z.ZodType<unknown> = z.lazy(() =>
     vendor: z.string().min(1),
     partNumber: z.string().min(1),
     description: z.string().optional(),
+    // Phase 18: optional URL to a STEP file for import_step codegen
+    stepUrl: z.string().url().optional(),
     origin: OriginSchema.optional(),
     rotation: RotationSchema.optional(),
     boundingBox: z.object({ width: ParamRef, height: ParamRef, depth: ParamRef }).optional(),

@@ -283,6 +283,13 @@ export interface ExternalPartRef {
   vendor: string;
   partNumber: string;
   description?: string;
+  /**
+   * Phase 18: optional URL to a STEP file for this external part.
+   * When present, compileAssembly() emits a small Python script that imports
+   * and positions the STEP file rather than skipping the part entirely.
+   * The sandbox convention is /in/external/<vendor>__<partNumber>.step.
+   */
+  stepUrl?: string;
   /** Translation offset of the part origin in the assembly frame (in assembly units). */
   origin?: { x: ParamRef; y: ParamRef; z: ParamRef };
   /** Euler rotation of the part in the assembly frame (degrees: rx, ry, rz). */

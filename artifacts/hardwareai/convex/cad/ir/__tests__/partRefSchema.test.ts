@@ -69,4 +69,31 @@ describe("PartRef union schema (Phase 9)", () => {
     });
     expect(() => CadIrSchema.parse(missingPartNumber)).toThrow();
   });
+
+  // Phase 18: stepUrl field on ExternalPartRef
+  it("accepts an external part with a valid stepUrl", () => {
+    const ir = makeIr({
+      bearing: {
+        id: "bearing",
+        kind: "external",
+        vendor: "Misumi",
+        partNumber: "B-6800ZZ",
+        stepUrl: "https://example.com/b6800zz.step",
+      },
+    });
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+
+  it("rejects an external part with a malformed stepUrl", () => {
+    const ir = makeIr({
+      bearing: {
+        id: "bearing",
+        kind: "external",
+        vendor: "Misumi",
+        partNumber: "B-6800ZZ",
+        stepUrl: "not-a-url",
+      },
+    });
+    expect(() => CadIrSchema.parse(ir)).toThrow();
+  });
 });
