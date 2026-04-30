@@ -73,6 +73,70 @@ describe("compileAssembly", () => {
     expect(compileAssembly(ir)).toEqual({});
   });
 
+  // Phase 18: external part with stepUrl produces an import_step script
+  it("external part with stepUrl produces an import_step script", () => {
+    const ir: CadIr = {
+      ...emptyIr("mm"),
+      parts: {
+        bearing: {
+          id: "bearing", kind: "external",
+          vendor: "Misumi", partNumber: "B-6800ZZ",
+          stepUrl: "https://example.com/b6800zz.step",
+          origin: { x: 0, y: 0, z: 50 },
+        },
+      },
+    };
+    const scripts = compileAssembly(ir);
+    expect(scripts.bearing).toBeDefined();
+    expect(scripts.bearing).toContain('import_step("/in/external/Misumi__B-6800ZZ.step")');
+    expect(scripts.bearing).toMatch(/Location\(\(0, 0, 50\)/);
+  });
+
+  it("external part without stepUrl is still skipped (BOM-only)", () => {
+    const ir: CadIr = {
+      ...emptyIr("mm"),
+      parts: {
+        bolt: {
+          id: "bolt", kind: "external",
+          vendor: "McMaster-Carr", partNumber: "91290A115",
+        },
+      },
+    };
+    const scripts = compileAssembly(ir);
+    expect(scripts.bolt).toBeUndefined();
+    expect(Object.keys(scripts)).toHaveLength(0);
+  });
+
+  it("inline parts still compile normally alongside externals with stepUrl", () => {
+    const partIr: CadIr = {
+      ...emptyIr("mm"),
+      parameters: { h: { id: "h", value: 5 } },
+      sketches: {
+        sk: {
+          id: "sk", plane: "XY" as const,
+          geometry: [{ kind: "rect" as const, id: "r1", center: { x: 0, y: 0 }, width: 10, height: 10 }],
+        },
+      },
+      features: [{ kind: "extrude" as const, id: "box1", profile: "sk", distance: "h", operation: "new_body" as const }],
+    };
+    const ir: CadIr = {
+      ...emptyIr("mm"),
+      parts: {
+        body: { id: "body", ir: partIr },
+        bearing: {
+          id: "bearing", kind: "external",
+          vendor: "NSK", partNumber: "6001ZZ",
+          stepUrl: "https://example.com/6001zz.step",
+        },
+      },
+    };
+    const scripts = compileAssembly(ir);
+    expect(scripts.body).toBeDefined();
+    expect(scripts.body).toContain("with BuildPart() as box1:");
+    expect(scripts.bearing).toBeDefined();
+    expect(scripts.bearing).toContain('import_step("/in/external/NSK__6001ZZ.step")');
+  });
+
   it("compileToBuild123d API is unchanged — single-part callers still work", () => {
     // Verifies that the existing API is not broken
     const ir: CadIr = {
