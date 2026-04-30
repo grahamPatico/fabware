@@ -1,5 +1,5 @@
 // artifacts/hardwareai/convex/cad/patch/types.ts
-import type { Feature, SketchDef, SketchEntity, PlaneRef } from "../ir/types";
+import type { Feature, SketchDef, SketchEntity, PlaneRef, PartRef, Joint, Connection } from "../ir/types";
 
 export interface SetParameterPatch {
   kind: "set_parameter";
@@ -52,6 +52,23 @@ export interface ModifySketchPatch {
   op: ModifySketchOp;
 }
 
+// ── Phase 4: Assembly patches ────────────────────────────────────────────────
+
+export interface AddPartPatch {
+  kind: "add_part";
+  part: PartRef;
+}
+
+export interface AddJointPatch {
+  kind: "add_joint";
+  joint: Joint;
+}
+
+export interface AddConnectionPatch {
+  kind: "add_connection";
+  connection: Connection;
+}
+
 export type Patch =
   | SetParameterPatch
   | AddFeaturePatch
@@ -60,4 +77,7 @@ export type Patch =
   | ReorderFeaturePatch
   | RemovePatch
   | AddSketchPatch
-  | ModifySketchPatch;
+  | ModifySketchPatch
+  | AddPartPatch
+  | AddJointPatch
+  | AddConnectionPatch;
