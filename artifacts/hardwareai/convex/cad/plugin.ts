@@ -17,6 +17,7 @@ import { CadIrSchema } from "./ir/schema";
 import { CAD_IR_TOOLS } from "./patch/tools";
 import { cadIrSystemPromptFragment } from "./prompts";
 import { validateSchemaTier } from "./validate/schemaTier";
+import { validateConstraintTier } from "./validate/constraintTier";
 import { validateAssemblyTier } from "./validate/assemblyTier";
 import { resolveIr } from "./resolve/resolveIr";
 import { validateManufacturingTier } from "./validate/manufacturingTier";
@@ -38,6 +39,13 @@ function validate(ir: CadIr, _ctx: PartContext): Violation[] {
     return schemaViolations;
   }
 
+  // Tier 2: sketch constraint checks (Phase 7)
+  // Errors short-circuit; warnings propagate alongside manufacturing violations.
+  const constraintViolations = validateConstraintTier(ir);
+  if (constraintViolations.some((v) => v.severity === "error")) {
+    return constraintViolations;
+  }
+
   // Tier 5: assembly topology checks (floating parts, over-constrained groups)
   const assemblyViolations = validateAssemblyTier(ir);
   if (assemblyViolations.length > 0) {
@@ -45,6 +53,7 @@ function validate(ir: CadIr, _ctx: PartContext): Violation[] {
   }
 
   // Tier 4: manufacturing geometry checks (requires resolved IR)
+  // Tier 2 warnings are appended to manufacturing output so the agent sees them.
   let mfgViolations: Violation[] = [];
   try {
     const resolved = resolveIr(ir);
@@ -63,7 +72,7 @@ function validate(ir: CadIr, _ctx: PartContext): Violation[] {
     ];
   }
 
-  return [...schemaViolations, ...mfgViolations];
+  return [...constraintViolations, ...mfgViolations];
 }
 
 export const cadIrPlugin: ProcessPlugin<CadIr> = {
