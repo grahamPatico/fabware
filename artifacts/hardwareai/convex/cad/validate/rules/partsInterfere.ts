@@ -13,7 +13,7 @@
 // Touching parts (edges/faces coinciding) are NOT flagged — the overlap
 // test uses strict inequality so that touching == non-overlapping.
 
-import type { CadIr } from "../../ir/types";
+import type { CadIr, InlinePartRef, ExternalPartRef } from "../../ir/types";
 import type { Violation } from "../../../plugins/types";
 import { computePartBbox, type AABB } from "../../geometry/partBbox";
 import { transformBbox } from "../../geometry/transform";
@@ -51,15 +51,43 @@ export function partsInterfere(ir: CadIr): Violation[] {
   };
 
   const infos: PartInfo[] = partEntries.map(([, partRef]) => {
-    const localBbox = computePartBbox(partRef.ir);
-    if (localBbox === null) {
+    // ── Phase 9: handle external parts ──────────────────────────────────────
+    let local: AABB | null;
+    if ("kind" in partRef && partRef.kind === "external") {
+      const ext = partRef as ExternalPartRef;
+      if (!ext.boundingBox) {
+        // No declared bbox — skip interference check for this part
+        return { id: partRef.id, bbox: null, rotated: false };
+      }
+      const bb = ext.boundingBox as { width: number; height: number; depth: number };
+      local = {
+        minX: -bb.width / 2,  maxX: bb.width / 2,
+        minY: -bb.height / 2, maxY: bb.height / 2,
+        minZ: 0,              maxZ: bb.depth,
+      };
+    } else {
+      const inline = partRef as InlinePartRef;
+      local = computePartBbox(inline.ir);
+    }
+
+    if (local === null) {
       return { id: partRef.id, bbox: null, rotated: false };
     }
-    const origin = partRef.origin ?? { x: 0, y: 0, z: 0 };
-    const rotation = partRef.rotation
-      ? { rx: partRef.rotation.rx, ry: partRef.rotation.ry, rz: partRef.rotation.rz }
+    const rawOrigin = partRef.origin ?? { x: 0, y: 0, z: 0 };
+    const origin = {
+      x: typeof rawOrigin.x === "number" ? rawOrigin.x : 0,
+      y: typeof rawOrigin.y === "number" ? rawOrigin.y : 0,
+      z: typeof rawOrigin.z === "number" ? rawOrigin.z : 0,
+    };
+    const rawRot = partRef.rotation;
+    const rotation = rawRot
+      ? {
+          rx: typeof rawRot.rx === "number" ? rawRot.rx : 0,
+          ry: typeof rawRot.ry === "number" ? rawRot.ry : 0,
+          rz: typeof rawRot.rz === "number" ? rawRot.rz : 0,
+        }
       : undefined;
-    const worldBbox = transformBbox(localBbox, origin, rotation);
+    const worldBbox = transformBbox(local, origin, rotation);
     return {
       id: partRef.id,
       bbox: worldBbox,

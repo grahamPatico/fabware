@@ -85,4 +85,47 @@ describe("partsInterfere", () => {
     expect(interfereViolations.length).toBeGreaterThanOrEqual(1);
     expect(interfereViolations[0].severity).toBe("warn");
   });
+
+  // ── Phase 9: External part tests ────────────────────────────────────────────
+
+  it("skips external parts with no declared boundingBox (no interference reported)", () => {
+    // An external part without a boundingBox cannot be checked — skip it entirely.
+    // Mix with an inline box to confirm the inline part itself is still checked.
+    const result = partsInterfere(ir({
+      parts: {
+        screw: {
+          id: "screw",
+          kind: "external" as const,
+          vendor: "McMaster-Carr",
+          partNumber: "91290A115",
+          // No boundingBox — must be skipped
+        },
+        body: { id: "body", ir: boxIr(), origin: { x: 0, y: 0, z: 0 } },
+      },
+    }));
+    // Only 1 part has a bbox; pairs cannot be formed → no violations
+    expect(result).toEqual([]);
+  });
+
+  it("uses declared boundingBox for external parts in interference check", () => {
+    // External part occupies [-5,5]×[-5,5]×[0,10] at origin (10×10×10 box).
+    // Inline boxIr at origin occupies [-10,10]×[-10,10]×[0,10].
+    // These two overlap → violation expected.
+    const result = partsInterfere(ir({
+      parts: {
+        bearing: {
+          id: "bearing",
+          kind: "external" as const,
+          vendor: "NSK",
+          partNumber: "6001ZZ",
+          boundingBox: { width: 10, height: 10, depth: 10 },
+          origin: { x: 0, y: 0, z: 0 },
+        },
+        body: { id: "body", ir: boxIr(), origin: { x: 0, y: 0, z: 0 } },
+      },
+    }));
+    expect(result).toHaveLength(1);
+    expect(result[0].ruleId).toBe("assembly.parts-interfere");
+    expect(result[0].severity).toBe("error");
+  });
 });
