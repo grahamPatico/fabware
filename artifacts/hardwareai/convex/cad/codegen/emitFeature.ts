@@ -10,6 +10,9 @@ import { emitPattern } from "./features/pattern";
 import { emitRevolve } from "./features/revolve";
 import { emitShell } from "./features/shell";
 import { emitBendFlange } from "./features/bendFlange";
+import { emitSweep } from "./features/sweep";
+import { emitLoft } from "./features/loft";
+import { emitWeldTab } from "./features/weldTab";
 
 export type EmitContext = {
   /** The build123d variable name of the current "parent" body, or null if none
@@ -84,6 +87,26 @@ export function emitFeature(
     case "bend_flange": {
       const lines = emitBendFlange(f, ir, ctx.parentBodyId);
       // bend_flange modifies an existing body in-place
+      return { lines, ctxOut: ctx };
+    }
+
+    case "sweep": {
+      const lines = emitSweep(f, ir, ctx.parentBodyId);
+      // sweep creates a new body
+      const ctxOut: EmitContext = { parentBodyId: f.id };
+      return { lines, ctxOut };
+    }
+
+    case "loft": {
+      const lines = emitLoft(f, ir, ctx.parentBodyId);
+      // loft creates a new body
+      const ctxOut: EmitContext = { parentBodyId: f.id };
+      return { lines, ctxOut };
+    }
+
+    case "weld_tab": {
+      const lines = emitWeldTab(f, ir, ctx.parentBodyId);
+      // weld_tab modifies the existing body in-place
       return { lines, ctxOut: ctx };
     }
 

@@ -138,11 +138,35 @@ const BendFlangeFeature = z.object({
   thickness: ParamRef,
 });
 
+const SweepFeature = z.object({
+  ...Base,
+  kind: z.literal("sweep"),
+  profile: Snake,
+  path: Snake,
+});
+
+const LoftFeature = z.object({
+  ...Base,
+  kind: z.literal("loft"),
+  profiles: z.array(Snake).min(2),
+});
+
+const WeldTabFeature = z.object({
+  ...Base,
+  kind: z.literal("weld_tab"),
+  face: FaceRef,
+  length: ParamRef,
+  width: ParamRef,
+  thickness: ParamRef,
+  position: Point2D,
+});
+
 export const FeatureSchema = z.discriminatedUnion("kind", [
   ExtrudeFeature, CutExtrudeFeature,
   FilletFeature, ChamferFeature,
   HoleFeature, PatternFeature,
   RevolveFeature, ShellFeature, BendFlangeFeature,
+  SweepFeature, LoftFeature, WeldTabFeature,
 ]);
 
 // ── Phase 4: Assembly schemas ────────────────────────────────────────────────

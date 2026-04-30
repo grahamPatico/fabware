@@ -134,11 +134,32 @@ export interface BendFlangeFeature extends BaseFeature {
   thickness: ParamRef;          // sheet thickness
 }
 
+export interface SweepFeature extends BaseFeature {
+  kind: "sweep";
+  profile: SketchId;            // cross-section sketch
+  path: SketchId;               // sweep-path sketch (line/spline)
+}
+
+export interface LoftFeature extends BaseFeature {
+  kind: "loft";
+  profiles: SketchId[];         // ordered list of ≥ 2 profile sketches to loft through
+}
+
+export interface WeldTabFeature extends BaseFeature {
+  kind: "weld_tab";
+  face: FaceRef;                // host face to attach the tab to
+  length: ParamRef;             // tab length
+  width: ParamRef;              // tab width
+  thickness: ParamRef;          // tab thickness
+  position: Point2D;            // 2-D offset of tab centre on the face
+}
+
 export type Feature =
   | ExtrudeFeature | CutExtrudeFeature
   | FilletFeature | ChamferFeature
   | HoleFeature | PatternFeature
-  | RevolveFeature | ShellFeature | BendFlangeFeature;
+  | RevolveFeature | ShellFeature | BendFlangeFeature
+  | SweepFeature | LoftFeature | WeldTabFeature;
 
 export interface EntityRegistry {
   faces:    Record<FaceId,   { feature: FeatureId; tag: string; topologyHash: string }>;

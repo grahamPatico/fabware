@@ -231,6 +231,112 @@ describe("BendFlangeFeature schema — Phase 5", () => {
   });
 });
 
+// ── Phase 6: SweepFeature schema tests ───────────────────────────────────────
+
+describe("SweepFeature schema — Phase 6", () => {
+  it("accepts a valid sweep feature with profile and path sketch ids", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [
+        { kind: "sweep", id: "sweep1", profile: "profile_sk", path: "path_sk" },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+
+  it("rejects a sweep feature missing path", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [
+        { kind: "sweep", id: "sweep1", profile: "profile_sk" },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).toThrow();
+  });
+});
+
+// ── Phase 6: LoftFeature schema tests ────────────────────────────────────────
+
+describe("LoftFeature schema — Phase 6", () => {
+  it("accepts a loft feature with ≥ 2 profiles", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [
+        { kind: "loft", id: "loft1", profiles: ["sk_bot", "sk_top"] },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+
+  it("rejects a loft feature with fewer than 2 profiles", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [
+        { kind: "loft", id: "loft1", profiles: ["sk_only"] },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).toThrow();
+  });
+});
+
+// ── Phase 6: WeldTabFeature schema tests ──────────────────────────────────────
+
+describe("WeldTabFeature schema — Phase 6", () => {
+  it("accepts a valid weld_tab feature", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [
+        {
+          kind: "weld_tab",
+          id: "tab1",
+          face: { feature: "base_body", tag: "north" },
+          length: 20,
+          width: 10,
+          thickness: 3,
+          position: { x: 0, y: 15 },
+        },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).not.toThrow();
+  });
+
+  it("rejects a weld_tab feature missing thickness", () => {
+    const ir = {
+      schemaVersion: 1 as const,
+      units: "mm" as const,
+      parameters: {},
+      sketches: {},
+      features: [
+        {
+          kind: "weld_tab",
+          id: "tab1",
+          face: { feature: "base_body", tag: "north" },
+          length: 20,
+          width: 10,
+          // missing thickness
+          position: { x: 0, y: 15 },
+        },
+      ],
+    };
+    expect(() => CadIrSchema.parse(ir)).toThrow();
+  });
+});
+
 // ── Phase 3: HoleFeature sub-type schema tests ───────────────────────────────
 
 const baseHoleIr = {

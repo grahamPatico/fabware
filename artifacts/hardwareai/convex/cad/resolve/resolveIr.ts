@@ -100,6 +100,20 @@ export function resolveIr(ir: CadIr): ResolvedIr {
           length: evalRef(f.length),
           thickness: evalRef(f.thickness),
         } as Feature;
+      case "sweep":
+        // No ParamRef fields — pass through unchanged
+        return { ...f } as Feature;
+      case "loft":
+        // No ParamRef fields — pass through unchanged
+        return { ...f } as Feature;
+      case "weld_tab":
+        return {
+          ...f,
+          length: evalRef(f.length),
+          width: evalRef(f.width),
+          thickness: evalRef(f.thickness),
+          position: evalP(f.position),
+        } as Feature;
     }
   });
 
