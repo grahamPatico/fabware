@@ -30,9 +30,12 @@ import { resolveIr, type ResolvedIr } from "../resolve/resolveIr";
  * Compute the 2-D cross-sectional area (mm²) of the first usable profile
  * geometry entity in a resolved sketch.
  *
- * - rect: width × height (cornerRadius ignored)
- * - circle: π × r²
- * - line (and any unknown kind): contributes 0
+ * - rect:    width × height (cornerRadius ignored)
+ * - circle:  π × r²
+ * - polygon: (n / 2) × r² × sin(2π / n)  — area of a circumscribed regular n-gon
+ * - arc:     0 (open path; not an enclosed region)
+ * - spline:  0 (open path; not an enclosed region)
+ * - line (and any unknown kind): 0 contribution
  *
  * Returns the sum of all usable entity areas in the sketch (usually one body
  * per extrude, but multi-body sketches are rare; summing is conservative).
@@ -51,8 +54,13 @@ function sketchArea(
     } else if (entity.kind === "circle") {
       const r = entity.radius as number;
       area += Math.PI * r * r;
+    } else if (entity.kind === "polygon") {
+      // Circumscribed regular polygon: (n/2) * r² * sin(2π/n)
+      const n = entity.sides;
+      const r = entity.radius as number;
+      area += (n / 2) * r * r * Math.sin((2 * Math.PI) / n);
     }
-    // "line" and unknown kinds: 0 contribution
+    // "arc", "spline", "line", and unknown kinds: 0 contribution (open paths)
   }
   return area;
 }

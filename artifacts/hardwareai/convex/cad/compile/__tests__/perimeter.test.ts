@@ -98,3 +98,74 @@ describe("estimatePerimeter", () => {
     expect(estimatePerimeter(ir)).toBeCloseTo(140, 6);
   });
 });
+
+// ── Phase 15: new geometry kinds ─────────────────────────────────────────────
+
+describe("estimatePerimeter — Phase 15 new geometry kinds", () => {
+  it("polygon extrude: perimeter = n × 2 × r × sin(π/n)", () => {
+    // Regular hexagon (n=6), r=10: 6 × 2 × 10 × sin(π/6) = 6 × 20 × 0.5 = 60
+    const ir = makeIr(
+      [{ kind: "extrude", id: "ex", profile: "sk", distance: 5, operation: "new_body" }],
+      {
+        sk: {
+          id: "sk",
+          plane: "XY",
+          geometry: [{ kind: "polygon", id: "pg", center: { x: 0, y: 0 }, sides: 6, radius: 10 }],
+        },
+      },
+    );
+    const expected = 6 * 2 * 10 * Math.sin(Math.PI / 6);
+    expect(estimatePerimeter(ir)).toBeCloseTo(expected, 6);
+  });
+
+  it("arc extrude: arc length = r × (π/180) × |endAngle - startAngle|", () => {
+    // 90-degree arc, radius=10: 10 × (π/180) × 90 = 10 × π/2 ≈ 15.708
+    const ir = makeIr(
+      [{ kind: "extrude", id: "ex", profile: "sk", distance: 5, operation: "new_body" }],
+      {
+        sk: {
+          id: "sk",
+          plane: "XY",
+          geometry: [
+            {
+              kind: "arc",
+              id: "a1",
+              center: { x: 0, y: 0 },
+              radius: 10,
+              startAngle: 0,
+              endAngle: 90,
+            },
+          ],
+        },
+      },
+    );
+    const expected = 10 * (Math.PI / 180) * 90;
+    expect(estimatePerimeter(ir)).toBeCloseTo(expected, 6);
+  });
+
+  it("spline extrude: perimeter = sum of segment lengths", () => {
+    // Points: (0,0) → (3,4) → (3,4+5=9)
+    // seg0: √(9+16) = 5; seg1: √(0+25) = 5; total = 10
+    const ir = makeIr(
+      [{ kind: "extrude", id: "ex", profile: "sk", distance: 5, operation: "new_body" }],
+      {
+        sk: {
+          id: "sk",
+          plane: "XY",
+          geometry: [
+            {
+              kind: "spline",
+              id: "sp1",
+              points: [
+                { x: 0, y: 0 },
+                { x: 3, y: 4 },
+                { x: 3, y: 9 },
+              ],
+            },
+          ],
+        },
+      },
+    );
+    expect(estimatePerimeter(ir)).toBeCloseTo(10, 6);
+  });
+});

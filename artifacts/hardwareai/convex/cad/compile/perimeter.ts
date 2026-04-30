@@ -30,10 +30,15 @@ import { resolveIr, type ResolvedIr } from "../resolve/resolveIr";
 /**
  * Compute the total perimeter (mm) for all geometry in a resolved sketch.
  *
- * - rect:   2 × (width + height)
- * - circle: 2 × π × radius
- * - line:   Euclidean distance between p1 and p2
- * - other:  0
+ * - rect:    2 × (width + height)
+ * - circle:  2 × π × radius
+ * - line:    Euclidean distance between p1 and p2
+ * - polygon: n × 2 × r × sin(π / n)  — perimeter of a circumscribed regular n-gon
+ * - arc:     r × (π / 180) × |endAngle - startAngle|
+ *            (angles are stored in DEGREES — consistent with revolve/joint-limit
+ *             convention throughout the IR; convert to radians for the formula)
+ * - spline:  sum of |p_{i+1} - p_i| Euclidean segment lengths
+ * - other:   0
  */
 function sketchPerimeter(resolved: ResolvedIr, profileId: string): number {
   const sketch = resolved.sketches[profileId];
@@ -52,6 +57,26 @@ function sketchPerimeter(resolved: ResolvedIr, profileId: string): number {
       const dx = (entity.p2.x as number) - (entity.p1.x as number);
       const dy = (entity.p2.y as number) - (entity.p1.y as number);
       perimeter += Math.sqrt(dx * dx + dy * dy);
+    } else if (entity.kind === "polygon") {
+      // Perimeter of a circumscribed regular n-gon = n × 2 × r × sin(π / n)
+      const n = entity.sides;
+      const r = entity.radius as number;
+      perimeter += n * 2 * r * Math.sin(Math.PI / n);
+    } else if (entity.kind === "arc") {
+      // Arc length = r × (π / 180) × |endAngle - startAngle|
+      // Angles are in DEGREES (see types.ts JSDoc for rationale).
+      const r = entity.radius as number;
+      const startDeg = entity.startAngle as number;
+      const endDeg = entity.endAngle as number;
+      perimeter += r * (Math.PI / 180) * Math.abs(endDeg - startDeg);
+    } else if (entity.kind === "spline") {
+      // Sum of Euclidean distances between consecutive control points
+      const pts = entity.points;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const dx = (pts[i + 1].x as number) - (pts[i].x as number);
+        const dy = (pts[i + 1].y as number) - (pts[i].y as number);
+        perimeter += Math.sqrt(dx * dx + dy * dy);
+      }
     }
     // unknown kinds: 0 contribution
   }

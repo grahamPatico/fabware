@@ -109,3 +109,35 @@ describe("estimateVolume", () => {
     expect(estimateVolume(ir)).toBeCloseTo(expected, 3);
   });
 });
+
+// ── Phase 15: polygon area ───────────────────────────────────────────────────
+
+describe("estimateVolume — Phase 15 polygon geometry", () => {
+  it("polygon extrude: area = (n/2) × r² × sin(2π/n)", () => {
+    // Hexagon (n=6), r=10, depth=5
+    // area = (6/2) × 100 × sin(2π/6) = 3 × 100 × sin(60°) = 300 × (√3/2) ≈ 259.808
+    // volume = area × depth ≈ 1299.038
+    const n = 6;
+    const r = 10;
+    const depth = 5;
+    const expectedArea = (n / 2) * r * r * Math.sin((2 * Math.PI) / n);
+    const expectedVolume = expectedArea * depth;
+
+    const ir: CadIr = {
+      schemaVersion: 1,
+      units: "mm",
+      parameters: {},
+      sketches: {
+        sk: {
+          id: "sk",
+          plane: "XY",
+          geometry: [{ kind: "polygon", id: "pg", center: { x: 0, y: 0 }, sides: n, radius: r }],
+        },
+      },
+      features: [
+        { kind: "extrude", id: "ex", profile: "sk", distance: depth, operation: "new_body" },
+      ],
+    };
+    expect(estimateVolume(ir)).toBeCloseTo(expectedVolume, 4);
+  });
+});

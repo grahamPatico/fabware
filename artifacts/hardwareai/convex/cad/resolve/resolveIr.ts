@@ -18,7 +18,11 @@ type ResolvedSketch = {
 type ResolvedSketchEntity =
   | { kind: "rect"; id: string; center: { x: number; y: number }; width: number; height: number; cornerRadius?: number }
   | { kind: "circle"; id: string; center: { x: number; y: number }; radius: number }
-  | { kind: "line"; id: string; p1: { x: number; y: number }; p2: { x: number; y: number } };
+  | { kind: "line"; id: string; p1: { x: number; y: number }; p2: { x: number; y: number } }
+  // Phase 15: new entity kinds
+  | { kind: "arc"; id: string; center: { x: number; y: number }; radius: number; startAngle: number; endAngle: number }
+  | { kind: "polygon"; id: string; center: { x: number; y: number }; sides: number; radius: number }
+  | { kind: "spline"; id: string; points: { x: number; y: number }[] };
 
 export function resolveIr(ir: CadIr): ResolvedIr {
   const params = evaluateParameters(ir.parameters);
@@ -65,6 +69,22 @@ export function resolveIr(ir: CadIr): ResolvedIr {
             return { kind: "circle", id: g.id, center: evalP(g.center), radius: evalRef(g.radius) };
           case "line":
             return { kind: "line", id: g.id, p1: evalP(g.p1), p2: evalP(g.p2) };
+          // Phase 15: new entity kinds
+          case "arc":
+            return {
+              kind: "arc", id: g.id, center: evalP(g.center),
+              radius: evalRef(g.radius),
+              startAngle: evalRef(g.startAngle),
+              endAngle: evalRef(g.endAngle),
+            };
+          case "polygon":
+            return {
+              kind: "polygon", id: g.id, center: evalP(g.center),
+              sides: g.sides,
+              radius: evalRef(g.radius),
+            };
+          case "spline":
+            return { kind: "spline", id: g.id, points: g.points.map(evalP) };
         }
       }),
     };
