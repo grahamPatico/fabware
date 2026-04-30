@@ -213,6 +213,13 @@ export interface CadIr {
    * When set, the budgetExceeded rule fires if compileCost.totalKnown > budget.
    */
   budget?: number;
+  /**
+   * Phase 12: optional material key for fabrication-cost estimation.
+   * Must be a key from BUILTIN_MATERIALS or a custom catalog, e.g. "aluminum",
+   * "steel", "stainless", "pla", "abs", "nylon".
+   * Defaults to "aluminum" (6061) when absent.
+   */
+  material?: string;
 }
 
 // ── Phase 4 / Phase 9: Assembly types ───────────────────────────────────────

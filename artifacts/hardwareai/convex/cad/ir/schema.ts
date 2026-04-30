@@ -216,6 +216,8 @@ export const CadIrSchema: z.ZodType<unknown> = z.lazy(() =>
     connections: z.array(ConnectionSchema).optional(),
     // Phase 10: optional cost budget in USD
     budget: z.number().positive().optional(),
+    // Phase 12: optional material key for fabrication-cost estimation
+    material: z.string().min(1).optional(),
   })
 );
 
