@@ -40,6 +40,8 @@ convex/cad/
 │       ├── laserCutMinSlot.ts        — mfg.laser-cut-min-slot (Phase 14)
 │       ├── print3dMinWall.ts         — mfg.print-3d-min-wall (Phase 16)
 │       ├── print3dBedSize.ts         — mfg.print-3d-bed-size (Phase 16)
+│       ├── cncMinInternalCorner.ts   — mfg.cnc-min-internal-corner (Phase 17)
+│       ├── cncPocketTooDeep.ts       — mfg.cnc-pocket-too-deep (Phase 17)
 │       ├── partsInterfere.ts         — assembly.parts-interfere (Phase 8)
 │       └── jointRangeCollision.ts    — assembly.joint-range-collision (Phase 11)
 │
@@ -903,6 +905,64 @@ Both rules wired into `validateManufacturingTier(resolved, original)` via spread
 `prompts.ts` updated with Phase 16 3-D printing geometry rules section. README updated with Phase 16 scope.
 
 Tests: **≥ 399 passing** (`pnpm test --run`).
+
+---
+
+## Phase 17 scope (shipped)
+
+Phase 17 adds a `CadIr.cncToolDiameter` field and two CNC-specific manufacturing rules.
+
+### `CadIr.cncToolDiameter` field (Task 1)
+
+`CadIr` gains an optional `cncToolDiameter?: number` field. Zod: `z.number().positive().max(50).optional()`.
+Represents the CNC end-mill diameter in mm. Defaults to 6.35 mm (1/4" end mill) when absent and
+`process === "cnc"`. Used by both Phase 17 CNC geometry rules.
+
+### `validate/rules/cncMinInternalCorner.ts` — `cncMinInternalCorner` (Task 2)
+
+Rule `mfg.cnc-min-internal-corner`: for CNC-milled parts, every `cut_extrude` whose profile
+sketch contains a `rect` entity must have `cornerRadius ≥ toolRadius` (half the tool diameter).
+
+- Only fires when `original.process === "cnc"`.
+- `cornerRadius` missing (undefined) is treated as 0 — always a violation.
+- At most one violation is emitted per `cut_extrude` (inner entity loop `break`s after the first failing rect).
+- **Phase 17 v0 scope**: only declared `cornerRadius` on rect entities is checked. Sharp corners
+  formed by the intersection of multiple features are not detected — document this in `agentMessage`.
+- Severity: `"error"` (unmachinable corner is a real fabrication failure).
+- Location kind: `"feature"`.
+
+DEFAULT_TOOL_D = 6.35 mm is exported from the rule file for use in tests.
+
+### `validate/rules/cncPocketTooDeep.ts` — `cncPocketTooDeep` (Task 3)
+
+Rule `mfg.cnc-pocket-too-deep`: for CNC-milled parts, every `cut_extrude` whose `distance`
+(cut depth) exceeds 5× the tool diameter fires a warning.
+
+- Only fires when `original.process === "cnc"`.
+- `depth ≤ 5 × toolDiameter` passes; strictly greater fires.
+- Severity: `"warn"` (step-down / pecking strategies can overcome the limit, but the agent should inform the user).
+- Location kind: `"feature"`.
+
+### Composition into `validateManufacturingTier` (Task 4)
+
+Both rules wired into `validateManufacturingTier(resolved, original)` via spread:
+```ts
+...cncMinInternalCorner(resolved, original),
+...cncPocketTooDeep(resolved, original),
+```
+
+### Tests (Tasks 2 + 3)
+
+| File | Tests |
+|---|---|
+| `validate/__tests__/rules-cncMinInternalCorner.test.ts` | 4 tests (missing cornerRadius, too-small cornerRadius, boundary passes, inactive for laser_cut) |
+| `validate/__tests__/rules-cncPocketTooDeep.test.ts` | 4 tests (depth > 5× tool fires, boundary passes, custom tool diameter, inactive for print_3d) |
+
+### Prompts + README (Task 4)
+
+`prompts.ts` updated with Phase 17 CNC geometry rules section. README updated with Phase 17 scope.
+
+Tests: **≥ 409 passing** (`pnpm test --run`).
 
 ---
 

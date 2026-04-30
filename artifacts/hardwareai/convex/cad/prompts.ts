@@ -250,6 +250,31 @@ Laser-cut and sheet-metal geometry rules (Phase 14):
     - Fix: scale the part down, split it into printable sub-parts and join with hardware,
       or specify a larger-format printer (which removes this constraint).
 
+CNC geometry rules (Phase 17):
+- These rules fire only when process is "cnc".
+- Set ir.cncToolDiameter (positive number, ≤ 50 mm) to declare the end-mill diameter.
+  Defaults to 6.35 mm (1/4" end mill) when the field is absent.
+
+  mfg.cnc-min-internal-corner (error): cut_extrude rect cornerRadius must be ≥ toolRadius.
+    - CNC end mills are cylindrical and cannot cut perfectly sharp internal corners.
+      Every pocket corner needs a radius at least as large as the tool radius (half the
+      tool diameter) so the mill can clear the corner without colliding with the wall.
+    - Only declared cornerRadius on rect sketch entities is checked — sharp corners
+      formed by intersecting features are not detected by this rule and require
+      solid-model analysis.
+    - Fix: add a cornerRadius of at least toolRadius (= cncToolDiameter / 2) to the
+      rect entity in the violating cut_extrude sketch. Alternatively, specify a smaller
+      cncToolDiameter to match the actual tool being used.
+
+  mfg.cnc-pocket-too-deep (warn): cut_extrude depth must be ≤ 5 × toolDiameter.
+    - Industry rule-of-thumb: cutting deeper than 5× the end-mill diameter causes
+      excessive tool deflection, chatter, and potential tool breakage.
+    - Severity is "warn" (not "error") — deeper pockets are achievable with
+      step-down (pecking) strategies, but the user should be informed.
+    - Fix: reduce the cut_extrude distance to at most 5× cncToolDiameter, or specify
+      a larger cncToolDiameter. If the full depth is required, use a step-down strategy
+      and document it in the part notes.
+
 If a validation report says a feature failed, propose ONE patch (the smallest possible)
 to fix it. Prefer set_parameter over rewriting features.
 `;
