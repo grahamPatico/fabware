@@ -30,6 +30,35 @@ export type PlaneRef =
 
 export type Point2D = { x: ParamRef; y: ParamRef };
 
+// ── Phase 7: Sketch Constraints ──────────────────────────────────────────────
+
+/** Reference to a specific point on a sketch entity. */
+export interface SketchPointRef {
+  entity: string;           // entity id
+  point: "start" | "end" | "center";
+}
+
+/** Reference to a sketch entity by id. */
+export type SketchEntityRef = string; // entity id
+
+/**
+ * Discriminated union of all sketch constraint kinds.
+ *
+ * - coincident / distance: operate on SketchPointRef (entity + point=start/end/center)
+ * - parallel / perpendicular / tangent / equal / angle: operate on entity ids directly
+ * - horizontal / vertical: single entity id
+ */
+export type SketchConstraint =
+  | { kind: "coincident"; id: string; a: SketchPointRef; b: SketchPointRef }
+  | { kind: "distance";   id: string; a: SketchPointRef; b: SketchPointRef; distance: ParamRef }
+  | { kind: "parallel";        id: string; a: SketchEntityRef; b: SketchEntityRef }
+  | { kind: "perpendicular";   id: string; a: SketchEntityRef; b: SketchEntityRef }
+  | { kind: "tangent";         id: string; a: SketchEntityRef; b: SketchEntityRef }
+  | { kind: "equal";           id: string; a: SketchEntityRef; b: SketchEntityRef }
+  | { kind: "angle";           id: string; a: SketchEntityRef; b: SketchEntityRef; angle: ParamRef }
+  | { kind: "horizontal";      id: string; entity: SketchEntityRef }
+  | { kind: "vertical";        id: string; entity: SketchEntityRef };
+
 export type SketchEntity =
   | { kind: "rect"; id: string; center: Point2D; width: ParamRef; height: ParamRef; cornerRadius?: ParamRef }
   | { kind: "circle"; id: string; center: Point2D; radius: ParamRef }
@@ -39,6 +68,7 @@ export interface SketchDef {
   id: SketchId;
   plane: PlaneRef;
   geometry: SketchEntity[];
+  constraints?: SketchConstraint[];
 }
 
 export type FaceRef = { feature: FeatureId; tag: string };
