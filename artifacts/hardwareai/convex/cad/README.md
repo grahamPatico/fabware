@@ -498,9 +498,74 @@ Tests: **≥ 303 passing** (`pnpm test --run`).
 
 ---
 
-## Phase 9+ deferrals
+## Phase 10 scope (shipped)
 
-The following remain out of scope after Phase 9 and will be addressed in later phases:
+Phase 10 adds BOM cost estimation, an optional `CadIr.budget` field, a `bom.budget-exceeded`
+validation rule, and a comprehensive end-to-end integration smoke test.
+
+### `compile/cost.ts` — `compileCost` (Task 1)
+
+`compileCost(ir, pricing?)` in `compile/cost.ts` aggregates external parts by `vendor::partNumber`,
+looks up each key in a `PricingDb`, and returns a `CostResult`:
+
+| Field | Type | Description |
+|---|---|---|
+| `lines` | `CostLine[]` | Per-line breakdown sorted by vendor then partNumber |
+| `totalKnown` | `number` | Sum of all known line totals (USD) |
+| `hasMissingPrices` | `boolean` | True if any part had no entry in the pricing db |
+
+`BUILTIN_PRICING` is a starter set of McMaster-Carr fasteners and Misumi bearings:
+
+| Key | Part | USD |
+|---|---|---|
+| `McMaster-Carr::91290A115` | M6×10 SHCS | $0.42 |
+| `McMaster-Carr::91290A130` | M6×25 SHCS | $0.55 |
+| `McMaster-Carr::91294A150` | M6×40 SHCS | $0.75 |
+| `McMaster-Carr::91100A030` | M3 hex nut | $0.08 |
+| `McMaster-Carr::91100A060` | M6 hex nut | $0.15 |
+| `McMaster-Carr::92141A012` | M3 flat washer | $0.05 |
+| `Misumi::B-6800ZZ` | 6800ZZ ball bearing | $3.20 |
+
+### `CadIr.budget` field (Task 2)
+
+`CadIr` gains an optional `budget?: number` field (Zod: `z.number().positive().optional()`).
+Represents the target BOM cost ceiling in USD.
+
+### `validate/rules/budgetExceeded.ts` — `budgetExceeded` (Task 3)
+
+`budgetExceeded(ir): Violation[]` fires a `bom.budget-exceeded` **warn** violation when
+`compileCost(ir).totalKnown > ir.budget`. Severity is warn (not error) to avoid blocking
+codegen — missing prices make the total an underestimate.
+
+Composed into `cadIrPlugin.validate` alongside `validateManufacturingTier`:
+
+```ts
+return [...t2, ...validateManufacturingTier(resolved), ...budgetExceeded(ir)];
+```
+
+### Integration smoke test (Task 4)
+
+`cad/__tests__/integration-phase10.test.ts` exercises every Phase 1–10 system in a single test:
+
+- Two inline parts (body + lid) with extrude features
+- Revolute hinge joint (Phase 4)
+- 4 × M6 SHCS + 4 × M6 hex nuts as external parts (Phase 9)
+- Fixed screw↔nut joint pairs satisfying floating-part rule
+- Bolt connections between body+lid and each screw+nut pair
+- Budget $5.00 (cost $2.28 — under budget)
+- Validates all tiers, compiles all outputs (build123d, URDF, MJCF, BOM, cost), checks hash
+
+### Prompts + README (Task 5)
+
+`prompts.ts` updated with Phase 10 cost estimation section. README updated with Phase 10 scope.
+
+Tests: **≥ 317 passing** (`pnpm test --run`).
+
+---
+
+## Phase 10+ deferrals
+
+The following remain out of scope after Phase 10 and will be addressed in later phases:
 
 | Feature | Notes |
 |---|---|
@@ -509,16 +574,17 @@ The following remain out of scope after Phase 9 and will be addressed in later p
 | **Revolve / shell / bend_flange codegen + validation** | ✅ Shipped in Phase 5 |
 | **Sweep / loft / weld_tab codegen + MJCF compiler** | ✅ Shipped in Phase 6 |
 | **PartRef union + BOM compiler** | ✅ Shipped in Phase 9 |
+| **compileCost + BUILTIN_PRICING + budget rule** | ✅ Shipped in Phase 10 |
 | **bend_flange real geometry** | Placeholder `pass` in Phase 5; full sheet-metal extension deferred |
-| **K-factor / flat-pattern DXF export** | Requires sheet-metal extension; Phase 9+ |
+| **K-factor / flat-pattern DXF export** | Requires sheet-metal extension; Phase 10+ |
 | **AxisRef.kind === "edge" resolution** | Requires geometry (sandbox face/edge entities); deferred |
 | **Sketch constraint solver** | Types + Tier 2 heuristic shipped in Phase 7; full DOF solver deferred |
-| **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 9+ |
+| **Hardware feature library** | Threaded inserts, standoffs, PCB mounts — Phase 10+ |
 | **Assembly interference / clearance checks** | ✅ AABB interference check shipped in Phase 8; exact mesh overlap deferred |
 | **GLB / STEP export via sandbox** | Sandbox currently produces STEP via `export_step()`; GLB transcode deferred |
 | **Streaming codegen** | Single-pass string builder today; chunked/streamed output for large IRs deferred |
 | **AI-driven repair loop (production)** | Mock repair loops tested; real Claude-powered production loop deferred |
 | **Convex file storage for build artifacts** | Future phase will store STEP/GLB in Convex file storage |
 | **Version diffing / merge** | Revision hashes exist; structural diff / 3-way merge deferred |
-| **BOM export (CSV / PDF)** | `compileBom()` returns `BomLine[]`; CSV/PDF export is Phase 10+ |
-| **BOM line-item costing** | `BomLine` has no cost field yet; integration with supplier APIs deferred |
+| **BOM export (CSV / PDF)** | `compileBom()` returns `BomLine[]`; CSV/PDF export is Phase 11+ |
+| **Supplier API integration** | BUILTIN_PRICING is a static file; live pricing via supplier APIs deferred |

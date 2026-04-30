@@ -122,6 +122,23 @@ External (purchased) parts (Phase 9):
   vendor + partNumber, counting duplicates. Use consistent vendor/partNumber strings to ensure
   correct BOM quantities (e.g. use the same McMaster-Carr part number for every identical screw).
 
+Cost estimation and budgeting (Phase 10):
+- compileCost() looks up each external part in a built-in pricing database (BUILTIN_PRICING) and
+  returns a per-line cost breakdown plus totalKnown (USD).
+- Built-in pricing covers common McMaster-Carr fasteners and Misumi bearings:
+    McMaster-Carr 91290A115 (M6×10 SHCS)    $0.42
+    McMaster-Carr 91290A130 (M6×25 SHCS)    $0.55
+    McMaster-Carr 91294A150 (M6×40 SHCS)    $0.75
+    McMaster-Carr 91100A030 (M3 hex nut)    $0.08
+    McMaster-Carr 91100A060 (M6 hex nut)    $0.15
+    McMaster-Carr 92141A012 (M3 flat washer) $0.05
+    Misumi B-6800ZZ (6800ZZ ball bearing)   $3.20
+- Parts not in the database contribute no cost (hasMissingPrices flag is set to true).
+- Set ir.budget (a positive USD number) to enable the bom.budget-exceeded validation rule:
+    bom.budget-exceeded (warn): fires when totalKnown > budget.
+    This is a warning, not an error — it does not block codegen.
+    To resolve: reduce part count, substitute cheaper alternatives, or raise the budget.
+
 If a validation report says a feature failed, propose ONE patch (the smallest possible)
 to fix it. Prefer set_parameter over rewriting features.
 `;
