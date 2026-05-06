@@ -1,0 +1,23 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/SCS-SCRAPE.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "Refreshing the SendCutSend rules catalog",
+  "summary": "Runbook describing how to manually refresh Fabware's SendCutSend materials catalog via a quarterly scraper with human-in-the-loop review.",
+  "scope": [
+    "SendCutSend catalog refresh",
+    "scsRules.ts",
+    "scrape-scs.ts",
+    "scs-catalog.json",
+    "materials catalog scraper"
+  ],
+  "cross_refs": [
+    "artifacts/api-server/data/scs-catalog.json",
+    "artifacts/api-server/src/lib/scsRules.ts",
+    "src/scrape-scs.ts"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

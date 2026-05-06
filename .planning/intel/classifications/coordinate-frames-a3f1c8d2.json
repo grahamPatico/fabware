@@ -1,0 +1,29 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/conventions/coordinate-frames.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "Coordinate frames in Fabware",
+  "summary": "Explains the data frame vs Three.js frame convention, the Y/Z permutation in the renderer, rotation-order rules, and recipes for archetype authors.",
+  "scope": [
+    "coordinate frames",
+    "data frame",
+    "Three.js renderer frame",
+    "archetype part positions",
+    "Euler XYZ rotation order",
+    "SAT collision check",
+    "AssembledView renderer",
+    "intersect.ts",
+    "positions.ts",
+    "_audit:auditAllArchetypes"
+  ],
+  "cross_refs": [
+    "src/components/workspace/AssembledView.tsx",
+    "convex/lib/intersect.ts",
+    "convex/lib/positions.ts",
+    "convex/_audit.ts"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}
