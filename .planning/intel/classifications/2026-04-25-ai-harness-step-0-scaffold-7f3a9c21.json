@@ -1,0 +1,41 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/superpowers/plans/2026-04-25-ai-harness-step-0-scaffold.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "AI Harness — Plan 1: Step 0 Scaffold",
+  "summary": "Step-by-step implementation plan to scaffold the AI harness plugin contract types, three Convex tables, two project fields, and a no-op orchestrator tick action.",
+  "scope": [
+    "AI harness",
+    "plugin contract types",
+    "Convex schema",
+    "violations table",
+    "escalations table",
+    "planEvents table",
+    "orchestrator tick",
+    "phase machine",
+    "plugin registry",
+    "sheet-metal plugin migration"
+  ],
+  "cross_refs": [
+    "docs/superpowers/specs/2026-04-25-ai-harness-design.md",
+    "artifacts/hardwareai/convex/_generated/ai/guidelines.md",
+    "artifacts/hardwareai/vitest.config.ts",
+    "artifacts/hardwareai/convex/plugins/types.ts",
+    "artifacts/hardwareai/convex/plugins/registry.ts",
+    "artifacts/hardwareai/convex/orchestrator/planEvents.ts",
+    "artifacts/hardwareai/convex/orchestrator/violations.ts",
+    "artifacts/hardwareai/convex/orchestrator/escalations.ts",
+    "artifacts/hardwareai/convex/orchestrator/queries.ts",
+    "artifacts/hardwareai/convex/orchestrator/phaseMachine.ts",
+    "artifacts/hardwareai/convex/orchestrator/tick.ts",
+    "artifacts/hardwareai/convex/orchestrator/projectMutations.ts",
+    "artifacts/hardwareai/convex/projects.ts",
+    "artifacts/hardwareai/convex/schema.ts",
+    "convex/lib/partKind.ts",
+    "docs/PLAN.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "Path is /plans/ (not /adr/, /prd/, or /spec/). Document is an implementation runbook with task-by-task code blocks, commits, and tests — characteristic of guide/runbook DOC. Contains technical detail (schemas, types) but as implementation steps rather than contract definitions; the authoritative SPEC is referenced as a separate file. No frontmatter, no Decision/Consequences, no user stories. Classified as DOC; could plausibly be a SPEC-adjacent artifact but the referenced spec file is the canonical contract."
+}

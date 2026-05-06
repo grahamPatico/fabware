@@ -1,0 +1,35 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/superpowers/specs/2026-04-29-cad-ir-backbone-design.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "CAD IR Backbone — Design Spec",
+  "summary": "Technical design spec for a constraint-based parametric CAD Intermediate Representation replacing PartDsl as the AI harness's source of truth, with build123d/Vercel-Sandbox executor.",
+  "scope": [
+    "CAD IR schema",
+    "constraint solver",
+    "patch system",
+    "build123d executor",
+    "Vercel Sandbox",
+    "validation tiers",
+    "revision storage",
+    "URDF/MJCF compiler",
+    "AI harness",
+    "Convex tables",
+    "manufacturing rules",
+    "assembly graph"
+  ],
+  "cross_refs": [
+    "feat/ai-harness-step-0-scaffold",
+    "lib/dsl.ts",
+    "lib/scsRules.ts",
+    "assemblyDesigner.ts",
+    "archetypes/",
+    "ProcessPlugin<TDsl>",
+    "runAgentRepairLoop",
+    "AssembledView",
+    "Workspace"
+  ],
+  "locked": false,
+  "precedence": null
+}

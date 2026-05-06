@@ -1,0 +1,36 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/adr/0001-cad-ir-supersedes-ai-harness-and-sheet-metal-specs.md",
+  "type": "ADR",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "ADR-0001: CAD IR Backbone is the canonical architecture; supersedes AI Harness Design and Sheet-metal Assembly Design",
+  "summary": "Locks the CAD IR Backbone as Fabware's canonical architectural direction, superseding the AI Harness and Sheet-metal Assembly specs while preserving named carve-outs.",
+  "scope": [
+    "CAD IR Backbone",
+    "AI Harness Design",
+    "Sheet-metal Assembly Design",
+    "ProcessPlugin",
+    "PartDsl",
+    "cad_revisions",
+    "useCadIr flag",
+    "branch strategy",
+    "Phase-0 infrastructure",
+    "Roadmap organization"
+  ],
+  "cross_refs": [
+    "docs/superpowers/specs/2026-04-25-ai-harness-design.md",
+    "docs/superpowers/specs/2026-04-24-sheet-metal-assembly-design.md",
+    "docs/superpowers/specs/2026-04-29-cad-ir-backbone-design.md",
+    "docs/superpowers/plans/2026-04-29-cad-ir-phase-1.md",
+    "2026-04-30-cad-ir-phase-19.md",
+    "2026-04-25-ai-harness-step-0-scaffold.md",
+    "2026-04-26-ai-harness-step-1-sheet-metal-plugin.md",
+    "2026-04-26-ai-harness-step-1b-specialist-agent-repair-loop.md",
+    "2026-04-24-sheet-metal-assembly.md",
+    "2026-04-25-multi-process-parts.md",
+    ".planning/ROADMAP.md"
+  ],
+  "locked": true,
+  "precedence": null,
+  "notes": ""
+}

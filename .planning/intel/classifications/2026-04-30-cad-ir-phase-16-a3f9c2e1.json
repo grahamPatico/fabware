@@ -1,0 +1,30 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/superpowers/plans/2026-04-30-cad-ir-phase-16.md",
+  "type": "SPEC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "CAD IR Phase 16 — 3D-print specific rules",
+  "summary": "Implementation plan for two new CAD IR manufacturing validation rules (print-3d-min-wall and print-3d-bed-size) that fire when process is print_3d.",
+  "scope": [
+    "CAD IR validation",
+    "manufacturing rules",
+    "mfg.print-3d-min-wall rule",
+    "mfg.print-3d-bed-size rule",
+    "manufacturingTier validator",
+    "3D printing process",
+    "FDM material thresholds",
+    "AABB bed-size check"
+  ],
+  "cross_refs": [
+    "convex/cad/validate/rules/print3dMinWall.ts",
+    "convex/cad/validate/rules/print3dBedSize.ts",
+    "convex/cad/validate/manufacturingTier.ts",
+    "../../resolve/resolveIr",
+    "../../ir/types",
+    "../../../plugins/types",
+    "../../geometry/partBbox"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "Plan-shaped doc under docs/superpowers/plans/ but contains technical contracts (rule IDs, function signatures, per-material thresholds, default bed dimensions, severity levels) that act as implementation specifications. Classified SPEC over DOC because it defines binding technical constraints; not ADR (no Decision/Consequences trade-off framing); not PRD (no user stories or business requirements)."
+}

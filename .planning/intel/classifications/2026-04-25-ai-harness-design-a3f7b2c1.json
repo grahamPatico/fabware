@@ -1,0 +1,35 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/superpowers/specs/2026-04-25-ai-harness-design.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "AI Harness Design",
+  "summary": "Technical spec for a Convex-based AI harness with orchestrator, per-process specialist plugins, two-tier rules engine, and migration plan for sheet-metal/printed/hardware-assembly processes.",
+  "scope": [
+    "AI harness architecture",
+    "orchestrator state machine",
+    "process plugin contract",
+    "sheet-metal plugin",
+    "3D-printed plugin",
+    "hardware-assembly plugin",
+    "rules engine",
+    "two-tier validation loop",
+    "auto-repair",
+    "escalations",
+    "design plan schema",
+    "Convex tables (violations, escalations, planEvents, parts)",
+    "agent layer (orchestrator, specialists, assembly validator)",
+    "bending / K-factor",
+    "migration sequence"
+  ],
+  "cross_refs": [
+    "../../adr/0001-cad-ir-supersedes-ai-harness-and-sheet-metal-specs.md",
+    "docs/roadmap/2026-04-24-platform-vision.md",
+    "docs/superpowers/specs/2026-04-24-sheet-metal-assembly-design.md",
+    "docs/PLAN.md",
+    "docs/SCS-SCRAPE.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "Superseded by ADR-0001 per the document's own Status header; still classified as SPEC by structure (plugin contracts, schemas, data models, migration steps). Synthesizer should treat as superseded/non-authoritative except for the carve-outs explicitly retained by ADR-0001."
+}
