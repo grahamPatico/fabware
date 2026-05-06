@@ -1,7 +1,7 @@
 # AI Harness Design
 
 **Date:** 2026-04-25
-**Status:** Spec — pending implementation plan
+**Status:** Superseded by [ADR-0001](../../adr/0001-cad-ir-supersedes-ai-harness-and-sheet-metal-specs.md) (CAD IR Backbone is the canonical architecture). Carve-outs from this spec are retained per ADR-0001 §"Retained from AI Harness Design": `ProcessPlugin<TDsl>` contract, `runAgentRepairLoop`, two-tier validation loop, orchestrator state machine, and the Convex tables `violations` / `escalations` / `planEvents` / `parts`.
 **Supersedes (in part):** the per-kind dispatch in `assemblyDesigner.ts` + `partValidator.ts` (this spec migrates them).
 **Companion to:** `docs/roadmap/2026-04-24-platform-vision.md` (this spec is the architecture for the harness that delivers slices 1–5 of the roadmap and prepares the ground for later slices).
 

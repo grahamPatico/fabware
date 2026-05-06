@@ -1,6 +1,7 @@
 # Sheet-metal assembly — Slice 1 design
 
 **Date:** 2026-04-24
+**Status:** Superseded by [ADR-0001](../../adr/0001-cad-ir-supersedes-ai-harness-and-sheet-metal-specs.md) at the architectural-direction level. The Slice 1 schema (`parts` + `interfaces` + archetypes + `PartDsl`) is **retained on `main` as the live customer surface** until the CAD IR rebuild reaches feature parity behind the `useCadIr` flag. The tennis-ball-locker canonical end-to-end test continues to pass against this schema. See ADR-0001 §"Retained from Sheet-metal Assembly Design (Slice 1)" for full carve-outs.
 **Scope:** First implementation slice on the path laid out in `docs/roadmap/2026-04-24-platform-vision.md`. Takes Fabware from "one part per project" to "multi-part sheet-metal assembly with intent capture and assembled preview."
 **Decided:** 6 archetypes, option 2c UX (hidden-by-default archetype with discreet reveal chip), frontend rework acceptable.
 
