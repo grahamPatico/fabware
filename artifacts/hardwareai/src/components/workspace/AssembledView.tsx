@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, Grid, Edges } from "@react-three/drei";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import * as THREE from "three";
 import { Home, Square } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import { CadPreview } from "../CadPreview";
 
 type Pose = { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number };
 
@@ -224,6 +225,17 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
   const controlsRef = useRef<any>(null);
   const [homeSignal, setHomeSignal] = useState(0);
   const [showBounds, setShowBounds] = useState(false);
+  // Phase 19 gap-closure: useCadIr toggle + CAD IR glb preview.
+  const setUseCadIr = useMutation(api.projects.setUseCadIr);
+  // Only fetch revision artifacts when a part is focused AND uses the CAD IR
+  // pipeline — avoid burning a query on every part-click.
+  const focusedPartUseCadIr = focusedPartId
+    ? (parts?.find((p: { _id: Id<"parts"> }) => p._id === focusedPartId) as { useCadIr?: boolean } | undefined)?.useCadIr === true
+    : false;
+  const cadArtifacts = useQuery(
+    api.cad.queries.headRevisionArtifacts,
+    focusedPartId && focusedPartUseCadIr ? { partId: focusedPartId } : "skip",
+  );
 
   const partBounds = useMemo(() => {
     if (!parts) return [];
@@ -291,6 +303,29 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
           <span className="text-primary font-bold">{focusedPart.label}</span>
           <span className="text-primary/60">·</span>
           <span className="text-muted-foreground">{focusedPart.role}</span>
+          {/*
+            Phase 19 gap-closure: discreet developer-flag toggle for the CAD IR
+            pipeline. Per-part. Opt-in. The legacy Slice-1 preview path stays
+            live regardless of this flag — when enabled, the CadPreview overlay
+            appears below this chip rendering the persisted glb.
+          */}
+          <span className="text-primary/40 mx-1">·</span>
+          <label
+            className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground cursor-pointer select-none"
+            title="Use CAD IR pipeline for this part (developer flag)"
+          >
+            <input
+              type="checkbox"
+              checked={focusedPartUseCadIr}
+              onChange={(e) => {
+                if (focusedPart?._id) {
+                  setUseCadIr({ partId: focusedPart._id, enabled: e.target.checked });
+                }
+              }}
+              className="accent-primary w-3 h-3"
+            />
+            Cad IR
+          </label>
           <button
             type="button"
             onClick={() => onFocusPart?.(null)}
@@ -299,6 +334,22 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
           >
             ✕
           </button>
+        </div>
+      )}
+      {/*
+        Phase 19 gap-closure: glTF preview overlay. Renders the build123d GLB
+        produced by the CAD IR sandbox executor and persisted on the head
+        revision. Anchored bottom-left when a focused part has useCadIr=true
+        and a head-revision GLB is available.
+      */}
+      {focusedPart && focusedPartUseCadIr && cadArtifacts?.glbUrl && (
+        <div className="absolute bottom-3 left-3 z-10 w-[420px] max-w-[40%] rounded-md bg-card/80 backdrop-blur border border-border shadow-lg shadow-black/40 overflow-hidden">
+          <div className="px-3 py-1.5 border-b border-border flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            <span>CAD IR preview · {cadArtifacts.revisionHash.slice(0, 8)}</span>
+          </div>
+          <div className="bg-[#0a0f18]">
+            <CadPreview glbUrl={cadArtifacts.glbUrl} />
+          </div>
         </div>
       )}
       <Canvas
