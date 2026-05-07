@@ -104,8 +104,9 @@ export const tick = internalAction({
       } else {
         // No plugin's specialist registered yet — log and leave the part as 'designing';
         // the next tick will not re-dispatch (status guard) until a future plan ships
-        // its specialist. This branch is unreachable in Plan 2 because computeNextAction
-        // gates designPart on registeredKinds, which only contains 'sheet_metal'.
+        // its specialist. computeNextAction gates designPart on registeredKinds —
+        // post-Phase-19 the registry contains 'sheet_metal' and 'cad_ir', so this
+        // branch only fires for future kinds (printed, hardware-assembly, …).
         await ctx.runMutation(internal.orchestrator.planEvents.append, {
           projectId: args.projectId,
           kind: "noop-logged",
