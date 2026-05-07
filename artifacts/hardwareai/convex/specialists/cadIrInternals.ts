@@ -5,8 +5,9 @@
 // standard runtime. The "use node" specialist action (cadIr.ts) calls these
 // via ctx.runQuery / ctx.runMutation.
 
-import { internalQuery, internalMutation } from "../_generated/server";
+import { internalQuery, internalMutation, internalAction } from "../_generated/server";
 import { v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
 import type { PartKind } from "../plugins/types";
 
 // ─── _loadPartAndProject ────────────────────────────────────────────────────
@@ -117,7 +118,18 @@ export const _updateRevisionAfterExecution = internalMutation({
       v.literal("cached"),
     ),
     violations: v.array(v.any()),
-    artifactsRefId: v.optional(v.id("cad_revision_artifacts")),
+    // Phase 19 gap-closure: caller passes through the GLB storage id and the
+    // five compile-target outputs (URDF, MJCF, BOM, cost, fabrication+machine
+    // cost, assembly scripts). All optional; whichever are present at runtime
+    // get persisted on the revision's artifacts row.
+    glbStorageId: v.optional(v.id("_storage")),
+    urdfText: v.optional(v.string()),
+    mjcfText: v.optional(v.string()),
+    bomJson: v.optional(v.any()),
+    costJson: v.optional(v.any()),
+    fabricationCostJson: v.optional(v.any()),
+    machineCostJson: v.optional(v.any()),
+    assemblyScriptsJson: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     const rev = await ctx.db
@@ -128,11 +140,69 @@ export const _updateRevisionAfterExecution = internalMutation({
       .first();
     if (!rev) return;
 
+    // Upsert the artifacts row — only write when the caller passed at least
+    // one artifact field. Otherwise leave revision.artifactsRefId untouched.
+    const hasArtifact =
+      args.glbStorageId !== undefined ||
+      args.urdfText !== undefined ||
+      args.mjcfText !== undefined ||
+      args.bomJson !== undefined ||
+      args.costJson !== undefined ||
+      args.fabricationCostJson !== undefined ||
+      args.machineCostJson !== undefined ||
+      args.assemblyScriptsJson !== undefined;
+
+    let artifactsRefId = rev.artifactsRefId ?? null;
+
+    if (hasArtifact) {
+      const existing = await ctx.db
+        .query("cad_revision_artifacts")
+        .withIndex("by_hash", (q) => q.eq("revisionHash", args.hash))
+        .first();
+
+      const artifactPatch = {
+        ...(args.glbStorageId !== undefined ? { glbStorageId: args.glbStorageId } : {}),
+        ...(args.urdfText !== undefined ? { urdfText: args.urdfText } : {}),
+        ...(args.mjcfText !== undefined ? { mjcfText: args.mjcfText } : {}),
+        ...(args.bomJson !== undefined ? { bomJson: args.bomJson } : {}),
+        ...(args.costJson !== undefined ? { costJson: args.costJson } : {}),
+        ...(args.fabricationCostJson !== undefined ? { fabricationCostJson: args.fabricationCostJson } : {}),
+        ...(args.machineCostJson !== undefined ? { machineCostJson: args.machineCostJson } : {}),
+        ...(args.assemblyScriptsJson !== undefined ? { assemblyScriptsJson: args.assemblyScriptsJson } : {}),
+      };
+
+      if (existing) {
+        await ctx.db.patch(existing._id, artifactPatch);
+        artifactsRefId = existing._id;
+      } else {
+        artifactsRefId = await ctx.db.insert("cad_revision_artifacts", {
+          revisionHash: args.hash,
+          ...artifactPatch,
+        });
+      }
+    }
+
     await ctx.db.patch(rev._id, {
       executionStatus: args.executionStatus,
       violations: args.violations,
-      ...(args.artifactsRefId ? { artifactsRefId: args.artifactsRefId } : {}),
+      ...(artifactsRefId ? { artifactsRefId } : {}),
     });
+  },
+});
+
+// ─── _storeGlbBlob ──────────────────────────────────────────────────────────
+//
+// Decode a base64 GLB payload and write it to Convex storage, returning the
+// resulting storage id. Implemented as an internalAction (not a mutation)
+// because ctx.storage.store(...) is only available on StorageActionWriter
+// (actions). The cadIr specialist calls this via ctx.runAction.
+export const _storeGlbBlob = internalAction({
+  args: { base64: v.string() },
+  handler: async (ctx, args): Promise<Id<"_storage">> => {
+    const buf = Buffer.from(args.base64, "base64");
+    const blob = new Blob([buf], { type: "model/gltf-binary" });
+    const storageId = await ctx.storage.store(blob);
+    return storageId;
   },
 });
 

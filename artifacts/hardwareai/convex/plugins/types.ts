@@ -7,7 +7,7 @@ import type { ZodType } from "zod/v4";
 
 // ─── Identity ────────────────────────────────────────────────────────────────
 
-export type PartKind = "sheet_metal" | "printed" | "purchased";
+export type PartKind = "sheet_metal" | "printed" | "purchased" | "cad_ir";
 
 export type InterfaceKind = "bolted" | "pem_inserted" | "riveted" | "hinged";
 

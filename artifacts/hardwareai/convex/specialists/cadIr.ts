@@ -16,17 +16,23 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 
-import { cadIrPlugin } from "../cad/plugin";
+import { cadIrPlugin, type CadIrPartContext } from "../cad/plugin";
 import { applyPatch } from "../cad/patch/apply";
 import type { Patch } from "../cad/patch/types";
 import type { CadIr, Feature, SketchDef, SketchEntity, PartRef, Joint, Connection, SketchConstraint, ExternalPartRef } from "../cad/ir/types";
 import type { ParameterDef } from "../cad/ir/types";
 import { emptyIr } from "../cad/ir/empty";
 import { compileToBuild123d } from "../cad/codegen/compileToBuild123d";
+import { compileAssembly } from "../cad/codegen/compileAssembly";
+import { compileToUrdf } from "../cad/codegen/compileToUrdf";
+import { compileToMjcf } from "../cad/codegen/compileToMjcf";
+import { compileBom } from "../cad/compile/bom";
+import { compileCost, BUILTIN_PRICING } from "../cad/compile/cost";
+import { compileFabricationCost } from "../cad/compile/fabricationCost";
+import { compileMachineCost } from "../cad/compile/machineCost";
 import { resolveIr } from "../cad/resolve/resolveIr";
 import { runSandbox } from "../cad/executor/runSandbox";
 import { parseEntities } from "../cad/executor/entitiesParser";
-import { validateGeometryTier } from "../cad/validate/geometryTier";
 import { hashIr } from "../cad/revisions/hash";
 import { runAgentTurn } from "../lib/anthropicClient";
 import type { Violation } from "../plugins/types";
@@ -274,15 +280,18 @@ export const run = internalAction({
 
     let currentIr = ir;
     let finalViolations: Violation[] = [];
-    let sandboxOk = false;
     let sandboxLog = "";
+    // Capture the most recent successful sandbox result so we can persist
+    // its glb + run the downstream compile targets once the loop converges.
+    let lastSandboxGlb: string | null = null;
 
     for (let turn = 0; turn <= TURN_BUDGET; turn += 1) {
-      // a. Tier-1 + tier-4
+      // a. Tiers 1, 2, 4, 5 (plugin.validate without sandbox context)
       const pluginViolations = cadIrPlugin.validate(currentIr, partCtx);
 
       if (pluginViolations.length === 0) {
-        // b. Run sandbox + tier-3 geometry validation
+        // b. Run sandbox, then re-run plugin.validate with sandbox context
+        //    so Tier 3 (geometry) fires inside the plugin contract.
         let scriptPython: string;
         try {
           const resolved = resolveIr(currentIr);
@@ -300,39 +309,18 @@ export const run = internalAction({
         }
 
         const sandboxResult = await runSandbox(scriptPython);
-        sandboxOk = sandboxResult.ok;
         sandboxLog = sandboxResult.log;
+        lastSandboxGlb = sandboxResult.glb;
 
         const entities = parseEntities(sandboxResult.entities);
         const requestedFaceTags = extractRequestedFaceTags(currentIr);
-        const geomViolations = validateGeometryTier({
-          log: sandboxResult.log,
-          requestedFaceTags,
-          entities,
-        });
+        const sandboxCtx: CadIrPartContext = {
+          ...partCtx,
+          sandbox: { log: sandboxResult.log, entities, requestedFaceTags },
+        };
+        const geomViolations = cadIrPlugin.validate(currentIr, sandboxCtx);
 
         if (geomViolations.length === 0) {
-          // All clean — write revision and exit the loop.
-          const irHash = hashIr(currentIr);
-          await ctx.runMutation(
-            internal.specialists.cadIrInternals._writeRevision,
-            {
-              partId: args.partId,
-              hash: irHash,
-              parent: headRev?.hash ?? null,
-              ir: currentIr,
-              author: "agent",
-            },
-          );
-          await ctx.runMutation(
-            internal.specialists.cadIrInternals._updateRevisionAfterExecution,
-            {
-              partId: args.partId,
-              hash: irHash,
-              executionStatus: "succeeded",
-              violations: [],
-            },
-          );
           finalViolations = [];
           break;
         }
@@ -380,26 +368,151 @@ export const run = internalAction({
     }
 
     // ── 4. Persist final state ──────────────────────────────────────────────
-    if (finalViolations.length > 0) {
-      // Write the current (possibly partially-repaired) IR as a failed revision.
-      const irHash = hashIr(currentIr);
-      await ctx.runMutation(
-        internal.specialists.cadIrInternals._writeRevision,
-        {
-          partId: args.partId,
-          hash: irHash,
-          parent: headRev?.hash ?? null,
-          ir: currentIr,
-          author: "agent",
-        },
-      );
+    const irHash = hashIr(currentIr);
+
+    // Always write the revision — succeeded or failed — so the head pointer
+    // advances and the agent's progress is durable.
+    await ctx.runMutation(
+      internal.specialists.cadIrInternals._writeRevision,
+      {
+        partId: args.partId,
+        hash: irHash,
+        parent: headRev?.hash ?? null,
+        ir: currentIr,
+        author: "agent",
+      },
+    );
+
+    if (finalViolations.length === 0) {
+      // ── 4a. Compile all targets and persist artifacts (Phase 19 gap-closure) ──
+      //
+      // Wire the live runtime to invoke the four compile targets that were
+      // previously test-only: compileAssembly, compileToUrdf, compileToMjcf,
+      // compileBom, compileCost (+ fabrication & machine cost). Each runs
+      // best-effort: a compile failure is logged but does not fail the
+      // revision (build123d is the primary artifact and already succeeded
+      // via the sandbox).
+      let glbStorageId: Id<"_storage"> | undefined;
+      let urdfText: string | undefined;
+      let mjcfText: string | undefined;
+      let bomJson: unknown | undefined;
+      let costJson: unknown | undefined;
+      let fabricationCostJson: unknown | undefined;
+      let machineCostJson: unknown | undefined;
+      let assemblyScriptsJson: Record<string, string> | undefined;
+
+      // (i) Persist GLB if the sandbox produced one.
+      if (lastSandboxGlb) {
+        try {
+          glbStorageId = await ctx.runAction(
+            internal.specialists.cadIrInternals._storeGlbBlob,
+            { base64: lastSandboxGlb },
+          );
+        } catch (err) {
+          // Storage error — log via planEvents but don't fail the revision.
+          // (sandbox already proved the build is valid.)
+          // eslint-disable-next-line no-console
+          console.warn("[cadIr] failed to persist GLB:", err);
+        }
+      }
+
+      // (ii) Multi-part compile targets. URDF/MJCF/assembly are only meaningful
+      // when the IR has parts/joints. BOM and cost run whenever parts are
+      // present.
+      const hasAssembly = currentIr.parts && Object.keys(currentIr.parts).length > 0;
+
+      if (hasAssembly) {
+        try {
+          assemblyScriptsJson = compileAssembly(currentIr);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn("[cadIr] compileAssembly failed:", err);
+        }
+
+        const hasJoints = currentIr.joints && Object.keys(currentIr.joints).length > 0;
+        if (hasJoints) {
+          try {
+            urdfText = compileToUrdf(currentIr, "assembly");
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.warn("[cadIr] compileToUrdf failed:", err);
+          }
+          try {
+            mjcfText = compileToMjcf(currentIr, "assembly");
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.warn("[cadIr] compileToMjcf failed:", err);
+          }
+        }
+
+        try {
+          bomJson = compileBom(currentIr);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn("[cadIr] compileBom failed:", err);
+        }
+
+        try {
+          costJson = compileCost(currentIr, BUILTIN_PRICING);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn("[cadIr] compileCost failed:", err);
+        }
+
+        try {
+          fabricationCostJson = compileFabricationCost(currentIr);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn("[cadIr] compileFabricationCost failed:", err);
+        }
+
+        try {
+          machineCostJson = compileMachineCost(currentIr);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn("[cadIr] compileMachineCost failed:", err);
+        }
+      }
+
       await ctx.runMutation(
         internal.specialists.cadIrInternals._updateRevisionAfterExecution,
         {
           partId: args.partId,
           hash: irHash,
-          executionStatus: sandboxOk ? "failed" : "failed",
+          executionStatus: "succeeded",
+          violations: [],
+          glbStorageId,
+          urdfText,
+          mjcfText,
+          bomJson,
+          costJson,
+          fabricationCostJson,
+          machineCostJson,
+          assemblyScriptsJson,
+        },
+      );
+    } else {
+      // ── 4b. Failed revision — record violations + sandbox glb (best-effort). ──
+      let glbStorageId: Id<"_storage"> | undefined;
+      if (lastSandboxGlb) {
+        try {
+          glbStorageId = await ctx.runAction(
+            internal.specialists.cadIrInternals._storeGlbBlob,
+            { base64: lastSandboxGlb },
+          );
+        } catch {
+          // ignore — failed revision; preview is opportunistic.
+        }
+      }
+
+      await ctx.runMutation(
+        internal.specialists.cadIrInternals._updateRevisionAfterExecution,
+        {
+          partId: args.partId,
+          hash: irHash,
+          executionStatus: "failed",
           violations: finalViolations,
+          glbStorageId,
         },
       );
 

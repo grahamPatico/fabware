@@ -21,4 +21,5 @@ export const PART_KIND_LABEL: Record<PartKind, string> = {
   sheet_metal: "Sheet metal",
   printed: "3D printed",
   purchased: "Purchased",
+  cad_ir: "CAD IR",
 };

@@ -334,7 +334,7 @@ export default defineSchema({
     .index("by_part_hash", ["partId", "hash"])
     .index("by_part_createdAt", ["partId", "createdAt"]),
 
-  // --- CAD IR: storage refs for revision build artifacts ---
+  // --- CAD IR: storage refs + inline text for revision build artifacts ---
   cad_revision_artifacts: defineTable({
     revisionHash: v.string(),
     stepStorageId: v.optional(v.id("_storage")),
@@ -343,5 +343,15 @@ export default defineSchema({
     dxfStorageId: v.optional(v.id("_storage")),
     entitiesStorageId: v.optional(v.id("_storage")),
     logStorageId: v.optional(v.id("_storage")),
+    // Phase 19 gap-closure: inline compile-target outputs for downstream
+    // surfaces (BOM/cost panels, motion-sim importers). Stored as text/JSON
+    // because they are typically small and queried alongside the IR.
+    urdfText: v.optional(v.string()),
+    mjcfText: v.optional(v.string()),
+    bomJson: v.optional(v.any()),
+    costJson: v.optional(v.any()),
+    fabricationCostJson: v.optional(v.any()),
+    machineCostJson: v.optional(v.any()),
+    assemblyScriptsJson: v.optional(v.any()),
   }).index("by_hash", ["revisionHash"]),
 });

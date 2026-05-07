@@ -54,8 +54,8 @@ const MFG_VIOLATION_IR: CadIr = {
 };
 
 describe("cadIrPlugin", () => {
-  it("kind is sheet_metal", () => {
-    expect(cadIrPlugin.kind).toBe("sheet_metal");
+  it("kind is cad_ir (Phase 19 gap-closure: dedicated kind, registered via _registerPlugin)", () => {
+    expect(cadIrPlugin.kind).toBe("cad_ir");
   });
 
   it("exposes all 12 patch tools", () => {
