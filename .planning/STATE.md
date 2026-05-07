@@ -4,25 +4,26 @@
 
 - **Core value:** Multi-part assembly platform driven by user intent. Users describe what they want; Fabware produces a buildable, multi-part, multi-process assembly via a constraint-based parametric CAD IR.
 - **Headline success metric:** Tennis-ball-locker end-to-end passes (a) on the live Slice 1 schema today, and (b) behind `useCadIr` once Phase 19 ships.
-- **Current milestone:** v1 — CAD IR Rebuild (verified 2026-05-07; ready to merge)
-- **Current focus:** Branch reconciliation — merge `feat/cad-ir-phase-19` (or its scaffold-based stack) into `main` behind the `useCadIr` flag.
-- **Branches in play:** `feat/cad-ir-phase-1` … `feat/cad-ir-phase-19` form a clean linear stack on `feat/ai-harness-step-0-scaffold` (38 commits ahead of `main`, 75 behind). `feat/cad-ir-rebuild` was never cut; the implementation shipped on the per-phase branches instead.
+- **Current milestone:** v1 — CAD IR Rebuild (audit-passed 2026-05-07; ready to merge)
+- **Current focus:** Branch reconciliation — merge `feat/cad-ir-phase-19-gap-closure` (or the whole stack) into `main` behind the `useCadIr` flag.
+- **Branches in play:** `feat/cad-ir-phase-1` … `feat/cad-ir-phase-19` form a linear stack on `feat/ai-harness-step-0-scaffold`; `feat/cad-ir-phase-19-gap-closure` (tip `05fe0eb`) carries the four post-audit closure commits on top of phase-19. 38 commits ahead of `main`, 75 behind. `feat/cad-ir-rebuild` was never cut; the implementation shipped on the per-phase branches.
 
 ## Current Position
 
-- **Phase:** 19 of 19 — Final Consolidation + Cutover (implementation present on branch tip, retroactively documented).
+- **Phase:** 19 of 19 — Final Consolidation + Cutover (implementation present on branch tip, retroactively documented; audit gaps closed).
 - **Plan:** All 19 authoritative plan files in `docs/superpowers/plans/2026-04-29..2026-04-30-cad-ir-phase-N.md` were executed pre-milestone. `.planning/phases/NN-*/NN-SUMMARY.md` and `NN-VALIDATION.md` document each retroactively.
-- **Status:** Verified docs-only on 2026-05-07. Typecheck PASS on every phase tip (0 new errors introduced; 15 pre-existing baseline errors live in non-CAD code on `main`).
-- **Progress:** [████████████████████] 19/19 phases complete
+- **Status:** Audit closed 2026-05-07. 21/21 requirements satisfied. 0 integration FAILs, 0 broken flows, all tier and compile wiring live in the runtime path. Closure on `feat/cad-ir-phase-19-gap-closure` (tip `05fe0eb`): 4 commits, 422 tests passing, 0 new typecheck errors.
+- **Progress:** [████████████████████] 19/19 phases complete · audit passed
 
 ## Performance Metrics
 
 | Metric | Target | Current |
 |--------|--------|---------|
 | Phases complete | 19/19 | 19/19 ✅ |
-| Typecheck — new errors per phase | 0 | 0 across all 19 phases ✅ |
+| Audit verdict | passed | passed (closed 2026-05-07) ✅ |
+| Typecheck — new errors per phase | 0 | 0 across all 19 phases + closure ✅ |
 | Tennis-ball-locker — Slice 1 | Passing | Passing (on `main`) |
-| Tennis-ball-locker — CAD IR (`useCadIr=true`) | Passing | Implementation on `feat/cad-ir-phase-19`; runtime gating still owed by branch reconciliation |
+| Tennis-ball-locker — CAD IR (`useCadIr=true`) | Passing | Live runtime + UI affordance landed on `feat/cad-ir-phase-19-gap-closure`; editorial whole-flow gate still owed by branch reconciliation |
 | Validation tiers wired | 5 | 5 (Tier 1 schema, 2 sketch DOF, 3 geometry, 4 manufacturing, 5 assembly) |
 | Compile targets wired (build123d, URDF, MJCF, BOM, cost) | 5 | 5 |
 | Patch tools wired | 9+ | 9+ |
@@ -51,9 +52,9 @@ Sealed v0 milestone (PROJECT.md). Not re-executed in v1:
 
 ### Active Todos
 
-- Reconcile the `feat/cad-ir-phase-1..19` stack with `main` (75 commits of divergence). Per ADR-0001, the cutover lands behind `useCadIr`. Open question: rebase the stack onto current `main` vs. cut a fresh `feat/cad-ir-rebuild` and replay merges.
-- Address the 15 pre-existing typecheck errors on `main` (non-CAD: `convex/chat.ts`, `convex/projectChat.ts`, `convex/partSpecs.ts`, `convex/lib/partValidator.ts`, and several `artifacts/hardwareai/src/` components) — orthogonal to CAD IR but currently blocking a globally-green build.
-- Run integration smoke (tennis-ball-locker behind `useCadIr=true`) end-to-end on the merged branch before promoting to main.
+- Reconcile the `feat/cad-ir-phase-19-gap-closure` tip with `main` (75 commits of divergence on the underlying stack). Per ADR-0001, the cutover lands behind `useCadIr`. Open question: rebase the whole stack (1..19 + closure) onto current `main` vs. cut a fresh `feat/cad-ir-rebuild` and replay merges.
+- Address the 38 pre-existing typecheck errors on the codebase in non-CAD code (chat.ts, projectChat.ts, partSpecs.ts, partValidator.ts, and several `artifacts/hardwareai/src/` components) — orthogonal to CAD IR but currently blocking a globally-green build.
+- Editorial whole-flow E2E: open the React app on the closure branch, flip `useCadIr=true` for a part via the toggle now exposed in `AssembledView`, walk a tennis-ball-locker through the agent loop, confirm CAD IR plugin registers, all five compile targets run, glb persists, `CadPreview` renders.
 
 ### Blockers
 
@@ -70,6 +71,6 @@ None blocking the milestone artifact set. Branch reconciliation with main is the
 
 ## Session Continuity
 
-- **Last session (2026-05-07):** Verify-and-merge mode. Discovered all 19 phases shipped on `feat/cad-ir-phase-N` branches before `.planning/` existed. Typecheck-verified every phase tip (0 new errors per phase). Generated retroactive `NN-SUMMARY.md` + `NN-VALIDATION.md` for all 19 phases. STATE.md and ROADMAP.md updated to reflect actual status. `01-RESEARCH.md` produced as part of the initial Phase 1 dispatch and retained as reference.
-- **Next session:** Branch reconciliation — decide rebase-vs-merge strategy for the `feat/cad-ir-phase-19` stack against current `main`, then ship behind `useCadIr`.
+- **Last session (2026-05-07):** Verify-and-merge mode → milestone audit → gap closure. Discovered all 19 phases shipped on `feat/cad-ir-phase-N` branches before `.planning/` existed; typecheck-verified every phase tip; generated retroactive `NN-SUMMARY.md` + `NN-VALIDATION.md` for all 19 phases. Ran `gsd-audit-milestone` → 3 integration FAILs found (plugin not registered, 4 compile targets test-only, glTF preview parity broken). Cut `feat/cad-ir-phase-19-gap-closure` and landed 4 closure commits (3807d0a, 86a4af6, 37a2669, 05fe0eb): plugin registry-driven dispatch via `kind: "cad_ir"`, live runtime invocation of all 5 compile targets, glb persistence + `CadPreview` mounted in `AssembledView` behind a `useCadIr` toggle, `stepUrl` round-trip through `toolCallToPatch`. 0 new typecheck errors; 422 tests passing.
+- **Next session:** Branch reconciliation — rebase-vs-merge strategy for the `phase-1..19 + closure` stack against current `main`. Then ship behind `useCadIr` and run editorial E2E.
 - **Open questions:** Branch reconciliation strategy. ADR-0001 is locked; phase-by-phase scope is authoritatively documented in `docs/superpowers/plans/` and now in `.planning/phases/`.
