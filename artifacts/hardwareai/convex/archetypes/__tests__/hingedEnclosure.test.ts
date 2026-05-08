@@ -21,11 +21,13 @@ describe("hingedEnclosure", () => {
     expect(roles).toEqual(["base", "lid", "wall_back", "wall_front", "wall_left", "wall_right"]);
   });
 
-  it("generates 5 interfaces (4 wall-to-base bolted + 1 lid hinged)", () => {
+  it("generates 5 interfaces (4 wall-to-base weld_seam + 1 lid hinged)", () => {
+    // Body corner joints are weld_seam regardless of bodyConstruction —
+    // see comment in hingedEnclosure.ts. The hinge stays as real hardware.
     const params = hingedEnclosure.paramDefaults(baseScope);
     const { interfaces } = hingedEnclosure.generate(params, baseScope);
     expect(interfaces).toHaveLength(5);
-    expect(interfaces.filter(i => i.kind === "bolted")).toHaveLength(4);
+    expect(interfaces.filter(i => i.kind === "weld_seam")).toHaveLength(4);
     expect(interfaces.filter(i => i.kind === "hinged")).toHaveLength(1);
   });
 

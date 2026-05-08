@@ -24,7 +24,7 @@ export type ProjectScope = z.infer<typeof ScopeSchema>;
 export type Tier = "jerry-rigged" | "mvp" | "commercial";
 
 export interface InterfaceSpec {
-  kind: "bolted" | "pem_inserted" | "riveted" | "hinged";
+  kind: "bolted" | "pem_inserted" | "riveted" | "hinged" | "weld_seam";
   roleA: string;
   roleB: string;
   featureA: string;
