@@ -105,7 +105,12 @@ export const run = internalAction({
     let sandboxLog = "";
     // Capture the most recent successful sandbox result so we can persist
     // its glb + run the downstream compile targets once the loop converges.
+    // HI-01: track the IR hash that produced the GLB so we can detect a
+    // stale-preview scenario where the loop exits with a more recent IR
+    // (e.g. agent fixed geometry but later schema-tier validation failed)
+    // and refuse to persist the GLB if it does not match the final IR.
     let lastSandboxGlb: string | null = null;
+    let lastSandboxGlbForHash: string | null = null;
 
     for (let turn = 0; turn <= TURN_BUDGET; turn += 1) {
       // a. Tiers 1, 2, 4, 5 (plugin.validate without sandbox context)
@@ -133,6 +138,9 @@ export const run = internalAction({
         const sandboxResult = await runSandbox(scriptPython);
         sandboxLog = sandboxResult.log;
         lastSandboxGlb = sandboxResult.glb;
+        // Record which IR hash this GLB was generated from so the persist
+        // step (4a/4b) can verify it still matches the final IR.
+        lastSandboxGlbForHash = hashIr(currentIr);
 
         const entities = parseEntities(sandboxResult.entities);
         const requestedFaceTags = extractRequestedFaceTags(currentIr);
@@ -223,8 +231,12 @@ export const run = internalAction({
       let machineCostJson: unknown | undefined;
       let assemblyScriptsJson: Record<string, string> | undefined;
 
-      // (i) Persist GLB if the sandbox produced one.
-      if (lastSandboxGlb) {
+      // (i) Persist GLB if the sandbox produced one — but only when the
+      // captured GLB still matches the final IR (HI-01). On the success path
+      // this is normally true (we exit the loop the same turn the sandbox
+      // ran clean), but we gate defensively in case future loop edits
+      // reorder turns.
+      if (lastSandboxGlb && lastSandboxGlbForHash === irHash) {
         try {
           glbStorageId = await ctx.runAction(
             internal.specialists.cadIrInternals._storeGlbBlob,
@@ -315,8 +327,14 @@ export const run = internalAction({
       );
     } else {
       // ── 4b. Failed revision — record violations + sandbox glb (best-effort). ──
+      // HI-01: only persist the GLB when it was generated from the same IR
+      // that's about to be persisted. On the failed path the loop frequently
+      // ran the sandbox earlier on a different IR (e.g. agent fixed geometry
+      // but later schema/manufacturing repair failed); persisting that
+      // earlier GLB would silently render geometry that doesn't match the
+      // final IR snapshot, with no UI signal.
       let glbStorageId: Id<"_storage"> | undefined;
-      if (lastSandboxGlb) {
+      if (lastSandboxGlb && lastSandboxGlbForHash === irHash) {
         try {
           glbStorageId = await ctx.runAction(
             internal.specialists.cadIrInternals._storeGlbBlob,
