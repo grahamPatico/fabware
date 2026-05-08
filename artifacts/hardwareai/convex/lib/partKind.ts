@@ -17,9 +17,12 @@ export function readKind(part: { kind?: string | null }): PartKind {
 
 export type AnyPartDsl = PartDsl | PrintedDsl | PurchasedDsl;
 
+// HI-03: \`cad_ir\` is a plugin identifier, not a persistable part-row kind,
+// so it intentionally has no PART_KIND_LABEL entry. UI surfaces that want
+// to label a part as "CAD IR" should key off the orthogonal \`useCadIr\`
+// flag on the part row instead of \`part.kind\`.
 export const PART_KIND_LABEL: Record<PartKind, string> = {
   sheet_metal: "Sheet metal",
   printed: "3D printed",
   purchased: "Purchased",
-  cad_ir: "CAD IR",
 };

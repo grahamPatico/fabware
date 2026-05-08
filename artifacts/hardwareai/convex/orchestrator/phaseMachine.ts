@@ -1,5 +1,5 @@
 import type { Doc } from "../_generated/dataModel";
-import type { PartKind, ProjectPhase } from "../plugins/types";
+import type { PartKind, PluginKind, ProjectPhase } from "../plugins/types";
 
 export type Action =
   | { kind: "wait"; reason: string }
@@ -11,7 +11,10 @@ interface Input {
   project: Doc<"projects">;
   parts: Doc<"parts">[];
   openEscalations: Doc<"escalations">[];
-  registeredKinds: PartKind[];
+  // PluginKind is a superset of PartKind (adds dispatch-only kinds like
+  // \`cad_ir\`). The .includes() check below narrows on \`parts.kind\` which is
+  // PartKind-only, so the extra dispatch-only entries are inert here.
+  registeredKinds: PluginKind[];
 }
 
 /**

@@ -7,7 +7,30 @@ import type { ZodType } from "zod/v4";
 
 // ─── Identity ────────────────────────────────────────────────────────────────
 
-export type PartKind = "sheet_metal" | "printed" | "purchased" | "cad_ir";
+/**
+ * Identifiers persistable on a \`parts\` row's \`kind\` column. Must stay in
+ * lockstep with the \`v.union(...)\` literals on \`parts.kind\` in
+ * \`convex/schema.ts\` — Convex rejects writes that don't match.
+ *
+ * NOTE: \`cad_ir\` is intentionally NOT a PartKind. Per HI-03 of the v1
+ * closure review, \`cad_ir\` is a *plugin* identifier (used by the registry
+ * and orchestrator dispatch when \`useCadIr=true\` on a sheet_metal part),
+ * not a part-row identifier — there is no \`v.literal("cad_ir")\` slot on
+ * \`parts.kind\`, so any attempt to persist a part with \`kind: "cad_ir"\`
+ * would be rejected at write time. See \`PluginKind\` below.
+ */
+export type PartKind = "sheet_metal" | "printed" | "purchased";
+
+/**
+ * Plugin-registry identifiers — a strict superset of \`PartKind\` that adds
+ * dispatch-only kinds (e.g. \`cad_ir\`) which the orchestrator routes to via
+ * a feature flag (\`useCadIr=true\`) rather than persisting on \`parts.kind\`.
+ *
+ * Code paths that look up plugins (\`getPlugin\`, \`registeredKinds\`,
+ * \`_registerPlugin\`) operate on \`PluginKind\`. Code paths that read or
+ * persist a part-row's stored kind operate on \`PartKind\`.
+ */
+export type PluginKind = PartKind | "cad_ir";
 
 export type InterfaceKind = "bolted" | "pem_inserted" | "riveted" | "hinged";
 
@@ -95,7 +118,7 @@ export interface ModelDefault {
 // ─── The contract ────────────────────────────────────────────────────────────
 
 export interface ProcessPlugin<TDsl> {
-  kind: PartKind;
+  kind: PluginKind;
 
   dslSchema: ZodType<TDsl>;
 
