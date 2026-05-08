@@ -2,7 +2,7 @@ import { threadFromPartNumber, type ThreadSpec } from "./fastenerSpecs";
 
 export interface MaterialRule {
   name: string;
-  category: "steel" | "aluminum" | "stainless" | "copper" | "brass";
+  category: "steel" | "aluminum" | "stainless" | "copper" | "brass" | "acrylic";
   thicknesses: number[];
   canBend: boolean;
   canPowderCoat: boolean;
@@ -10,6 +10,61 @@ export interface MaterialRule {
   bendRadiusMultiplier: number;
   minHoleMultiplier: number;
   textureKey: string;
+}
+
+/** Density in lb/in³ by SCS material category. */
+export const MATERIAL_DENSITY: Record<MaterialRule["category"], number> = {
+  steel: 0.284,
+  stainless: 0.290,
+  aluminum: 0.098,
+  copper: 0.323,
+  brass: 0.305,
+  acrylic: 0.043,
+};
+
+/**
+ * Approximate SCS material cost in USD per in² at a "reference" thickness;
+ * scaled linearly by `(thickness / referenceThickness)` for first-order accuracy.
+ * Numbers are derived from public SCS quote checks 2026-Q1; treat them as
+ * order-of-magnitude (±30%). Real quotes always come from SCS itself.
+ */
+export const MATERIAL_COST_PER_IN2: Record<MaterialRule["category"], { rate: number; refThickness: number }> = {
+  steel:     { rate: 0.06, refThickness: 0.075 },
+  stainless: { rate: 0.18, refThickness: 0.075 },
+  aluminum:  { rate: 0.12, refThickness: 0.075 },
+  copper:    { rate: 0.30, refThickness: 0.075 },
+  brass:     { rate: 0.28, refThickness: 0.075 },
+  acrylic:   { rate: 0.05, refThickness: 0.118 },
+};
+
+/** Per-foot of cut perimeter (in USD). */
+export const CUT_RATE_PER_FT = 0.50;
+/** Per-bend (in USD). SCS charges roughly this per bend on small parts. */
+export const BEND_RATE = 1.50;
+/** Powder coat: $/ft² of surface area (one side). */
+export const POWDER_COAT_RATE_PER_FT2 = 5.00;
+/** Minimum charge per part to cover handling. */
+export const MIN_CHARGE_PER_PART = 3.00;
+
+export function costPerIn2(material: string | undefined, thickness: number): number {
+  const m = material ? SCS_MATERIALS[material] : undefined;
+  const cat = m?.category ?? "steel";
+  const { rate, refThickness } = MATERIAL_COST_PER_IN2[cat];
+  return rate * (thickness / refThickness);
+}
+
+export function densityFor(material: string | undefined): number {
+  if (!material) return MATERIAL_DENSITY.steel;
+  const m = SCS_MATERIALS[material];
+  if (m) return MATERIAL_DENSITY[m.category];
+  // Fallback heuristic by name
+  const lower = material.toLowerCase();
+  if (lower.includes("acrylic")) return MATERIAL_DENSITY.acrylic;
+  if (lower.includes("aluminum")) return MATERIAL_DENSITY.aluminum;
+  if (lower.includes("stainless")) return MATERIAL_DENSITY.stainless;
+  if (lower.includes("copper")) return MATERIAL_DENSITY.copper;
+  if (lower.includes("brass")) return MATERIAL_DENSITY.brass;
+  return MATERIAL_DENSITY.steel;
 }
 
 export const POWDER_COAT_COLORS = [
@@ -176,6 +231,28 @@ export const SCS_MATERIALS: Record<string, MaterialRule> = {
     bendRadiusMultiplier: 1.0,
     minHoleMultiplier: 1.0,
     textureKey: "brass",
+  },
+  "Acrylic Clear": {
+    name: "Acrylic Clear",
+    category: "acrylic",
+    thicknesses: [0.060, 0.118, 0.177, 0.236, 0.354, 0.472],
+    canBend: false,
+    canPowderCoat: false,
+    maxSheet: { width: 32, height: 32 },
+    bendRadiusMultiplier: 99,
+    minHoleMultiplier: 1.0,
+    textureKey: "acrylic-clear",
+  },
+  "Acrylic Black": {
+    name: "Acrylic Black",
+    category: "acrylic",
+    thicknesses: [0.060, 0.118, 0.177, 0.236, 0.354, 0.472],
+    canBend: false,
+    canPowderCoat: false,
+    maxSheet: { width: 32, height: 32 },
+    bendRadiusMultiplier: 99,
+    minHoleMultiplier: 1.0,
+    textureKey: "acrylic-black",
   },
 };
 

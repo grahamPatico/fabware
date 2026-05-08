@@ -1,33 +1,33 @@
 # Fabware Roadmap — v1: CAD IR Rebuild
 
-**Milestone:** v1 — CAD IR Rebuild on `feat/cad-ir-rebuild`
-**Branch strategy (per ADR-0001):** `main` keeps Slice 1 + AI Harness Plans 1+2+3 live; `feat/cad-ir-rebuild` carries Phases 1–19. Cutover behind `useCadIr` happens at Phase 19.
-**Granularity:** Fine (one roadmap phase per CAD IR phase plan; the existing plan file is the authoritative scope-per-phase doc consumed by `/gsd-plan-phase N`).
-**Coverage:** 21/21 requirements mapped.
+**Milestone:** v1 — CAD IR Rebuild. **Status: 19/19 phases verified-complete (2026-05-07).**
+**Branch reality:** Phases shipped as a linear stack on `feat/cad-ir-phase-1` … `feat/cad-ir-phase-19`, all based on `feat/ai-harness-step-0-scaffold` (38 ahead / 75 behind `main`). `feat/cad-ir-rebuild` was never cut. Cutover behind `useCadIr` is owed by branch reconciliation, not by additional implementation.
+**Granularity:** Fine (one roadmap phase per CAD IR phase plan; per-phase scope authoritative in `docs/superpowers/plans/`, retroactively documented in `.planning/phases/NN-*/`).
+**Coverage:** 21/21 requirements mapped; verified by per-phase typecheck (0 new errors per phase against scaffold baseline).
 
 The earlier plan stack (AI Harness Plans 1+2+3, Sheet-metal Assembly Slice 1, multi-process-parts groundwork) is sealed as the v0 Foundations milestone in PROJECT.md and is not re-executed here.
 
 ## Phases
 
-- [ ] **Phase 1: CAD IR Foundation** — `convex/cad` namespace, schema, evaluator, validator, build123d codegen, Vercel Sandbox executor, first repair loop
-- [ ] **Phase 2: Patch Grammar Expansion** — Grow patch grammar from 2 to 9 tools, port manufacturing rules, add sketch primitives
-- [ ] **Phase 3: Hardware-spec Holes** — Countersink/counterbore/threaded hole subtypes + bolt-clearance rule
-- [ ] **Phase 4: Assembly Graph + URDF** — Multi-part CAD IR with parts/joints/connections; Tier 5 assembly validation; URDF compiler
-- [ ] **Phase 5: Feature Round-out + Multi-part Codegen** — Revolve, shell, bend_flange features; `compileAssembly`; min-bend-radius rule
-- [ ] **Phase 6: Sweep/Loft/Weld_tab + MJCF** — Sweep, loft, weld_tab features; MJCF as second motion-sim target
-- [ ] **Phase 7: Sketch Constraint Grammar** — Tier 2 v0 DOF analyzer; SketchConstraint union; `modify_sketch` patch ops
-- [ ] **Phase 8: AABB Interference Detection** — `computePartBbox`, `partsInterfere` rule; Tier 5 expansion
-- [ ] **Phase 9: External Parts + BOM Compiler** — `PartRef` discriminated union; `ExternalPartRef`; `compileBom`
-- [ ] **Phase 10: Cost Compiler + Smoke Test** — `compileCost`, `PricingDb`, `budgetExceeded` rule, full-stack integration smoke test
-- [ ] **Phase 11: Joint-Range Self-Collision** — Pose sampler for revolute/linear joints; `jointRangeCollision` rule
-- [ ] **Phase 12: Inline-part Fabrication Cost** — Material catalog, volume estimator, per-inline-part cost in BOM
-- [ ] **Phase 13: Process-aware Machine Cost** — `BUILTIN_PROCESSES` catalog, perimeter estimator, `machineCost` compiler
-- [ ] **Phase 14: Laser-cut Process Rules** — `laser-cut-min-hole`, `laser-cut-min-slot` (process-gated)
-- [ ] **Phase 15: Extended Sketch Primitives** — Arc, polygon, spline kinds across types, codegen, and `add_sketch`
-- [ ] **Phase 16: 3D-print Process Rules** — `print-3d-min-wall` (per-material), `print-3d-bed-size` (process-gated)
-- [ ] **Phase 17: CNC Process Rules** — `cncToolDiameter` field; `cnc-min-internal-corner`, `cnc-pocket-too-deep` (process-gated)
-- [ ] **Phase 18: STEP Imports for Externals** — `stepUrl` on `ExternalPartRef`; `import_step` in `compileAssembly`
-- [ ] **Phase 19: Final Consolidation + Cutover** — Mega-integration test, final verification sweep, glTF preview parity, tennis-ball-locker passes behind `useCadIr`
+- [x] **Phase 1: CAD IR Foundation** — `convex/cad` namespace, schema, evaluator, validator, build123d codegen, Vercel Sandbox executor, first repair loop
+- [x] **Phase 2: Patch Grammar Expansion** — Grow patch grammar from 2 to 9 tools, port manufacturing rules, add sketch primitives
+- [x] **Phase 3: Hardware-spec Holes** — Countersink/counterbore/threaded hole subtypes + bolt-clearance rule
+- [x] **Phase 4: Assembly Graph + URDF** — Multi-part CAD IR with parts/joints/connections; Tier 5 assembly validation; URDF compiler
+- [x] **Phase 5: Feature Round-out + Multi-part Codegen** — Revolve, shell, bend_flange features; `compileAssembly`; min-bend-radius rule
+- [x] **Phase 6: Sweep/Loft/Weld_tab + MJCF** — Sweep, loft, weld_tab features; MJCF as second motion-sim target
+- [x] **Phase 7: Sketch Constraint Grammar** — Tier 2 v0 DOF analyzer; SketchConstraint union; `modify_sketch` patch ops
+- [x] **Phase 8: AABB Interference Detection** — `computePartBbox`, `partsInterfere` rule; Tier 5 expansion
+- [x] **Phase 9: External Parts + BOM Compiler** — `PartRef` discriminated union; `ExternalPartRef`; `compileBom`
+- [x] **Phase 10: Cost Compiler + Smoke Test** — `compileCost`, `PricingDb`, `budgetExceeded` rule, full-stack integration smoke test
+- [x] **Phase 11: Joint-Range Self-Collision** — Pose sampler for revolute/linear joints; `jointRangeCollision` rule
+- [x] **Phase 12: Inline-part Fabrication Cost** — Material catalog, volume estimator, per-inline-part cost in BOM
+- [x] **Phase 13: Process-aware Machine Cost** — `BUILTIN_PROCESSES` catalog, perimeter estimator, `machineCost` compiler
+- [x] **Phase 14: Laser-cut Process Rules** — `laser-cut-min-hole`, `laser-cut-min-slot` (process-gated)
+- [x] **Phase 15: Extended Sketch Primitives** — Arc, polygon, spline kinds across types, codegen, and `add_sketch`
+- [x] **Phase 16: 3D-print Process Rules** — `print-3d-min-wall` (per-material), `print-3d-bed-size` (process-gated)
+- [x] **Phase 17: CNC Process Rules** — `cncToolDiameter` field; `cnc-min-internal-corner`, `cnc-pocket-too-deep` (process-gated)
+- [x] **Phase 18: STEP Imports for Externals** — `stepUrl` on `ExternalPartRef`; `import_step` in `compileAssembly`
+- [x] **Phase 19: Final Consolidation + Cutover** — Mega-integration test, final verification sweep, glTF preview parity, tennis-ball-locker passes behind `useCadIr`
 
 ## Phase Details
 

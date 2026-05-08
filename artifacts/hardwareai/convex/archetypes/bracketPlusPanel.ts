@@ -77,8 +77,20 @@ function generate(params: Params, _scope: ProjectScope) {
       diameter: mountingHoleDia,
       pattern: "bottom_row",
       inset: 0.375,
+      role: "bolt_clear",
     },
   ];
+
+  // The panel's hole pattern must coincide in world space with the bracket's
+  // bottom_row holes — otherwise the bolts can't pass through both parts.
+  // Bracket sits centered on the upper portion of the panel; the panel's
+  // top_row uses per-axis inset so its x-positions and step match the
+  // bracket's, and its y is set so the row lands directly under the bracket.
+  const bracketX = (params.panelWidth - params.bracketLength) / 2;
+  const bracketY = params.panelHeight - params.bracketHeight;
+  const bracketBottomInset = 0.375;
+  const panelInsetX = bracketX + bracketBottomInset;
+  const panelInsetY = params.bracketHeight - bracketBottomInset;
 
   const panelFeatures: PartDsl["features"] = [
     {
@@ -87,7 +99,9 @@ function generate(params: Params, _scope: ProjectScope) {
       count: params.fastenerCount,
       diameter: mountingHoleDia,
       pattern: "top_row",
-      inset: 0.375,
+      insetX: panelInsetX,
+      insetY: panelInsetY,
+      role: "bolt_clear",
     },
   ];
 
@@ -96,7 +110,7 @@ function generate(params: Params, _scope: ProjectScope) {
       role: "bracket",
       label: "Bracket",
       dsl: makePlate("bracket", params.bracketLength, params.bracketHeight, params, bracketFeatures),
-      position: { x: 0, y: 0, z: 0, rotX: 0, rotY: 0, rotZ: 0 },
+      position: { x: bracketX, y: bracketY, z: 0, rotX: 0, rotY: 0, rotZ: 0 },
     },
     {
       role: "panel",

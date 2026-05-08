@@ -52,9 +52,26 @@ export default defineSchema({
       v.literal("done"),
     )),
     useNewHarness: v.optional(v.boolean()),
+    currentSnapshotId: v.optional(v.id("assemblySnapshots")),
+    shareSlug: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_updated", ["updatedAt"]),
+  })
+    .index("by_updated", ["updatedAt"])
+    .index("by_share_slug", ["shareSlug"]),
+
+  // --- Assembly snapshots (project-level undo/redo history) ---
+  assemblySnapshots: defineTable({
+    projectId: v.id("projects"),
+    sequence: v.number(),
+    label: v.string(),
+    archetypeId: v.optional(v.any()),
+    archetypeParams: v.optional(v.any()),
+    isMultiPart: v.optional(v.boolean()),
+    partsJson: v.string(),
+    interfacesJson: v.string(),
+    createdAt: v.number(),
+  }).index("by_project_seq", ["projectId", "sequence"]),
 
   // --- Parts (individual components within a multi-part project) ---
   parts: defineTable({
@@ -84,6 +101,7 @@ export default defineSchema({
       v.literal("sheet_metal"),
       v.literal("printed"),
       v.literal("purchased"),
+      v.literal("pipe"),
     )),
     // printed-specific (only used when kind === "printed")
     printedMaterial: v.optional(v.string()),
@@ -103,6 +121,12 @@ export default defineSchema({
     lastValidationAt: v.optional(v.number()),
     useCadIr: v.optional(v.boolean()),
     headRevisionHash: v.optional(v.string()),
+    // pipe-specific (only used when kind === "pipe")
+    pipeOuterDiameter: v.optional(v.number()),
+    pipeWallThickness: v.optional(v.number()),
+    pipeLength: v.optional(v.number()),
+    pipeEndA: v.optional(v.string()),
+    pipeEndB: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_project", ["projectId"]),
@@ -115,6 +139,8 @@ export default defineSchema({
       v.literal("pem_inserted"),
       v.literal("riveted"),
       v.literal("hinged"),
+      v.literal("weld_seam"),
+      v.literal("weld_joint"),
     ),
     partA: v.id("parts"),
     partB: v.id("parts"),
@@ -158,6 +184,25 @@ export default defineSchema({
   })
     .index("by_thread", ["threadId", "createdAt"])
     .index("by_project", ["projectId", "createdAt"]),
+
+  // --- Token usage (per Anthropic call) ---
+  tokenUsage: defineTable({
+    feature: v.string(),
+    model: v.string(),
+    effort: v.optional(v.string()),
+    threadId: v.optional(v.id("threads")),
+    projectId: v.optional(v.id("projects")),
+    messageId: v.optional(v.id("messages")),
+    inputTokens: v.number(),
+    outputTokens: v.number(),
+    cacheReadTokens: v.number(),
+    cacheCreationTokens: v.number(),
+    costUsd: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_time", ["createdAt"])
+    .index("by_project_time", ["projectId", "createdAt"])
+    .index("by_thread_time", ["threadId", "createdAt"]),
 
   // --- Part Specs (one per project) ---
   partSpecs: defineTable({

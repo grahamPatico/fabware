@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { validateAssembly, type AssemblyInput } from "./lib/assemblyRules";
 import { PartDslSchema } from "./lib/dsl";
 import { validatePartByKind } from "./lib/partValidator";
+import { computeIntersectionRules } from "./lib/intersectRules";
 
 export const getAssemblyValidation = query({
   args: { projectId: v.id("projects") },
@@ -46,7 +47,24 @@ export const getAssemblyValidation = query({
       })),
       scope: project?.scope ?? null,
     };
-    return validateAssembly(input);
+    const result = validateAssembly(input);
+
+    // Geometric intersection check spans ALL kinds (sheet_metal + printed +
+    // purchased). A printed knob clipping into a sheet-metal wall is just as
+    // bad as two walls overlapping. Hinged-pair tolerance lives in
+    // intersectRules.ts so the door/frame zone is permitted to share volume.
+    const intersectionRules = computeIntersectionRules(
+      parts,
+      ifaces.map(i => ({
+        kind: i.kind,
+        partA: i.partA as unknown as string,
+        partB: i.partB as unknown as string,
+      })),
+    );
+    return {
+      rules: [...result.rules, ...intersectionRules],
+      hasFailures: result.hasFailures || intersectionRules.some(r => r.status === "fail"),
+    };
   },
 });
 

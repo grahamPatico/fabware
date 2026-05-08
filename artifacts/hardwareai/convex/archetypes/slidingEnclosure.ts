@@ -78,8 +78,8 @@ function generate(params: Params, _scope: ProjectScope) {
     { role: "base",       label: "Base",         dsl: makePlate(outerW, outerD, params, { ...hole(params.fastenerCount), pattern: "corner" as const }), position: { x: cx,           y: cy,                z: -t / 2,         rotX: 0,           rotY: 0, rotZ: 0 } },
     { role: "wall_front", label: "Wall — Front", dsl: makePlate(outerW, innerH, params, hole(params.fastenerCount)),                                     position: { x: cx,           y: -t / 2,            z: cz,             rotX: Math.PI / 2, rotY: 0, rotZ: 0 } },
     { role: "wall_back",  label: "Wall — Back",  dsl: makePlate(outerW, innerH, params, hole(params.fastenerCount)),                                     position: { x: cx,           y: params.innerDepth + t / 2, z: cz,     rotX: Math.PI / 2, rotY: 0, rotZ: 0 } },
-    { role: "wall_left",  label: "Wall — Left",  dsl: makePlate(outerD, innerH, params, hole(params.fastenerCount)),                                     position: { x: -t / 2,       y: cy,                z: cz,             rotX: Math.PI / 2, rotY: 0, rotZ: Math.PI / 2 } },
-    { role: "wall_right", label: "Wall — Right", dsl: makePlate(outerD, innerH, params, hole(params.fastenerCount)),                                     position: { x: params.innerWidth + t / 2, y: cy, z: cz,             rotX: Math.PI / 2, rotY: 0, rotZ: Math.PI / 2 } },
+    { role: "wall_left",  label: "Wall — Left",  dsl: makePlate(params.innerDepth, innerH, params, hole(params.fastenerCount)),                          position: { x: -t / 2,       y: cy,                z: cz,             rotX: Math.PI / 2, rotY: Math.PI / 2, rotZ: 0 } },
+    { role: "wall_right", label: "Wall — Right", dsl: makePlate(params.innerDepth, innerH, params, hole(params.fastenerCount)),                          position: { x: params.innerWidth + t / 2, y: cy, z: cz,             rotX: Math.PI / 2, rotY: Math.PI / 2, rotZ: 0 } },
     {
       role: "drawer",
       label: "Drawer",
@@ -88,23 +88,17 @@ function generate(params: Params, _scope: ProjectScope) {
     },
   ];
 
-  const hw = [{ mcmasterPartNumber: params.fastenerPartNumber, quantity: params.fastenerCount, role: "mounting" }];
-
+  // Sheet-metal shell is corner-welded; drawer slides in (no fasteners).
+  // The drawer-stop pop rivet is omitted in the default archetype because
+  // the wall_back↔drawer "riveted" interface had no defined feature on
+  // either part — it failed hole_pattern_match. Real drawer stops are a
+  // small tab on the back wall + a slot on the drawer; that's a tab/slot
+  // weld_joint feature for a follow-up.
   const interfaces = [
-    // 4 wall-to-base bolted
-    { kind: "bolted" as const, roleA: "base", roleB: "wall_front", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    { kind: "bolted" as const, roleA: "base", roleB: "wall_back",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    { kind: "bolted" as const, roleA: "base", roleB: "wall_left",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    { kind: "bolted" as const, roleA: "base", roleB: "wall_right", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: hw },
-    // 1 riveted drawer-stop interface
-    {
-      kind: "riveted" as const,
-      roleA: "wall_back",
-      roleB: "drawer",
-      featureA: "",
-      featureB: "",
-      hardwareRefs: [{ mcmasterPartNumber: "97525A120", quantity: 1, role: "drawer_stop" }],
-    },
+    { kind: "weld_seam" as const, roleA: "base", roleB: "wall_front", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
+    { kind: "weld_seam" as const, roleA: "base", roleB: "wall_back",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
+    { kind: "weld_seam" as const, roleA: "base", roleB: "wall_left",  featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
+    { kind: "weld_seam" as const, roleA: "base", roleB: "wall_right", featureA: "mounting_hole", featureB: "mounting_hole", hardwareRefs: [] },
   ];
 
   return { parts, interfaces };

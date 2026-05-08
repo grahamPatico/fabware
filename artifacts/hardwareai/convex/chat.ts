@@ -76,8 +76,10 @@ export const send = action({
       model,
       max_tokens: 16000,
       messages: conversationMessages,
-      thinking: { type: "adaptive" },
     };
+    if (supportsEffort(model)) {
+      (createArgs as unknown as { thinking: { type: string } }).thinking = { type: "adaptive" };
+    }
     if (outputConfig.effort) {
       (createArgs as unknown as { output_config: { effort: Effort } }).output_config = {
         effort: outputConfig.effort,
@@ -106,6 +108,18 @@ export const send = action({
         cacheReadTokens: response.usage.cache_read_input_tokens ?? undefined,
         cacheCreationTokens: response.usage.cache_creation_input_tokens ?? undefined,
       },
+    });
+
+    await ctx.runMutation(internal.tokenUsage.record, {
+      feature: "chat",
+      model,
+      effort,
+      threadId,
+      messageId: assistantId,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      cacheReadTokens: response.usage.cache_read_input_tokens ?? undefined,
+      cacheCreationTokens: response.usage.cache_creation_input_tokens ?? undefined,
     });
 
     return { messageId: assistantId, stopReason: response.stop_reason };

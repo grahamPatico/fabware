@@ -30,6 +30,45 @@ const EFFORTS = [
 const LS_MODEL = "fabware.chat.model";
 const LS_EFFORT = "fabware.chat.effort";
 
+const PHASES = [
+  { icon: "🔍", text: "Researching reference designs in McMaster, IKEA, Grainger, industrial catalogs..." },
+  { icon: "📐", text: "Recalling typical dimensions, hinge orientations, vent patterns..." },
+  { icon: "🧩", text: "Picking the closest archetype from the library..." },
+  { icon: "⚙️", text: "Generating parts and interfaces..." },
+  { icon: "🔩", text: "Sizing fasteners and clearance holes..." },
+  { icon: "📏", text: "Validating manufacturability against Send Cut Send rules..." },
+  { icon: "🔎", text: "Checking for part intersections..." },
+  { icon: "🪛", text: "Tightening geometry..." },
+];
+
+function SendingIndicator() {
+  const [start] = React.useState(() => Date.now());
+  const [tick, setTick] = React.useState(0);
+  React.useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 1100);
+    return () => clearInterval(id);
+  }, []);
+  const elapsed = Math.floor((Date.now() - start) / 1000);
+  const phase = PHASES[tick % PHASES.length];
+  return (
+    <div className="flex flex-col items-start">
+      <span className="text-[10px] font-mono text-muted-foreground uppercase mb-1 px-1">System</span>
+      <div className="bg-card border border-primary/30 rounded p-3 font-mono text-sm flex items-start gap-3 text-foreground/90 max-w-[85%] shadow-lg shadow-primary/5">
+        <Loader2 className="w-4 h-4 animate-spin text-primary mt-0.5 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <span className="text-base leading-tight">{phase.icon}</span>
+            <span className="text-foreground/90">{phase.text}</span>
+          </div>
+          <div className="mt-1 text-[10px] uppercase tracking-widest text-muted-foreground">
+            {elapsed}s · phase {(tick % PHASES.length) + 1}/{PHASES.length}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Detect numbered options the agent presented (e.g., "1. **Thinner washer** I can do…").
 // Returns at least 2 options or none — we don't want to turn arbitrary "step 1, 2, 3"
 // instructions into pickable buttons.
@@ -239,15 +278,7 @@ export default function ChatPanel({ projectId, focusedPartRole, disabled = false
           })
         )}
 
-        {sending && (
-          <div className="flex flex-col items-start">
-            <span className="text-[10px] font-mono text-muted-foreground uppercase mb-1 px-1">System</span>
-            <div className="bg-card border border-border rounded p-3 font-mono text-sm flex items-center gap-3 text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              Generating design...
-            </div>
-          </div>
-        )}
+        {sending && <SendingIndicator />}
       </div>
 
       <div className="p-4 bg-card border-t border-border shrink-0 space-y-2">

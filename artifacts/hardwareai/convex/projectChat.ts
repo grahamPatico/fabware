@@ -30,6 +30,15 @@ export const send = action({
 
     const project = await ctx.runQuery(api.projects.get, { projectId: a.projectId });
     if (!project) throw new Error("Project not found");
+
+    // Snapshot the project's pre-turn state so the user can undo back to it
+    // even if this is the first turn. Only captures when no snapshot exists yet.
+    if (!project.currentSnapshotId) {
+      await ctx.runMutation(internal.assemblySnapshots.captureInternal, {
+        projectId: a.projectId,
+        label: "Initial state",
+      });
+    }
     const parts = await ctx.runQuery(api.parts.listForProject, { projectId: a.projectId });
     const interfaces = await ctx.runQuery(api.interfaces.listForProject, { projectId: a.projectId });
     const history = await ctx.runQuery(internal.messages.listForProjectInternal, { projectId: a.projectId });
@@ -39,6 +48,18 @@ export const send = action({
       .filter(m => !(m._id === last?._id && m.role === "user"))
       .map(m => ({ role: m.role, content: m.content }));
 
+    // Run current validation BEFORE the agent so it can see what's broken and
+    // proactively repair on this turn instead of needing another round-trip.
+    const currentValidation = parts.length > 0
+      ? await ctx.runQuery(api.validation.getAssemblyValidation, { projectId: a.projectId })
+      : { rules: [], hasFailures: false };
+    const violations = currentValidation.rules
+      .filter((r: any) => r.status === "fail" || r.status === "warn")
+      .map((r: any) => ({
+        id: r.id, label: r.label, status: r.status,
+        message: r.message, suggestion: r.suggestion,
+      }));
+
     const projectState = {
       scope: project.scope ?? null,
       archetypeId: project.archetypeId ?? null,
@@ -46,8 +67,9 @@ export const send = action({
       parts: parts.map(p => ({ role: p.role, label: p.label, dslJson: p.dslJson ?? undefined })),
       interfaces: interfaces.map(i => ({
         kind: i.kind, partA: i.partA, partB: i.partB,
-        featureRefs: i.featureRefs, hardwareRefs: i.hardwareRefs,
+        featureRefs: i.featureRefs, hardwareRefs: i.hardwareRefs ?? [],
       })),
+      violations,
     };
 
     const agentResult = await ctx.runAction(internal.assemblyDesigner.runAgent, {
@@ -60,27 +82,61 @@ export const send = action({
       projectState,
     });
 
-    const summaryLines: string[] = [];
     let livePartsSnapshot = parts;
+    // Stream each tool result as its own assistant message so the user sees
+    // progress in real time (Convex queries are reactive — frontend updates
+    // the moment each insert lands).
     for (const call of agentResult.toolCalls) {
-      summaryLines.push(await applyToolCall(ctx, a.projectId, livePartsSnapshot, interfaces, call));
+      const result = await applyToolCall(ctx, a.projectId, livePartsSnapshot, interfaces, call);
+      if (result && result.trim().length > 0) {
+        await ctx.runMutation(internal.messages.insertProjectMessage, {
+          projectId: a.projectId, role: "assistant", content: result,
+          model: a.model, effort: a.effort,
+        });
+      }
       if (
         call.name === "select_archetype" ||
         call.name === "update_archetype_params" ||
         call.name === "add_printed_part" ||
-        call.name === "add_purchased_part"
+        call.name === "add_purchased_part" ||
+        call.name === "add_freeform_2d_part" ||
+        call.name === "add_pipe" ||
+        call.name === "add_sheet_metal_part"
       ) {
         livePartsSnapshot = await ctx.runQuery(api.parts.listForProject, { projectId: a.projectId });
       }
     }
 
-    const assistantText = agentResult.responseText.trim() ||
-      summaryLines.filter(Boolean).join("\n") ||
-      "Updated.";
-    await ctx.runMutation(internal.messages.insertProjectMessage, {
-      projectId: a.projectId, role: "assistant", content: assistantText,
-      model: a.model, effort: a.effort,
-    });
+    // Capture a post-turn snapshot if any tool call landed state changes —
+    // gives the user one undo step per agent turn.
+    const STATE_CHANGING_TOOLS = new Set([
+      "select_archetype", "update_archetype_params",
+      "add_sheet_metal_part", "add_printed_part", "add_purchased_part",
+      "add_freeform_2d_part", "add_pipe",
+      "add_interface", "remove_part",
+      "refine_part", "add_feature_to_part", "break_out", "capture_scope",
+    ]);
+    const stateChanged = agentResult.toolCalls.some(c => STATE_CHANGING_TOOLS.has(c.name));
+    if (stateChanged) {
+      const summary = a.content.length > 60 ? a.content.slice(0, 57) + "…" : a.content;
+      await ctx.runMutation(internal.assemblySnapshots.captureInternal, {
+        projectId: a.projectId,
+        label: summary,
+      });
+    }
+
+    const assistantText = agentResult.responseText.trim();
+    if (assistantText) {
+      await ctx.runMutation(internal.messages.insertProjectMessage, {
+        projectId: a.projectId, role: "assistant", content: assistantText,
+        model: a.model, effort: a.effort,
+      });
+    } else if (agentResult.toolCalls.length === 0) {
+      await ctx.runMutation(internal.messages.insertProjectMessage, {
+        projectId: a.projectId, role: "assistant", content: "Updated.",
+        model: a.model, effort: a.effort,
+      });
+    }
 
     const validation = await ctx.runQuery(api.validation.getAssemblyValidation, { projectId: a.projectId });
     return { validation };
@@ -96,7 +152,7 @@ async function applyToolCall(
 ): Promise<string> {
   switch (call.name) {
     case "capture_scope":
-      await ctx.runMutation(api.projects.updateScope, { projectId, scope: call.input.scope });
+      await ctx.runMutation(api.projects.updateScope, { projectId, scope: coerceScope(call.input.scope) });
       return "Scope updated.";
 
     case "select_archetype": {
@@ -253,6 +309,182 @@ async function applyToolCall(
       return `Added 3D-printed part: ${call.input.label}.`;
     }
 
+    case "check_manufacturing": {
+      const summary: any = await ctx.runQuery(api.manufacturing.summarizeForProject, { projectId });
+      const totals = summary?.totals ?? { sheetMetalParts: 0, failures: 0, warnings: 0 };
+      const lines: string[] = [];
+      lines.push(
+        `🛠 Manufacturability check (${summary?.perPart?.length ?? 0} sheet-metal parts): ` +
+        `${totals.failures} fail · ${totals.warnings} warn.`,
+      );
+      const failedParts = (summary?.perPart ?? []).filter((p: any) => p.failures > 0 || p.warnings > 0).slice(0, 6);
+      for (const p of failedParts) {
+        const stepBits = (p.steps ?? []).filter((s: any) => s.failures > 0 || s.warnings > 0)
+          .map((s: any) => `${s.label} (${s.failures}F/${s.warnings}W)`)
+          .join(", ");
+        lines.push(`  • ${p.label} (${p.role}): ${p.failures}F / ${p.warnings}W` + (stepBits ? ` — ${stepBits}` : ""));
+        const top = (p.rules ?? []).filter((r: any) => r.status === "fail").slice(0, 2);
+        for (const r of top) {
+          const suggestion = r.suggestion ? ` → ${r.suggestion}` : "";
+          lines.push(`    - ${r.label}: ${r.message}${suggestion}`);
+        }
+      }
+      if (failedParts.length === 0) {
+        lines.push("  All parts pass current manufacturability checks. (Intent: " + (call.input.intent ?? "n/a") + ")");
+      }
+      return lines.join("\n");
+    }
+
+    case "gather_inspiration": {
+      const refs = Array.isArray(call.input.references) ? call.input.references : [];
+      const recs = Array.isArray(call.input.recommendations) ? call.input.recommendations : [];
+      const lines = [
+        `🔍 Researched **${call.input.topic ?? "design"}** — ${refs.length} reference${refs.length === 1 ? "" : "s"}, ${recs.length} recommendation${recs.length === 1 ? "" : "s"}.`,
+        ...refs.slice(0, 5).map((r: any) => `  • ${r.name} (${r.source}): ${r.features}${r.dimensions ? ` · ${r.dimensions}` : ""}`),
+        ...(recs.length > 0 ? ["Will apply:", ...recs.slice(0, 5).map((r: string) => `  → ${r}`)] : []),
+      ];
+      return lines.join("\n");
+    }
+
+    case "add_sheet_metal_part": {
+      const TWO_PI = 2 * Math.PI;
+      const pos = call.input.position;
+      const looksDegrees = ["rotX", "rotY", "rotZ"].some(k => Math.abs(pos?.[k] ?? 0) > TWO_PI);
+      if (looksDegrees) {
+        pos.rotX = (pos.rotX ?? 0) * (Math.PI / 180);
+        pos.rotY = (pos.rotY ?? 0) * (Math.PI / 180);
+        pos.rotZ = (pos.rotZ ?? 0) * (Math.PI / 180);
+      }
+      // Coerce common feature-field synonyms to canonical enum values so the
+      // agent doesn't trip the Zod validator on near-misses.
+      const features = (Array.isArray(call.input.features) ? call.input.features : []).map((f: any) => {
+        const out = { ...f };
+        if (out.kind === "bend") {
+          if (typeof out.axis === "string") {
+            const a = out.axis.toLowerCase();
+            if (a === "x" || a === "horiz" || a === "h" || a.startsWith("horiz")) out.axis = "horizontal";
+            else if (a === "y" || a === "vert" || a === "v" || a.startsWith("vert")) out.axis = "vertical";
+          }
+        }
+        if ((out.kind === "hole" || out.kind === "slot" || out.kind === "tab") && typeof out.pattern === "string") {
+          const p = out.pattern.toLowerCase().replace(/-/g, "_");
+          if (p === "corners") out.pattern = "corner";
+          if (p === "centre") out.pattern = "center";
+          if (p === "top") out.pattern = "top_row";
+          if (p === "bottom") out.pattern = "bottom_row";
+        }
+        if (out.kind === "tab" && typeof out.edge === "string") {
+          const e = out.edge.toLowerCase();
+          if (["top", "bottom", "left", "right"].includes(e)) out.edge = e;
+        }
+        return out;
+      });
+      const dsl = {
+        version: 1,
+        partType: "plate" as const,
+        material: call.input.material,
+        thickness: call.input.thickness,
+        width: call.input.width,
+        height: call.input.height,
+        depth: null,
+        outline: call.input.outline ?? { kind: "rectangle" },
+        features,
+        finish: call.input.powderCoat
+          ? { type: "powder_coat", color: call.input.powderCoatColor ?? "Black" }
+          : null,
+        assemblyRefs: [],
+      };
+      try {
+        await ctx.runMutation(internal.parts.addPartInternal, {
+          projectId, role: call.input.role, label: call.input.label, position: pos,
+          dslJson: JSON.stringify(dsl),
+        });
+      } catch (err: any) {
+        return `Couldn't add ${call.input.role}: ${err?.message?.slice(0, 200) ?? "validation failed"}`;
+      }
+      return `🟦 Added sheet-metal part ${call.input.role} (${call.input.label}) — ${dsl.material} ${dsl.thickness}", ${dsl.width}" × ${dsl.height}".`;
+    }
+
+    case "add_interface": {
+      const all = await ctx.runQuery(api.parts.listForProject, { projectId });
+      const partA = all.find(p => p.role === call.input.roleA);
+      const partB = all.find(p => p.role === call.input.roleB);
+      if (!partA || !partB) {
+        return `Couldn't add interface: role not found (${!partA ? call.input.roleA : call.input.roleB}).`;
+      }
+      try {
+        await ctx.runMutation(internal.interfaces.addInterfaceInternal, {
+          projectId,
+          kind: call.input.kind,
+          partA: partA._id,
+          partB: partB._id,
+          featureRefs: [
+            { partId: partA._id, featureName: call.input.featureA },
+            { partId: partB._id, featureName: call.input.featureB },
+          ],
+          hardwareRefs: Array.isArray(call.input.hardwareRefs) ? call.input.hardwareRefs : [],
+          accessSide: call.input.accessSide,
+        });
+      } catch (err: any) {
+        return `Couldn't add interface: ${err?.message?.slice(0, 200) ?? "validation failed"}`;
+      }
+      const hwTotal = (call.input.hardwareRefs ?? []).reduce((acc: number, h: any) => acc + (h.quantity ?? 0), 0);
+      return `🔗 ${call.input.kind} interface: ${call.input.roleA} ↔ ${call.input.roleB}${hwTotal > 0 ? ` (${hwTotal}× hardware)` : ""}.`;
+    }
+
+    case "remove_part": {
+      const all = await ctx.runQuery(api.parts.listForProject, { projectId });
+      const target = all.find(p => p.role === call.input.role);
+      if (!target) return `No part with role ${call.input.role}.`;
+      await ctx.runMutation(api.parts.removePart, { partId: target._id });
+      return `🗑 Removed ${call.input.role}.`;
+    }
+
+    case "add_freeform_2d_part": {
+      const TWO_PI = 2 * Math.PI;
+      const fpos = call.input.position;
+      const fLooksDegrees = ["rotX", "rotY", "rotZ"].some(k => Math.abs(fpos?.[k] ?? 0) > TWO_PI);
+      if (fLooksDegrees) {
+        fpos.rotX = (fpos.rotX ?? 0) * (Math.PI / 180);
+        fpos.rotY = (fpos.rotY ?? 0) * (Math.PI / 180);
+        fpos.rotZ = (fpos.rotZ ?? 0) * (Math.PI / 180);
+      }
+      const outline = call.input.outline;
+      const { outlineAabb: aabb } = await import("./lib/dsl");
+      const { width: aabbW, height: aabbH } = aabb(outline, 1, 1);
+      const dsl = {
+        version: 1,
+        partType: "plate" as const,
+        material: call.input.material ?? "Mild Steel (CRS)",
+        thickness: call.input.thickness ?? 0.075,
+        width: aabbW,
+        height: aabbH,
+        depth: null,
+        outline,
+        features: Array.isArray(call.input.features) ? call.input.features : [],
+        finish: null,
+        assemblyRefs: [],
+      };
+      try {
+        await ctx.runMutation(internal.parts.addPartInternal, {
+          projectId,
+          role: call.input.role,
+          label: call.input.label,
+          position: fpos,
+          dslJson: JSON.stringify(dsl),
+        });
+      } catch (err: any) {
+        return `Couldn't add freeform part ${call.input.role}: ${err?.message?.slice(0, 200) ?? "validation failed"}`;
+      }
+      const shapeDesc =
+        outline?.kind === "star" ? `${outline.numPoints}-point star, OR ${outline.outerRadius}", IR ${outline.innerRadius}"` :
+        outline?.kind === "circle" ? `Ø${outline.radius * 2}" disk` :
+        outline?.kind === "regular_polygon" ? `${outline.sides}-sided polygon, R ${outline.radius}"` :
+        outline?.kind === "polygon" ? `${outline.points?.length}-point polygon` :
+        "rectangle";
+      return `🟦 Added laser-cut: ${call.input.label} (${shapeDesc}) in ${dsl.material} ${dsl.thickness}".`;
+    }
+
     case "add_purchased_part": {
       // Coerce degree-rotations same as add_printed_part.
       const TWO_PI2 = 2 * Math.PI;
@@ -284,6 +516,39 @@ async function applyToolCall(
       return `Added purchased: ${call.input.quantity} × ${call.input.label} (${call.input.mcmasterPartNumber}).`;
     }
 
+    case "add_pipe": {
+      const TWO_PI3 = 2 * Math.PI;
+      const ppos = call.input.position;
+      const ppLooksDegrees = ["rotX", "rotY", "rotZ"].some(k => Math.abs(ppos?.[k] ?? 0) > TWO_PI3);
+      if (ppLooksDegrees) {
+        ppos.rotX = (ppos.rotX ?? 0) * (Math.PI / 180);
+        ppos.rotY = (ppos.rotY ?? 0) * (Math.PI / 180);
+        ppos.rotZ = (ppos.rotZ ?? 0) * (Math.PI / 180);
+      }
+      const dsl = JSON.stringify({
+        version: 1,
+        kind: "pipe",
+        material: call.input.material,
+        outerDiameter: call.input.outerDiameter,
+        wallThickness: call.input.wallThickness,
+        length: call.input.length,
+        endA: call.input.endA ?? "open",
+        endB: call.input.endB ?? "open",
+      });
+      try {
+        await ctx.runMutation(internal.parts.addPipePartInternal, {
+          projectId,
+          role: call.input.role,
+          label: call.input.label,
+          position: ppos,
+          dslJson: dsl,
+        });
+      } catch (err: any) {
+        return `Couldn't add pipe ${call.input.role}: ${err?.message?.slice(0, 200) ?? "validation error"}`;
+      }
+      return `🟢 Added pipe ${call.input.role}: ${call.input.label} — Ø${call.input.outerDiameter}"×${call.input.length}" ${call.input.material}.`;
+    }
+
     case "decide_make_or_buy": {
       const decisionLabel: Record<string, string> = {
         make_sheet_metal: "🔧 Make it (sheet metal)",
@@ -297,4 +562,33 @@ async function applyToolCall(
     default:
       return `Unknown tool: ${call.name}`;
   }
+}
+
+function coerceScope(raw: any): any {
+  if (!raw || typeof raw !== "object") return raw;
+  const out: any = { ...raw };
+
+  const env = out.environment;
+  if (typeof env === "string") {
+    out.environment = { location: env === "outdoor" ? "outdoor" : "indoor" };
+  } else if (env && typeof env === "object" && typeof env.location !== "string") {
+    out.environment = { ...env, location: "indoor" };
+  }
+
+  const rs = out.referenceScale;
+  if (typeof rs === "string") {
+    const m = rs.match(/(\d+(?:\.\d+)?)\s*[xX*×]\s*(\d+(?:\.\d+)?)\s*[xX*×]\s*(\d+(?:\.\d+)?)/);
+    out.referenceScale = m
+      ? { kind: rs, dimensions: { w: parseFloat(m[1]), d: parseFloat(m[2]), h: parseFloat(m[3]) } }
+      : { kind: rs };
+  } else if (rs && typeof rs === "object" && typeof rs.kind !== "string") {
+    out.referenceScale = { ...rs, kind: "object" };
+  }
+
+  if (typeof out.budgetCeiling === "string") {
+    const n = parseFloat(out.budgetCeiling.replace(/[^0-9.]/g, ""));
+    out.budgetCeiling = isNaN(n) ? undefined : n;
+  }
+
+  return out;
 }

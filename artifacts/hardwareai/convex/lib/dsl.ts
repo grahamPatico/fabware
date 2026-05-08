@@ -21,6 +21,21 @@ const HoleSchema = z.object({
   diameter: z.number().positive(),
   pattern: z.enum(["corner", "center", "top_row", "bottom_row"]),
   inset: z.number().nullish(),
+  // Per-axis inset overrides. When present, take precedence over `inset`.
+  // Needed when a part's hole pattern must align with a smaller mating part's
+  // pattern (e.g. a bracket bolted to a wider panel).
+  insetX: z.number().nullish(),
+  insetY: z.number().nullish(),
+  // Explicit hole positions in part-local frame (overrides `pattern`).
+  // Use this when no built-in pattern can express the hole layout — e.g.
+  // a shelf with two grouped clusters of holes where each cluster mates a
+  // separate bracket.
+  positions: z.array(z.object({ x: z.number(), y: z.number() })).nullish(),
+  // Hole role tag — semantic purpose for FastenerStack matching. Examples:
+  // "bolt_clear" (machine-bolt clearance hole), "tap_1/4-20" (tapped),
+  // "pilot_8x12" (sheet-metal-screw pilot), "pem_M4" (PEM insert receiver),
+  // "rivet_1/8". When absent the validator skips the role check.
+  role: z.string().nullish(),
 });
 
 const BendSchema = z.object({
@@ -41,6 +56,18 @@ const SlotSchema = z.object({
   pattern: z.enum(["corner", "center", "top_row", "bottom_row"]),
 });
 
+// Tab features extend the part outline — small rectangular protrusions on a
+// named edge that pass through matching slots on the mating part. Used as the
+// male side of a weld_joint (tab-and-slot) interface.
+const TabSchema = z.object({
+  kind: z.literal("tab"),
+  name: SafeName,
+  count: z.number().int().min(1).max(16),
+  length: z.number().positive(), // length along the edge
+  width: z.number().positive(),  // protrusion depth out of the edge
+  edge: z.enum(["top", "bottom", "left", "right"]),
+});
+
 const FilletSchema = z.object({
   kind: z.literal("fillet"),
   name: SafeName,
@@ -52,11 +79,14 @@ export const FeatureSchema = z.discriminatedUnion("kind", [
   HoleSchema,
   BendSchema,
   SlotSchema,
+  TabSchema,
   FilletSchema,
 ]);
 export type Feature = z.infer<typeof FeatureSchema>;
 export type HoleFeature = z.infer<typeof HoleSchema>;
 export type BendFeature = z.infer<typeof BendSchema>;
+export type SlotFeatureT = z.infer<typeof SlotSchema>;
+export type TabFeature = z.infer<typeof TabSchema>;
 export type SlotFeature = z.infer<typeof SlotSchema>;
 export type FilletFeature = z.infer<typeof FilletSchema>;
 
@@ -69,6 +99,37 @@ const AssemblyRefSchema = z.object({
 });
 export type AssemblyRef = z.infer<typeof AssemblyRefSchema>;
 
+/**
+ * Outline shape for a sheet-metal part. Lasers cut any 2D outline from a flat
+ * sheet, so the part doesn't have to be a rectangle. `width` / `height` always
+ * reflect the AABB of the outline so downstream code (validators, intersection
+ * check, BOM, McMaster sizing) stays correct.
+ */
+const OutlineSchema = z.union([
+  z.object({ kind: z.literal("rectangle") }),
+  z.object({
+    kind: z.literal("polygon"),
+    // Points in inches, relative to the part's local origin (bottom-left of AABB).
+    points: z.array(z.object({ x: z.number(), y: z.number() })).min(3),
+  }),
+  z.object({
+    kind: z.literal("star"),
+    numPoints: z.number().int().min(3).max(64),
+    outerRadius: z.number().positive(),
+    innerRadius: z.number().positive(),
+  }),
+  z.object({
+    kind: z.literal("circle"),
+    radius: z.number().positive(),
+  }),
+  z.object({
+    kind: z.literal("regular_polygon"),
+    sides: z.number().int().min(3).max(64),
+    radius: z.number().positive(),
+  }),
+]);
+export type Outline = z.infer<typeof OutlineSchema>;
+
 export const PartDslSchema = z.object({
   version: z.literal(DSL_VERSION),
   partType: z.enum(["bracket", "plate", "enclosure", "angle", "channel", "tab", "gusset"]),
@@ -77,6 +138,7 @@ export const PartDslSchema = z.object({
   width: z.number().positive(),
   height: z.number().positive(),
   depth: z.number().positive().nullish(),
+  outline: OutlineSchema.optional(),
   features: z.array(FeatureSchema).default([]),
   finish: z
     .object({
@@ -87,6 +149,24 @@ export const PartDslSchema = z.object({
   assemblyRefs: z.array(AssemblyRefSchema).default([]).optional(),
 });
 export type PartDsl = z.infer<typeof PartDslSchema>;
+
+/**
+ * Compute the AABB (width, height) of an outline. For rectangles, returns the
+ * fallback width/height passed in.
+ */
+export function outlineAabb(outline: Outline | undefined, fallbackW: number, fallbackH: number): { width: number; height: number } {
+  if (!outline || outline.kind === "rectangle") return { width: fallbackW, height: fallbackH };
+  if (outline.kind === "circle") return { width: outline.radius * 2, height: outline.radius * 2 };
+  if (outline.kind === "star") return { width: outline.outerRadius * 2, height: outline.outerRadius * 2 };
+  if (outline.kind === "regular_polygon") return { width: outline.radius * 2, height: outline.radius * 2 };
+  // polygon
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of outline.points) {
+    if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+  }
+  return { width: Math.max(maxX - minX, 0.001), height: Math.max(maxY - minY, 0.001) };
+}
 
 export function emptyDsl(partType: PartDsl["partType"] = "bracket"): PartDsl {
   return {
@@ -200,6 +280,7 @@ export function summarizeDsl(dsl: PartDsl): string {
     if (f.kind === "hole") parts.push(`${f.count}× Ø${f.diameter}" ${f.pattern} holes`);
     else if (f.kind === "bend") parts.push(`${f.angle}° ${f.axis} bend R${f.radius}"`);
     else if (f.kind === "slot") parts.push(`${f.count}× ${f.length}"×${f.width}" slots`);
+    else if (f.kind === "tab") parts.push(`${f.count}× ${f.length}"×${f.width}" tabs on ${f.edge}`);
     else if (f.kind === "fillet") parts.push(`R${f.radius}" fillets (${f.corners})`);
   }
   if (dsl.finish) parts.push(`powder coat ${dsl.finish.color}`);

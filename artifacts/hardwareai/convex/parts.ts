@@ -5,6 +5,7 @@ import { buildFeatureGraph } from "./lib/featureGraph";
 import { PartDslSchema } from "./lib/dsl";
 import { PrintedDslSchema } from "./lib/printedDsl";
 import { PurchasedDslSchema } from "./lib/purchasedDsl";
+import { PipeDslSchema } from "./lib/pipeDsl";
 
 const poseArgs = v.object({
   x: v.number(), y: v.number(), z: v.number(),
@@ -216,6 +217,39 @@ async function insertPurchasedPart(ctx: any, a: any) {
 
 export const addPurchasedPart = mutation({ args: purchasedPartArgs, handler: insertPurchasedPart });
 export const addPurchasedPartInternal = internalMutation({ args: purchasedPartArgs, handler: insertPurchasedPart });
+
+const pipePartArgs = {
+  projectId: v.id("projects"),
+  role: v.string(),
+  label: v.string(),
+  position: poseArgs,
+  dslJson: v.string(),    // PipeDsl JSON
+};
+
+async function insertPipePart(ctx: any, a: any) {
+  const dsl = PipeDslSchema.parse(JSON.parse(a.dslJson));
+  const now = Date.now();
+  return await ctx.db.insert("parts", {
+    projectId: a.projectId,
+    role: a.role,
+    label: a.label,
+    position: a.position,
+    kind: "pipe",
+    partType: "pipe",
+    material: dsl.material,
+    dslJson: a.dslJson,
+    pipeOuterDiameter: dsl.outerDiameter,
+    pipeWallThickness: dsl.wallThickness,
+    pipeLength: dsl.length,
+    pipeEndA: dsl.endA,
+    pipeEndB: dsl.endB,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+
+export const addPipePart = mutation({ args: pipePartArgs, handler: insertPipePart });
+export const addPipePartInternal = internalMutation({ args: pipePartArgs, handler: insertPipePart });
 
 export const updatePartDslByKindInternal = internalMutation({
   args: { partId: v.id("parts"), dslJson: v.string() },

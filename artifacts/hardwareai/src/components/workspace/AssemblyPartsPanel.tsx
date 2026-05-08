@@ -1,6 +1,6 @@
-import React from "react";
-import { useQuery, useMutation } from "convex/react";
-import { ExternalLink, Plus, Trash2, Package } from "lucide-react";
+import React, { useState } from "react";
+import { useQuery, useMutation, useConvex } from "convex/react";
+import { ExternalLink, Plus, Trash2, Package, FileSpreadsheet, Archive, Box } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,117 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 type HardwareRef = { mcmasterPartNumber: string; quantity: number; role?: string };
+
+function BomDownloadButton({ projectId }: { projectId: Id<"projects"> }) {
+  const convex = useConvex();
+  const [busy, setBusy] = useState(false);
+  const onDownload = async () => {
+    setBusy(true);
+    try {
+      const result = await convex.query(api.bom.projectCsv, { projectId });
+      const blob = new Blob([result.csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={onDownload}
+      disabled={busy}
+      className="font-mono uppercase tracking-wider text-[10px] gap-1 h-7"
+      title="Download project Bill of Materials as CSV"
+    >
+      <FileSpreadsheet className="w-3 h-3" />
+      BOM
+    </Button>
+  );
+}
+
+function ObjDownloadButton({ projectId }: { projectId: Id<"projects"> }) {
+  const convex = useConvex();
+  const [busy, setBusy] = useState(false);
+  const onDownload = async () => {
+    setBusy(true);
+    try {
+      const result = await convex.query(api.obj.projectObj, { projectId });
+      const blob = new Blob([result.obj], { type: "model/obj" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={onDownload}
+      disabled={busy}
+      className="font-mono uppercase tracking-wider text-[10px] gap-1 h-7"
+      title="Download 3D assembly as OBJ — viewable in Preview, MeshLab, Blender, SolidWorks"
+    >
+      <Box className="w-3 h-3" />
+      OBJ
+    </Button>
+  );
+}
+
+function BundleDownloadButton({ projectId }: { projectId: Id<"projects"> }) {
+  const convex = useConvex();
+  const [busy, setBusy] = useState(false);
+  const onDownload = async () => {
+    setBusy(true);
+    try {
+      const result = await convex.query(api.bundle.projectZip, { projectId });
+      if (!result) return;
+      const bin = atob(result.base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: "application/zip" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button
+      type="button"
+      size="sm"
+      onClick={onDownload}
+      disabled={busy}
+      className="font-mono uppercase tracking-wider text-[10px] gap-1 h-7"
+      title="Download SCS-ready zip bundle (cuts/*.dxf + drawings/*.pdf + bom.csv + README.md)"
+    >
+      <Archive className="w-3 h-3" />
+      SCS bundle
+    </Button>
+  );
+}
 
 function aggregateInterfaceHardware(
   interfaces: Array<{ hardwareRefs?: HardwareRef[] | null }> | undefined,
@@ -32,7 +143,7 @@ function aggregateInterfaceHardware(
   return Array.from(map.values()).sort((a, b) => a.partNumber.localeCompare(b.partNumber));
 }
 
-export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"projects"> }) {
+export default function AssemblyPartsPanel({ projectId, readOnly = false }: { projectId: Id<"projects">; readOnly?: boolean }) {
   const parts = useQuery(api.assemblyParts.list, projectId ? { projectId } : "skip");
   const allParts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
   const interfaces = useQuery(api.interfaces.listForProject, projectId ? { projectId } : "skip");
@@ -86,11 +197,17 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
             Assembly · McMaster
           </span>
         </div>
-        <Badge variant="outline" className="font-mono text-[10px]">
-          {(parts ?? []).length + interfaceHardware.length + purchasedParts.length} item{(parts ?? []).length + interfaceHardware.length + purchasedParts.length === 1 ? "" : "s"}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <BomDownloadButton projectId={projectId} />
+          <ObjDownloadButton projectId={projectId} />
+          <BundleDownloadButton projectId={projectId} />
+          <Badge variant="outline" className="font-mono text-[10px]">
+            {(parts ?? []).length + interfaceHardware.length + purchasedParts.length} item{(parts ?? []).length + interfaceHardware.length + purchasedParts.length === 1 ? "" : "s"}
+          </Badge>
+        </div>
       </div>
 
+      {!readOnly && (
       <div className="flex flex-col gap-2">
         <Input
           value={suggestText}
@@ -122,7 +239,9 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
           </div>
         )}
       </div>
+      )}
 
+      {!readOnly && (
       <form onSubmit={onAdd} className="flex gap-2 items-end">
         <div className="flex-1 flex flex-col gap-1">
           <label className="font-mono text-[10px] uppercase text-muted-foreground">
@@ -156,7 +275,8 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
           Add
         </Button>
       </form>
-      {addError && (
+      )}
+      {!readOnly && addError && (
         <div className="bg-destructive/10 border border-destructive/30 rounded p-2 font-mono text-[11px] text-destructive">
           {addError}
         </div>
@@ -224,16 +344,18 @@ export default function AssemblyPartsPanel({ projectId }: { projectId: Id<"proje
               </div>
               <div className="text-xs text-foreground truncate">{p.name}</div>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => deletePart({ partId: p._id as Id<"assemblyParts"> })}
-              className="opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0"
-              title="Remove"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
-            </Button>
+            {!readOnly && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => deletePart({ partId: p._id as Id<"assemblyParts"> })}
+                className="opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 p-0"
+                title="Remove"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+              </Button>
+            )}
           </div>
         ))}
       </div>

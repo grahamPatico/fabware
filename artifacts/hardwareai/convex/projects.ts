@@ -50,6 +50,64 @@ export const get = query({
   },
 });
 
+function randomSlug(): string {
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+  let s = "";
+  for (let i = 0; i < 12; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return s;
+}
+
+export const enableShare = mutation({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, { projectId }) => {
+    const project = await ctx.db.get(projectId);
+    if (!project) throw new Error("Project not found");
+    if (project.shareSlug) return { slug: project.shareSlug };
+    let slug = randomSlug();
+    // Collision retry — extremely unlikely but cheap.
+    for (let i = 0; i < 5; i++) {
+      const existing = await ctx.db
+        .query("projects")
+        .withIndex("by_share_slug", (q) => q.eq("shareSlug", slug))
+        .first();
+      if (!existing) break;
+      slug = randomSlug();
+    }
+    await ctx.db.patch(projectId, { shareSlug: slug, updatedAt: Date.now() });
+    return { slug };
+  },
+});
+
+export const disableShare = mutation({
+  args: { projectId: v.id("projects") },
+  handler: async (ctx, { projectId }) => {
+    await ctx.db.patch(projectId, { shareSlug: undefined, updatedAt: Date.now() });
+  },
+});
+
+export const getBySlug = query({
+  args: { slug: v.string() },
+  handler: async (ctx, { slug }) => {
+    if (!slug) return null;
+    const project = await ctx.db
+      .query("projects")
+      .withIndex("by_share_slug", (q) => q.eq("shareSlug", slug))
+      .first();
+    if (!project) return null;
+    return {
+      _id: project._id,
+      name: project.name,
+      description: project.description ?? null,
+      status: project.status,
+      scope: project.scope ?? null,
+      archetypeId: project.archetypeId ?? null,
+      archetypeParams: project.archetypeParams ?? null,
+      isMultiPart: project.isMultiPart ?? false,
+      updatedAt: project.updatedAt,
+    };
+  },
+});
+
 export const create = mutation({
   args: {
     name: v.string(),
@@ -144,6 +202,11 @@ export const remove = mutation({
       .withIndex("by_project_at", (q) => q.eq("projectId", projectId))
       .collect();
     for (const ev of planEvents) await ctx.db.delete(ev._id);
+
+    // Cascade-delete assembly snapshots (Slice 1 surface from main).
+    const snapshotsToDelete = await ctx.db.query("assemblySnapshots")
+      .withIndex("by_project_seq", q => q.eq("projectId", projectId)).collect();
+    for (const s of snapshotsToDelete) await ctx.db.delete(s._id);
 
     await ctx.db.delete(projectId);
   },
