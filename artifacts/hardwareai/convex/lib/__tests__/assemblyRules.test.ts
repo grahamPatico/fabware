@@ -15,13 +15,18 @@ function platePartDsl(width: number, height: number, holeCount = 0, holeDiameter
 
 describe("validateAssembly", () => {
   it("passes trivially for a project with zero interfaces", () => {
+    // validateAssembly always emits the assembly_max_sheet rule (it runs
+    // independent of interfaces — it only inspects part flat-patterns).
+    // Zero parts ⇒ zero violations of the rule, so it reports "pass".
     const input: AssemblyInput = {
       parts: [],
       interfaces: [],
       scope: null,
     };
     const result = validateAssembly(input);
-    expect(result.rules).toEqual([]);
+    expect(result.rules).toHaveLength(1);
+    expect(result.rules[0].id).toBe("assembly_max_sheet");
+    expect(result.rules[0].status).toBe("pass");
     expect(result.hasFailures).toBe(false);
   });
 
@@ -95,8 +100,12 @@ describe("validateAssembly", () => {
     const result = validateAssembly(input);
     const rule = result.rules.find(r => r.id === "hole_pattern_match");
     expect(rule?.status).toBe("pass");
-    // The alignment check should be a warn (positions won't coincide due to different poses).
+    // The alignment check is now a hard fail (not a warn): when world-space
+    // holes don't coincide along the bolt axis, a bolt can't physically pass
+    // through both parts. The rule was hardened from "warn" to "fail" because
+    // the perpendicular-distance check is deterministic — there's no "maybe"
+    // case to accommodate.
     const alignRule = result.rules.find(r => r.id === "hole_position_alignment");
-    expect(alignRule?.status).toBe("warn");
+    expect(alignRule?.status).toBe("fail");
   });
 });
