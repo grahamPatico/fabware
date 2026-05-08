@@ -131,6 +131,29 @@ export const removePart = mutation({
     for (const iface of ifaces) {
       if (iface.partA === partId || iface.partB === partId) await ctx.db.delete(iface._id);
     }
+    // Cascade-delete any violations that pointed at this specific part.
+    // (Project-level remove handles these too; this is for individual part removal.)
+    const partViolations = await ctx.db
+      .query("violations")
+      .withIndex("by_part", (q) => q.eq("partId", partId))
+      .collect();
+    for (const vio of partViolations) await ctx.db.delete(vio._id);
+    // Also delete escalations whose sourceViolationId pointed at one of the just-deleted violations.
+    // (No by_partId index on escalations; we walk by_project and filter by violation id set. Cheap because
+    // open-violation count per project is small in v1.)
+    if (partViolations.length > 0) {
+      const violationIdSet = new Set(partViolations.map((v) => String(v._id)));
+      const projectId = partViolations[0].projectId;
+      const projectEscalations = await ctx.db
+        .query("escalations")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .collect();
+      for (const esc of projectEscalations) {
+        if (esc.sourceViolationId && violationIdSet.has(String(esc.sourceViolationId))) {
+          await ctx.db.delete(esc._id);
+        }
+      }
+    }
     await ctx.db.delete(partId);
   },
 });

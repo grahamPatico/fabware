@@ -1,5 +1,15 @@
 "use node";
 
+/**
+ * @deprecated Legacy agent loop. Used only for projects where useNewHarness !== true.
+ * Plan 9 removes this file once the new harness reaches feature parity.
+ *
+ * The Anthropic call has been extracted to convex/lib/anthropicClient.ts.
+ * The sheet-metal-specific tools are being ported to convex/plugins/sheet_metal/tools.ts (Plan 3).
+ * Decomposition / archetype tools (capture_scope, select_archetype) will move to the
+ * orchestrator's decomposition agent (Plan 4+).
+ */
+
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";

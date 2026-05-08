@@ -43,6 +43,15 @@ export default defineSchema({
     )),
     archetypeParams: v.optional(v.any()),
     isMultiPart: v.optional(v.boolean()),
+    phase: v.optional(v.union(
+      v.literal("scoping"),
+      v.literal("decomposing"),
+      v.literal("designing"),
+      v.literal("validating"),
+      v.literal("exporting"),
+      v.literal("done"),
+    )),
+    useNewHarness: v.optional(v.boolean()),
     currentSnapshotId: v.optional(v.id("assemblySnapshots")),
     shareSlug: v.optional(v.string()),
     createdAt: v.number(),
@@ -102,6 +111,16 @@ export default defineSchema({
     purchasedPartNumber: v.optional(v.string()),
     purchasedQuantity: v.optional(v.number()),
     unitCostUsd: v.optional(v.number()),
+    status: v.optional(v.union(
+      v.literal("pending"),
+      v.literal("designing"),
+      v.literal("ok"),
+      v.literal("escalated"),
+      v.literal("failed"),
+    )),
+    lastValidationAt: v.optional(v.number()),
+    useCadIr: v.optional(v.boolean()),
+    headRevisionHash: v.optional(v.string()),
     // pipe-specific (only used when kind === "pipe")
     pipeOuterDiameter: v.optional(v.number()),
     pipeWallThickness: v.optional(v.number()),
@@ -260,4 +279,124 @@ export default defineSchema({
     userAgent: v.optional(v.string()),
     createdAt: v.number(),
   }),
+
+  // --- AI harness: violations (per-part + assembly-level) ---
+  violations: defineTable({
+    projectId: v.id("projects"),
+    partId: v.optional(v.id("parts")),         // null = assembly-level violation
+    ruleId: v.string(),
+    severity: v.union(v.literal("error"), v.literal("warn")),
+    tier: v.union(v.literal("auto-fixable"), v.literal("requires-judgment")),
+    message: v.string(),
+    agentMessage: v.string(),
+    suggestedFix: v.optional(v.any()),
+    location: v.optional(v.object({
+      kind: v.union(
+        v.literal("hole"), v.literal("slot"), v.literal("edge"),
+        v.literal("bend"), v.literal("face"), v.literal("feature"),
+        v.literal("interface"), v.literal("part"),
+      ),
+      id: v.string(),
+    })),
+    status: v.union(
+      v.literal("open"),
+      v.literal("auto-repaired"),
+      v.literal("escalated"),
+      v.literal("dismissed"),
+      v.literal("resolved"),
+    ),
+    resolution: v.optional(v.object({
+      kind: v.string(),
+      by: v.union(v.literal("agent"), v.literal("user")),
+      at: v.number(),
+      note: v.optional(v.string()),
+    })),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"])
+    .index("by_part", ["partId"]),
+
+  // --- AI harness: escalations (open questions for the user) ---
+  escalations: defineTable({
+    projectId: v.id("projects"),
+    sourceViolationId: v.optional(v.id("violations")),
+    question: v.string(),
+    suggestedAnswer: v.optional(v.string()),
+    choices: v.optional(v.array(v.string())),
+    status: v.union(v.literal("open"), v.literal("answered")),
+    answer: v.optional(v.string()),
+    createdAt: v.number(),
+    answeredAt: v.optional(v.number()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_status", ["projectId", "status"]),
+
+  // --- AI harness: append-only audit log of plan transitions ---
+  planEvents: defineTable({
+    projectId: v.id("projects"),
+    at: v.number(),
+    kind: v.union(
+      v.literal("phase-changed"),
+      v.literal("noop-logged"),
+      v.literal("specialist-scheduled"),
+      v.literal("specialist-completed"),
+      v.literal("auto-repaired"),
+      v.literal("violation-opened"),
+      v.literal("violation-resolved"),
+      v.literal("escalation-opened"),
+      v.literal("escalation-answered"),
+    ),
+    payload: v.any(),
+  }).index("by_project_at", ["projectId", "at"]),
+
+  // --- CAD IR: revision history per part ---
+  cad_revisions: defineTable({
+    partId: v.id("parts"),
+    hash: v.string(),
+    parent: v.union(v.string(), v.null()),
+    patch: v.optional(v.any()),
+    ir: v.any(),
+    author: v.union(v.literal("user"), v.literal("agent"), v.literal("system")),
+    agentTurn: v.optional(v.object({
+      sessionId: v.string(),
+      turn: v.number(),
+      toolName: v.string(),
+    })),
+    createdAt: v.number(),
+    executionStatus: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+      v.literal("cached"),
+    ),
+    artifactsRefId: v.optional(v.id("cad_revision_artifacts")),
+    violations: v.array(v.any()),
+  })
+    .index("by_part", ["partId"])
+    .index("by_part_hash", ["partId", "hash"])
+    .index("by_part_createdAt", ["partId", "createdAt"]),
+
+  // --- CAD IR: storage refs + inline text for revision build artifacts ---
+  cad_revision_artifacts: defineTable({
+    revisionHash: v.string(),
+    stepStorageId: v.optional(v.id("_storage")),
+    stlStorageId: v.optional(v.id("_storage")),
+    glbStorageId: v.optional(v.id("_storage")),
+    dxfStorageId: v.optional(v.id("_storage")),
+    entitiesStorageId: v.optional(v.id("_storage")),
+    logStorageId: v.optional(v.id("_storage")),
+    // Phase 19 gap-closure: inline compile-target outputs for downstream
+    // surfaces (BOM/cost panels, motion-sim importers). Stored as text/JSON
+    // because they are typically small and queried alongside the IR.
+    urdfText: v.optional(v.string()),
+    mjcfText: v.optional(v.string()),
+    bomJson: v.optional(v.any()),
+    costJson: v.optional(v.any()),
+    fabricationCostJson: v.optional(v.any()),
+    machineCostJson: v.optional(v.any()),
+    assemblyScriptsJson: v.optional(v.any()),
+  }).index("by_hash", ["revisionHash"]),
 });

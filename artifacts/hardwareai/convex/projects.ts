@@ -1,5 +1,6 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 
 export const list = query({
   args: {},
@@ -183,6 +184,26 @@ export const remove = mutation({
       .withIndex("by_project", q => q.eq("projectId", projectId)).collect();
     for (const i of ifacesToDelete) await ctx.db.delete(i._id);
 
+    // Cascade-delete harness tables added in Plan 1.
+    const violations = await ctx.db
+      .query("violations")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .collect();
+    for (const v of violations) await ctx.db.delete(v._id);
+
+    const escalations = await ctx.db
+      .query("escalations")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .collect();
+    for (const e of escalations) await ctx.db.delete(e._id);
+
+    const planEvents = await ctx.db
+      .query("planEvents")
+      .withIndex("by_project_at", (q) => q.eq("projectId", projectId))
+      .collect();
+    for (const ev of planEvents) await ctx.db.delete(ev._id);
+
+    // Cascade-delete assembly snapshots (Slice 1 surface from main).
     const snapshotsToDelete = await ctx.db.query("assemblySnapshots")
       .withIndex("by_project_seq", q => q.eq("projectId", projectId)).collect();
     for (const s of snapshotsToDelete) await ctx.db.delete(s._id);
@@ -214,6 +235,13 @@ export const updateScope = mutation({
   },
   handler: async (ctx, { projectId, scope }) => {
     await ctx.db.patch(projectId, { scope, updatedAt: Date.now() });
+    // If this project has opted into the new harness, kick the orchestrator so the
+    // scoping → decomposing transition fires immediately (it would otherwise wait
+    // until the next setUseNewHarness toggle or external trigger).
+    const project = await ctx.db.get(projectId);
+    if (project?.useNewHarness === true) {
+      await ctx.scheduler.runAfter(0, internal.orchestrator.tick.tick, { projectId });
+    }
     return await ctx.db.get(projectId);
   },
 });
@@ -251,5 +279,40 @@ export const breakOut = mutation({
   handler: async (ctx, { projectId }) => {
     await ctx.db.patch(projectId, { archetypeId: null, archetypeParams: null, updatedAt: Date.now() });
     return await ctx.db.get(projectId);
+  },
+});
+
+export const setUseNewHarness = mutation({
+  args: { projectId: v.id("projects"), enabled: v.boolean() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.projectId, { useNewHarness: args.enabled, updatedAt: Date.now() });
+    if (args.enabled) {
+      // Kick the orchestrator so a freshly-flagged project starts ticking.
+      await ctx.scheduler.runAfter(0, internal.orchestrator.tick.tick, { projectId: args.projectId });
+    }
+  },
+});
+
+/**
+ * Toggle the CAD IR pipeline on a single part. When enabled the orchestrator
+ * dispatches the cadIr specialist instead of the legacy sheet-metal specialist.
+ *
+ * Scheduling a tick after toggling ensures the orchestrator re-evaluates the
+ * part's status immediately (e.g. if the part is already pending and its
+ * project has useNewHarness enabled, it will be dispatched right away).
+ */
+export const setUseCadIr = mutation({
+  args: {
+    partId: v.id("parts"),
+    enabled: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const part = await ctx.db.get(args.partId);
+    if (!part) throw new Error(`Part ${args.partId} not found`);
+    await ctx.db.patch(args.partId, { useCadIr: args.enabled, updatedAt: Date.now() });
+    // Re-tick so the orchestrator picks up the flag change immediately.
+    await ctx.scheduler.runAfter(0, internal.orchestrator.tick.tick, {
+      projectId: part.projectId,
+    });
   },
 });
