@@ -135,7 +135,28 @@ export const run = internalAction({
           break;
         }
 
-        const sandboxResult = await runSandbox(scriptPython);
+        // HI-02: \`runSandbox\` can throw on Vercel Sandbox provisioning
+        // failure, network errors, pip-install boot failures, or any
+        // unexpected runtime error. Without this catch, the throw propagates
+        // out of the action handler before \`_writeRevision\` runs and before
+        // \`_setPartStatus\` updates the part — leaving the part stuck at
+        // \`status: "designing"\`, which the orchestrator's status guard
+        // (tick.ts:71-75) treats as in-progress and refuses to re-dispatch.
+        // The part would be permanently stranded.
+        let sandboxResult: Awaited<ReturnType<typeof runSandbox>>;
+        try {
+          sandboxResult = await runSandbox(scriptPython);
+        } catch (err) {
+          finalViolations = [
+            {
+              ruleId: "infra.sandbox-error",
+              severity: "error",
+              message: "Sandbox execution failed",
+              agentMessage: `The geometry sandbox could not run: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ];
+          break;
+        }
         sandboxLog = sandboxResult.log;
         lastSandboxGlb = sandboxResult.glb;
         // Record which IR hash this GLB was generated from so the persist
