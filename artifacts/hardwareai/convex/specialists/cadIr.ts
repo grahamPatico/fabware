@@ -164,6 +164,27 @@ export const run = internalAction({
         // step (4a/4b) can verify it still matches the final IR.
         lastSandboxGlbForHash = hashIr(currentIr);
 
+        // ME-03: \`runSandbox.ok\` is \`exitCode === 0\`. When the build123d
+        // script crashes (exit code != 0), entities is \`[]\` and \`log\`
+        // contains the Python traceback. Running Tier 3 against empty
+        // entities would spuriously raise "missing face tags" violations —
+        // the agent would be asked to repair geometry that never compiled
+        // and wouldn't know what to do. Synthesize a build-failed violation
+        // with the log tail; the agent gets a concrete error to react to,
+        // and Tier 3 is skipped (since entities are empty by definition).
+        if (!sandboxResult.ok) {
+          finalViolations = [
+            {
+              ruleId: "geom.build-failed",
+              severity: "error",
+              message: "Geometry sandbox build failed",
+              agentMessage: `Build123d execution failed (exit != 0):\n${sandboxResult.log.slice(-800)}`,
+            },
+          ];
+          if (turn === TURN_BUDGET) break;
+          // Fall through into the agent-repair branch below by jumping
+          // past the success-path validation block.
+        } else {
         const entities = parseEntities(sandboxResult.entities);
         const requestedFaceTags = extractRequestedFaceTags(currentIr);
         // HI-04: thread the sandbox payload through PartContext.pluginContext
@@ -184,6 +205,7 @@ export const run = internalAction({
         // Geometry violations — fall through to agent repair if budget remains.
         finalViolations = geomViolations;
         if (turn === TURN_BUDGET) break;
+        } // end of else (sandboxResult.ok) — ME-03
       } else {
         finalViolations = pluginViolations;
         if (turn === TURN_BUDGET) break;
