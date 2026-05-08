@@ -64,6 +64,21 @@ export interface PartContext {
   scope: unknown | null;
   /** Summaries of peer parts in the same project (label + kind). */
   peerParts: Array<{ partId: string; label: string; kind: PartKind }>;
+  /**
+   * Plugin-specific extensions. The canonical context only carries
+   * \`scope\` + \`peerParts\`; specialists that need to thread additional
+   * runtime data through to a plugin's \`validate\` (e.g. CAD IR's sandbox
+   * log + parsed entity registry for Tier 3 geometry checks) attach it
+   * here under a plugin-owned key.
+   *
+   * Per HI-04 of the v1 closure review, this replaces the previous
+   * pattern of casting a bare \`PartContext\` to a plugin-specific
+   * subtype inside \`validate\` (which compiled but was structurally
+   * unsound — a future refactor that made the subtype field required
+   * would compile fine and crash generic hosts that pass a bare
+   * PartContext).
+   */
+  pluginContext?: Record<string, unknown>;
 }
 
 export interface Rule<TDsl> {

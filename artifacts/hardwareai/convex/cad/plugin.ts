@@ -29,18 +29,62 @@ import { validateManufacturingTier } from "./validate/manufacturingTier";
 import { budgetExceeded } from "./validate/rules/budgetExceeded";
 
 /**
- * Optional sandbox-execution context. When the specialist has run the
- * sandbox, it passes the build123d log + parsed entity registry through
- * `ctx.sandbox` so Tier 3 (geometry) can fire. Callers without a sandbox
- * result omit this and Tier 3 is skipped vacuously.
+ * Sandbox-execution payload threaded through PartContext.pluginContext when
+ * the CAD IR specialist invokes \`validate\` after running the build123d
+ * sandbox. Tier 3 (geometry) fires when this is present; without it, Tier 3
+ * is skipped vacuously (e.g. unit-test or pre-compile validate paths).
  */
-export interface CadIrPartContext extends PartContext {
-  sandbox?: {
-    log: string;
-    entities: EntityRegistry;
-    requestedFaceTags: string[];
+export interface CadIrSandboxContext {
+  log: string;
+  entities: EntityRegistry;
+  requestedFaceTags: string[];
+}
+
+/**
+ * Stable key under which the CAD IR plugin reads/writes its sandbox
+ * payload on \`PartContext.pluginContext\`. Exported so the specialist
+ * (only known caller today) can attach a payload that round-trips
+ * without colliding with future plugins.
+ */
+export const CAD_IR_SANDBOX_KEY = "cadIrSandbox" as const;
+
+/**
+ * Helper to attach a CAD IR sandbox payload onto a bare PartContext.
+ * Replaces the previous \`CadIrPartContext\` extension + cast pattern, which
+ * was structurally unsound: TypeScript's \`extends + optional\` does not
+ * guarantee the field is actually undefined at runtime when callers pass a
+ * bare PartContext, and a future refactor that promoted the field to
+ * required would compile fine yet crash generic hosts.
+ */
+export function withCadIrSandbox(ctx: PartContext, sandbox: CadIrSandboxContext): PartContext {
+  return {
+    ...ctx,
+    pluginContext: {
+      ...(ctx.pluginContext ?? {}),
+      [CAD_IR_SANDBOX_KEY]: sandbox,
+    },
   };
 }
+
+function readCadIrSandbox(ctx: PartContext): CadIrSandboxContext | undefined {
+  const raw = ctx.pluginContext?.[CAD_IR_SANDBOX_KEY];
+  if (!raw || typeof raw !== "object") return undefined;
+  // The shape was placed by withCadIrSandbox or the equivalent specialist
+  // assignment, both of which produce a CadIrSandboxContext. The runtime
+  // check above is sufficient for the contract; deeper validation would
+  // overlap with the plugin's own tier-3 validator and is unnecessary.
+  return raw as CadIrSandboxContext;
+}
+
+/**
+ * @deprecated Use \`withCadIrSandbox(ctx, sandbox)\` to attach the payload to
+ * \`PartContext.pluginContext\` and then pass the resulting bare PartContext
+ * directly. This alias is retained for one revision of backwards-compat for
+ * any external caller and should be removed in the next pass.
+ */
+export type CadIrPartContext = PartContext & {
+  sandbox?: CadIrSandboxContext;
+};
 
 /**
  * Combined tier-1 → tier-5 validate function.
@@ -54,10 +98,11 @@ export interface CadIrPartContext extends PartContext {
  *   4 manufacturing+ budget — process-gated MFG rules + budget rule.
  */
 function validate(ir: CadIr, ctx: PartContext): Violation[] {
-  // The CAD IR specialist passes a `sandbox` field on the context to enable
-  // Tier 3 (geometry) checks. Other callers (unit tests, future hosts that
-  // only know the bare ProcessPlugin contract) omit it and Tier 3 is skipped.
-  const sandbox = (ctx as CadIrPartContext).sandbox;
+  // The CAD IR specialist threads the sandbox payload through
+  // PartContext.pluginContext (see withCadIrSandbox). Other callers (unit
+  // tests, generic hosts that only know the bare ProcessPlugin contract)
+  // omit it and Tier 3 is skipped — no covariant cast required (HI-04).
+  const sandbox = readCadIrSandbox(ctx);
   // Tier 1: schema structural checks
   const schemaViolations = validateSchemaTier(ir);
   if (schemaViolations.length > 0) {

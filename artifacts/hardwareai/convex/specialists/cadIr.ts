@@ -16,7 +16,7 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 
-import { cadIrPlugin, type CadIrPartContext } from "../cad/plugin";
+import { cadIrPlugin, withCadIrSandbox } from "../cad/plugin";
 import { applyPatch } from "../cad/patch/apply";
 import { toolCallToPatch } from "../cad/patch/toolCallToPatch";
 import type { CadIr } from "../cad/ir/types";
@@ -165,10 +165,14 @@ export const run = internalAction({
 
         const entities = parseEntities(sandboxResult.entities);
         const requestedFaceTags = extractRequestedFaceTags(currentIr);
-        const sandboxCtx: CadIrPartContext = {
-          ...partCtx,
-          sandbox: { log: sandboxResult.log, entities, requestedFaceTags },
-        };
+        // HI-04: thread the sandbox payload through PartContext.pluginContext
+        // via the canonical helper rather than casting to a plugin-specific
+        // subtype. Plugin's \`validate\` reads the payload via the same key.
+        const sandboxCtx = withCadIrSandbox(partCtx, {
+          log: sandboxResult.log,
+          entities,
+          requestedFaceTags,
+        });
         const geomViolations = cadIrPlugin.validate(currentIr, sandboxCtx);
 
         if (geomViolations.length === 0) {
