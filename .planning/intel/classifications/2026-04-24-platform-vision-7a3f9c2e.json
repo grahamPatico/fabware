@@ -1,0 +1,36 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/roadmap/2026-04-24-platform-vision.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Fabware Platform Vision",
+  "summary": "Roadmap describing Fabware's shift from single-part sheet-metal designer to a multi-part assembly platform driven by user intent, broken into 16 subsystems with tier-aware behavior and a sheet-metal-assembly first slice.",
+  "scope": [
+    "platform roadmap",
+    "sheet-metal assembly",
+    "multi-part projects",
+    "K-factor bends",
+    "joining methods catalog",
+    "scoping wizard",
+    "cost estimation and BOM",
+    "electronics integration",
+    "mixed materials",
+    "visual preview",
+    "actuators",
+    "physical property analysis",
+    "environmental validation",
+    "simulation and risk",
+    "tolerance stackup",
+    "export bundle",
+    "tiering (jerry-rigged/MVP/commercial)",
+    "tennis-ball rental locker example"
+  ],
+  "cross_refs": [
+    "CLAUDE.md",
+    "docs/PLAN.md",
+    "docs/SCS-SCRAPE.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "Path is docs/roadmap/ with no ADR/PRD/SPEC convention. Status reads 'Roadmap — not yet scoped for implementation'. Document is a long-form vision/roadmap with subsystem decomposition, dependency graph, and sequencing — fits DOC best. Contains some embedded decisions ('First slice: sheet-metal assembly', 'B leads to C' architectural commitment, 'Decided 2026-04-24') that approach ADR-like content, but they are scattered through a broader roadmap rather than constituting a single locked decision record. Synthesizer may want to extract the architectural commitments separately."
+}

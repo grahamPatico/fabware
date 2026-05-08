@@ -1,0 +1,40 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/roadmap/2026-04-27-iteration-plan.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "Fabware iteration plan — 2026-04-27",
+  "summary": "Working iteration plan tracking tiered chunks of work (correctness, manufacturing realism, visual fidelity, validators, outputs, UX, agent improvements) with status checkmarks and a status log.",
+  "scope": [
+    "fabware",
+    "hardwareai",
+    "archetypes",
+    "intersection validation",
+    "sheet-metal simulator",
+    "DXF/PDF/BOM/OBJ exports",
+    "studio UI",
+    "agent assembly designer",
+    "Convex backend"
+  ],
+  "cross_refs": [
+    "docs/conventions/coordinate-frames.md",
+    "convex/lib/bendSim.ts",
+    "convex/lib/dxf.ts",
+    "convex/lib/pdf.ts",
+    "convex/lib/bom.ts",
+    "convex/lib/obj.ts",
+    "convex/lib/weight.ts",
+    "convex/lib/cost.ts",
+    "convex/lib/transform3d.ts",
+    "scripts/scrape-scs.ts",
+    "BackendPending.tsx",
+    "Home.tsx",
+    "App.tsx",
+    "Shared.tsx",
+    "intersect.ts",
+    "positions.ts"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

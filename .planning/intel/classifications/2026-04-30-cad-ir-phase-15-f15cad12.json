@@ -1,0 +1,31 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/superpowers/plans/2026-04-30-cad-ir-phase-15.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "CAD IR Phase 15 — Extended sketch primitives (arc, polygon, spline)",
+  "summary": "Implementation plan extending SketchEntity with arc, polygon, and spline kinds across types, schema, estimators, codegen, and tooling.",
+  "scope": [
+    "CAD IR",
+    "SketchEntity",
+    "arc primitive",
+    "polygon primitive",
+    "spline primitive",
+    "volume estimator",
+    "perimeter estimator",
+    "build123d codegen",
+    "add_sketch tool"
+  ],
+  "cross_refs": [
+    "types.ts",
+    "schema.ts",
+    "convex/cad/compile/volume.ts",
+    "convex/cad/compile/perimeter.ts",
+    "convex/cad/codegen/features/extrude.ts",
+    "convex/cad/codegen/features/cutExtrude.ts",
+    "tools.test.ts"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

@@ -1,0 +1,36 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/superpowers/plans/2026-04-26-ai-harness-step-1b-specialist-agent-repair-loop.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "AI Harness — Plan 3: Specialist Agent Repair Loop",
+  "summary": "Task-by-task implementation plan adding an Anthropic-driven repair loop to the sheet-metal specialist, plus three Plan-2 prereq fixes.",
+  "scope": [
+    "ai-harness",
+    "sheet-metal specialist",
+    "Anthropic agent repair loop",
+    "Convex orchestrator",
+    "violations batching",
+    "answerEscalation mutation",
+    "anthropicClient helper",
+    "sheet_metal plugin tools",
+    "runAgentRepairLoop"
+  ],
+  "cross_refs": [
+    "docs/superpowers/specs/2026-04-25-ai-harness-design.md",
+    "docs/superpowers/plans/2026-04-25-ai-harness-step-0-scaffold.md",
+    "docs/superpowers/plans/2026-04-26-ai-harness-step-1-sheet-metal-plugin.md",
+    "convex/orchestrator/escalations.ts",
+    "convex/orchestrator/violations.ts",
+    "convex/parts.ts",
+    "convex/assemblyDesigner.ts",
+    "convex/lib/anthropicClient.ts",
+    "convex/plugins/sheet_metal/tools.ts",
+    "convex/plugins/sheet_metal/prompts.ts",
+    "convex/plugins/sheet_metal/index.ts",
+    "convex/specialists/sheetMetal.ts",
+    "convex/specialists/_helpers.ts"
+  ],
+  "locked": false,
+  "precedence": null
+}

@@ -1,0 +1,41 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/PLAN.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Fabware — Plan (2026-04-23)",
+  "summary": "Iteration plan for rebranding Hardware-Genesis to Fabware and adding McMaster-Carr assembly-parts support, with thesis, inherited components, scope, deferrals, and roadmap.",
+  "scope": [
+    "Fabware",
+    "Hardware-Genesis prototype",
+    "Part DSL",
+    "SCS rules engine",
+    "DXF generator",
+    "AI designer agent",
+    "McMaster-Carr assembly parts",
+    "assembly_parts schema",
+    "AssemblyPartsPanel UI",
+    "OpenAPI / zod / React Query monorepo layout",
+    "GitHub org transfer"
+  ],
+  "cross_refs": [
+    "artifacts/api-server/src/lib/dsl.ts",
+    "scsRules.ts",
+    "featureGraph.ts",
+    "dxfGenerator.ts",
+    "aiDesigner.ts",
+    "routes/revisions.ts",
+    "lib/api-spec/openapi.yaml",
+    "lib/api-zod/",
+    "lib/api-client-react/",
+    "lib/db/",
+    "artifacts/api-server/",
+    "artifacts/hardwareai/",
+    "lib/db/src/schema/mcmasterSeed.ts",
+    "README.md",
+    "replit.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "Hybrid plan/roadmap document. Contains scope sections that resemble PRD content (features, schemas, routes) but lacks user stories, acceptance criteria, frontmatter, and decision/consequences structure. No SPEC-level schema tables either — endpoint list is informal. Classified as DOC since it functions as a narrative iteration plan; PRD was the runner-up signal."
+}

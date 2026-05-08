@@ -1,0 +1,33 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/superpowers/plans/2026-04-30-cad-ir-phase-12.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": false,
+  "title": "CAD IR Phase 12 — Inline-part fabrication cost estimation",
+  "summary": "Implementation plan for Phase 12 of the CAD IR project: estimate fabrication material cost per inline part (volume x density x $/kg) and add it to the BOM/cost output.",
+  "scope": [
+    "CAD IR",
+    "fabrication cost estimation",
+    "material catalog",
+    "volume estimator",
+    "compileCost",
+    "budget rule",
+    "convex/cad/compile",
+    "BOM"
+  ],
+  "cross_refs": [
+    "convex/cad/compile/materials.ts",
+    "convex/cad/compile/volume.ts",
+    "convex/cad/compile/fabricationCost.ts",
+    "convex/cad/compile/cost.ts",
+    "convex/cad/ir/types.ts",
+    "convex/cad/ir/schema.ts",
+    "convex/cad/prompts.ts",
+    "convex/cad/README.md",
+    "convex/cad/validate/rules/budgetExceeded.ts",
+    "convex/cad/__tests__/integration-phase10.test.ts"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

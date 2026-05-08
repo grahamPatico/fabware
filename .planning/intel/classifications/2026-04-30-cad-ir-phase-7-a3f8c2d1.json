@@ -1,0 +1,35 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/superpowers/plans/2026-04-30-cad-ir-phase-7.md",
+  "type": "SPEC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "CAD IR Phase 7 — Sketch constraint grammar (Tier 2 v0)",
+  "summary": "Implementation plan adding declarative sketch constraints (coincident/distance/parallel/etc.) to the CAD IR with Zod schemas, schema-tier ref validation, and a Tier 2 v0 DOF analyzer.",
+  "scope": [
+    "CAD IR",
+    "SketchConstraint types",
+    "Zod schema validation",
+    "schemaTier validator",
+    "constraintTier validator",
+    "modify_sketch patch ops",
+    "specialist toolCallToPatch",
+    "DOF analyzer",
+    "convex/cad plugin"
+  ],
+  "cross_refs": [
+    "convex/cad/ir/types.ts",
+    "convex/cad/ir/schema.ts",
+    "convex/cad/validate/schemaTier.ts",
+    "convex/cad/validate/constraintTier.ts",
+    "convex/cad/patch/types.ts",
+    "convex/cad/patch/apply.ts",
+    "convex/cad/patch/tools.ts",
+    "convex/specialists/cadIr.ts",
+    "convex/cad/plugin.ts",
+    "convex/cad/prompts.ts",
+    "convex/cad/README.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "Plan/implementation document with strong technical contract content (type unions, Zod schemas, validator rule IDs, patch op contracts). Classified as SPEC because it defines technical contracts the system must honor. Could also be considered DOC (implementation plan / runbook), but SPEC wins on ambiguity rule due to higher precedence and the document's contract-defining content (rule IDs, type signatures, DOF formula)."
+}

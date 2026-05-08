@@ -1,0 +1,26 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/superpowers/plans/2026-04-24-sheet-metal-assembly.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "Sheet-metal Assembly Implementation Plan",
+  "summary": "Phased implementation plan to extend Fabware from single-part to multi-part sheet-metal assemblies with archetypes, typed interfaces, and assembled preview.",
+  "scope": [
+    "sheet-metal assemblies",
+    "Convex schema (parts, interfaces tables)",
+    "archetype library",
+    "agent loop tools",
+    "Three.js assembled view",
+    "new-project wizard",
+    "Vitest test infrastructure"
+  ],
+  "cross_refs": [
+    "docs/superpowers/specs/2026-04-24-sheet-metal-assembly-design.md",
+    "docs/roadmap/2026-04-24-platform-vision.md",
+    "~/fabware/CLAUDE.md",
+    "~/.claude/projects/-Users-grahampatterson/memory/fabware_project.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "Implementation plan (task checklist + code snippets) located under /plans/. Not a single locked decision (ADR), not user-story framed (PRD), and not the contract source (defers to a separate spec doc). Best fits DOC as a guide/runbook; medium confidence because it contains schema/code-level prescriptions that overlap with SPEC territory but explicitly references a separate spec as authoritative."
+}

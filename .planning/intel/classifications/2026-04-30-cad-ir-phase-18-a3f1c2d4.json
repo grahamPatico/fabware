@@ -1,0 +1,17 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/superpowers/plans/2026-04-30-cad-ir-phase-18.md",
+  "type": "DOC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "CAD IR Phase 18 — STEP imports for external parts",
+  "summary": "Implementation plan adding optional stepUrl field to ExternalPartRef so compileAssembly can emit build123d import_step calls for external parts.",
+  "scope": ["CAD IR", "ExternalPartRef", "compileAssembly", "build123d import_step", "add_part tool", "STEP file imports"],
+  "cross_refs": [
+    "convex/cad/ir/types.ts",
+    "convex/cad/codegen/compileAssembly.ts",
+    "schema.ts"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "Phased implementation plan under /plans/ — task list with commit messages. Not an ADR (no Status/Decision), not a PRD (no user stories), not a SPEC (not a stable contract — it's a build plan). Classified DOC as supporting planning context."
+}

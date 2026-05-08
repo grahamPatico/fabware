@@ -1,0 +1,33 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/superpowers/plans/2026-04-30-cad-ir-phase-8.md",
+  "type": "SPEC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "CAD IR Phase 8 — AABB interference detection (Tier 5 expansion)",
+  "summary": "Phased implementation plan for adding axis-aligned bounding-box inter-part interference detection as a Tier 5 validation rule in the CAD IR.",
+  "scope": [
+    "CAD IR",
+    "AABB interference detection",
+    "Tier 5 validation",
+    "computePartBbox",
+    "transformBbox",
+    "partsInterfere rule",
+    "assemblyTier",
+    "convex/cad/geometry",
+    "convex/cad/validate"
+  ],
+  "cross_refs": [
+    "convex/cad/geometry/partBbox.ts",
+    "convex/cad/geometry/transform.ts",
+    "convex/cad/validate/rules/partsInterfere.ts",
+    "convex/cad/validate/assemblyTier.ts",
+    "convex/cad/prompts.ts",
+    "convex/cad/README.md",
+    "convex/cad/ir/empty",
+    "convex/cad/ir/types",
+    "convex/cad/resolve/resolveIr"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "Document is an implementation plan with concrete file contracts, function signatures, test specifications, and module structure — strong SPEC signal. It also has plan/task characteristics (DOC-like) but the dominant content is technical contracts (data shapes, interfaces, rule semantics, severities). Resolved ambiguity in favor of SPEC per precedence rule."
+}

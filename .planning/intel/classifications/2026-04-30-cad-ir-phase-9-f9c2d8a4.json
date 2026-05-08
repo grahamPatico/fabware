@@ -1,0 +1,33 @@
+{
+  "source_path": "/Users/grahampatterson/fabware/docs/superpowers/plans/2026-04-30-cad-ir-phase-9.md",
+  "type": "SPEC",
+  "confidence": "medium",
+  "manifest_override": false,
+  "title": "CAD IR Phase 9 — External part references + BOM compiler",
+  "summary": "Specifies extending PartRef into an inline|external discriminated union, AABB interference handling for externals, and a recursive BOM compiler aggregating externals by vendor+partNumber.",
+  "scope": [
+    "CAD IR",
+    "PartRef union (inline | external)",
+    "ExternalPartRef (vendor, partNumber, boundingBox)",
+    "Zod schema (CadIrSchema)",
+    "AABB interference rule (partsInterfere)",
+    "BOM compiler (compileBom, BomEntry)",
+    "add_part tool schema",
+    "specialists/cadIr toolCallToPatch",
+    "McMaster-Carr / Misumi off-the-shelf parts"
+  ],
+  "cross_refs": [
+    "convex/cad/ir/types.ts",
+    "convex/cad/ir/schema.ts",
+    "convex/cad/validate/schemaTier.ts",
+    "convex/cad/validate/rules/partsInterfere.ts",
+    "convex/cad/compile/bom.ts",
+    "convex/cad/patch/tools.ts",
+    "convex/specialists/cadIr.ts",
+    "convex/cad/prompts.ts",
+    "convex/cad/README.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": "Hybrid: structured as a step-by-step implementation plan (DOC-flavored) but the load-bearing content is technical contracts (PartRef union types, Zod schema, BomEntry interface, compileBom signature, add_part tool schema). Resolved as SPEC via ambiguity rule (SPEC > DOC). No frontmatter; not an ADR (no Decision/Consequences); not a PRD (no user stories or business goals)."
+}
