@@ -196,11 +196,20 @@ export const _updateRevisionAfterExecution = internalMutation({
 // resulting storage id. Implemented as an internalAction (not a mutation)
 // because ctx.storage.store(...) is only available on StorageActionWriter
 // (actions). The cadIr specialist calls this via ctx.runAction.
+//
+// IMPORTANT: this file does NOT have "use node" (see header), so the action
+// runs in the Convex V8 runtime where Node's `Buffer` is not available. Use
+// the Web APIs (`atob` + `Uint8Array` + `Blob`) for the base64 decode so the
+// happy path doesn't throw `ReferenceError: Buffer is not defined`.
 export const _storeGlbBlob = internalAction({
   args: { base64: v.string() },
   handler: async (ctx, args): Promise<Id<"_storage">> => {
-    const buf = Buffer.from(args.base64, "base64");
-    const blob = new Blob([buf], { type: "model/gltf-binary" });
+    const binary = atob(args.base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: "model/gltf-binary" });
     const storageId = await ctx.storage.store(blob);
     return storageId;
   },
