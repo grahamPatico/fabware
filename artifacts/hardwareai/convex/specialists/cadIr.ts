@@ -27,8 +27,9 @@ import { compileToUrdf } from "../cad/codegen/compileToUrdf";
 import { compileToMjcf } from "../cad/codegen/compileToMjcf";
 import { compileBom } from "../cad/compile/bom";
 import { compileCost, BUILTIN_PRICING } from "../cad/compile/cost";
-import { compileFabricationCost } from "../cad/compile/fabricationCost";
-import { compileMachineCost } from "../cad/compile/machineCost";
+// ME-01: \`compileCost\` invokes the fabrication+machine cost compilers
+// internally and surfaces their results on the CostResult envelope, so the
+// specialist no longer imports them directly.
 import { resolveIr } from "../cad/resolve/resolveIr";
 import { runSandbox } from "../cad/executor/runSandbox";
 import { parseEntities } from "../cad/executor/entitiesParser";
@@ -311,25 +312,22 @@ export const run = internalAction({
           console.warn("[cadIr] compileBom failed:", err);
         }
 
+        // ME-01: \`compileCost\` already invokes \`compileFabricationCost\` and
+        // \`compileMachineCost\` internally and returns their results on the
+        // \`CostResult\` envelope (\`fabricationTotalUsd\` and \`machine\`). Reuse
+        // them from \`costResult\` rather than recomputing — both compilers
+        // are pure, but doubling the work doubles latency for parts with
+        // non-trivial fabrication graphs, and re-invoking risks the persisted
+        // JSON drifting from \`costJson\` if the two call sites ever pass
+        // different config.
         try {
-          costJson = compileCost(currentIr, BUILTIN_PRICING);
+          const costResult = compileCost(currentIr, BUILTIN_PRICING);
+          costJson = costResult;
+          fabricationCostJson = { totalUsd: costResult.fabricationTotalUsd };
+          machineCostJson = { perPart: costResult.machine };
         } catch (err) {
           // eslint-disable-next-line no-console
           console.warn("[cadIr] compileCost failed:", err);
-        }
-
-        try {
-          fabricationCostJson = compileFabricationCost(currentIr);
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.warn("[cadIr] compileFabricationCost failed:", err);
-        }
-
-        try {
-          machineCostJson = compileMachineCost(currentIr);
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.warn("[cadIr] compileMachineCost failed:", err);
         }
       }
 
