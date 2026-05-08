@@ -352,6 +352,23 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
           </div>
         </div>
       )}
+      {/*
+        ME-04: graceful degradation when the toggle is on but no GLB exists
+        (e.g. legacy part with no CAD IR head revision yet, a head revision
+        predating the gap-closure commits, or a revision whose sandbox
+        failed). The toggle was previously silent on this path — the user
+        flipped the switch and saw nothing change.
+      */}
+      {focusedPart && focusedPartUseCadIr && !cadArtifacts?.glbUrl && (
+        <div className="absolute bottom-3 left-3 z-10 w-[420px] max-w-[40%] rounded-md bg-card/80 backdrop-blur border border-border shadow-lg shadow-black/40 overflow-hidden">
+          <div className="px-3 py-1.5 border-b border-border flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            <span>CAD IR preview</span>
+          </div>
+          <div className="bg-[#0a0f18] px-3 py-4 text-[11px] text-muted-foreground leading-snug">
+            CAD IR preview not available — re-run the part to produce one.
+          </div>
+        </div>
+      )}
       <Canvas
         camera={{ position: [20, 20, 20], fov: 35 }}
         shadows
