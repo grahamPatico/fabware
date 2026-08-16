@@ -1,4 +1,5 @@
 import { threadFromPartNumber, type ThreadSpec } from "./fastenerSpecs";
+import { citeBending, citeCatalog, citeCutting, type ScsLiveSku } from "./scsLive";
 
 export interface MaterialRule {
   name: string;
@@ -342,7 +343,17 @@ function safeParseAngles(s: string | null | undefined): number[] {
   return [];
 }
 
-export function validateSpec(spec: SpecInput): ValidationResult {
+/**
+ * Validate a spec against the SCS catalog.
+ *
+ * `live` is the SendCutSend SKU that matches this material + thickness in the
+ * cached official feeds (see lib/scsLive.ts + convex/scsSync.ts). When it's
+ * null — no cache yet, unmapped material, off-catalog thickness — behavior is
+ * exactly the hand-maintained snapshot's. When present, its published numbers
+ * override the snapshot's heuristics and every message cites the feed field it
+ * came from.
+ */
+export function validateSpec(spec: SpecInput, live: ScsLiveSku | null = null): ValidationResult {
   const rules: RuleResult[] = [];
   const snapped: Partial<SpecInput> = {};
 
@@ -439,9 +450,33 @@ export function validateSpec(spec: SpecInput): ValidationResult {
     effectiveT = matched;
   }
 
-  // Rule 3: Sheet size within capacity
+  // Live rule: stock status is catalog-side and per-SKU. Warn only — SCS still
+  // accepts the order, it just won't ship until the material is back.
+  if (live?.outOfStock) {
+    rules.push({
+      id: "stock",
+      label: "SKU in stock at Send Cut Send",
+      status: "warn",
+      message: `SKU currently out of stock at SendCutSend: ${live.sku} (${mat.name}${live.thickness != null ? ` ${live.thickness}"` : ""}) — ${citeCatalog(live.sku, "out_of_stock")}.`,
+    });
+  }
+
+  // Rule 3: Sheet size within capacity. The live SKU's published max part size
+  // wins when SCS ships one for it (G90 Galvanized omits it in both feeds, so
+  // that material still falls back to the snapshot's max sheet).
   const w = spec.width ?? null;
   const h = spec.height ?? null;
+  const liveMax = live?.maxPartSize ?? null;
+  const maxW = liveMax ? liveMax.w : mat.maxSheet.width;
+  const maxH = liveMax ? liveMax.h : mat.maxSheet.height;
+  const maxCite = liveMax && live ? ` (${citeCutting(live.sku, "max_part_size")})` : "";
+  // SCS's live envelope is rectangular (44 × 30), so a 20"×40" part fits
+  // rotated. The snapshot's envelopes are square, where this reduces to the
+  // original per-axis comparison.
+  const exceedsMax =
+    w != null &&
+    h != null &&
+    (Math.max(w, h) > Math.max(maxW, maxH) || Math.min(w, h) > Math.min(maxW, maxH));
   if (w == null || h == null) {
     rules.push({
       id: "sheet",
@@ -449,14 +484,14 @@ export function validateSpec(spec: SpecInput): ValidationResult {
       status: "warn",
       message: "Overall dimensions not fully specified.",
     });
-  } else if (w > mat.maxSheet.width || h > mat.maxSheet.height) {
-    const snapW = Math.min(w, mat.maxSheet.width);
-    const snapH = Math.min(h, mat.maxSheet.height);
+  } else if (exceedsMax) {
+    const snapW = w >= h ? Math.min(w, Math.max(maxW, maxH)) : Math.min(w, Math.min(maxW, maxH));
+    const snapH = w >= h ? Math.min(h, Math.min(maxW, maxH)) : Math.min(h, Math.max(maxW, maxH));
     rules.push({
       id: "sheet",
       label: "Sheet size within max",
       status: "fail",
-      message: `Part exceeds ${mat.maxSheet.width}"×${mat.maxSheet.height}" max for ${mat.name}.`,
+      message: `Part exceeds ${maxW}"×${maxH}" max for ${mat.name}${maxCite}.`,
       suggestion: { width: snapW, height: snapH },
     });
     snapped.width = snapW;
@@ -466,31 +501,73 @@ export function validateSpec(spec: SpecInput): ValidationResult {
       id: "sheet",
       label: "Sheet size within max",
       status: "pass",
-      message: `${w}"×${h}" fits ${mat.maxSheet.width}"×${mat.maxSheet.height}" max.`,
+      message: `${w}"×${h}" fits ${maxW}"×${maxH}" max${maxCite}.`,
     });
+  }
+
+  // Live rule: SCS publishes a per-SKU minimum part size (min_part_length ×
+  // min_part_width). Read conservatively — a part under the min width in BOTH
+  // directions can't be cut at all (fail); one whose long side is under
+  // min_part_length is probably too small but may still be orientable inside
+  // the published envelope (warn).
+  if (live && w != null && h != null && (live.minPartWidth != null || live.minPartLength != null)) {
+    const minPW = live.minPartWidth;
+    const minPL = live.minPartLength;
+    const envelope = `${minPL ?? "?"}"×${minPW ?? "?"}"`;
+    if (minPW != null && w < minPW && h < minPW) {
+      rules.push({
+        id: "min-part-size",
+        label: "Part meets SCS minimum size",
+        status: "fail",
+        message: `${w}"×${h}" is below the ${envelope} minimum part size for ${live.sku} (${citeCutting(live.sku, "min_part_width")}).`,
+      });
+    } else if (minPL != null && Math.max(w, h) < minPL) {
+      rules.push({
+        id: "min-part-size",
+        label: "Part meets SCS minimum size",
+        status: "warn",
+        message: `Longest side ${Math.max(w, h)}" is under the ${minPL}" minimum part length for ${live.sku} (${citeCutting(live.sku, "min_part_length")}).`,
+      });
+    } else {
+      rules.push({
+        id: "min-part-size",
+        label: "Part meets SCS minimum size",
+        status: "pass",
+        message: `${w}"×${h}" clears the ${envelope} minimum for ${live.sku}.`,
+      });
+    }
   }
 
   // Rule 4: Hole diameter vs thickness
   const holes = safeParseHoles(spec.holePattern);
   if (holes && effectiveT != null) {
-    const minHole = Math.max(0.04, effectiveT * mat.minHoleMultiplier);
+    // The live SKU's published min_hole_size replaces both the global 0.04"
+    // floor and the 1×-thickness multiplier heuristic.
+    const liveMinHole = live?.minHoleSize ?? null;
+    const minHole = liveMinHole ?? Math.max(0.04, effectiveT * mat.minHoleMultiplier);
+    const holeLabel = liveMinHole != null ? "Min hole ≥ SCS minimum" : "Min hole ≥ thickness";
+    const holeBasis =
+      liveMinHole != null && live ? ` (${citeCutting(live.sku, "min_hole_size")})` : " (1× thickness)";
     if (holes.diameter < minHole) {
       const snapD = Math.round(minHole * 1000) / 1000;
       const newPattern = JSON.stringify({ ...holes, diameter: snapD });
       rules.push({
         id: "hole-diameter",
-        label: "Min hole ≥ thickness",
+        label: holeLabel,
         status: "fail",
-        message: `${holes.diameter}" hole is below ${minHole.toFixed(3)}" minimum (1× thickness).`,
+        message: `${holes.diameter}" hole is below ${minHole.toFixed(3)}" minimum${holeBasis}.`,
         suggestion: { holePattern: newPattern },
       });
       snapped.holePattern = newPattern;
     } else {
       rules.push({
         id: "hole-diameter",
-        label: "Min hole ≥ thickness",
+        label: holeLabel,
         status: "pass",
-        message: `${holes.diameter}" ≥ ${minHole.toFixed(3)}" minimum.`,
+        message:
+          liveMinHole != null && live
+            ? `${holes.diameter}" ≥ ${minHole.toFixed(3)}" minimum${holeBasis}.`
+            : `${holes.diameter}" ≥ ${minHole.toFixed(3)}" minimum.`,
       });
     }
 
@@ -531,12 +608,18 @@ export function validateSpec(spec: SpecInput): ValidationResult {
   // Rule 6: Bend radius
   const angles = safeParseAngles(spec.bendAngles);
   if (angles.length > 0) {
-    if (!mat.canBend) {
+    // With live data the per-SKU `bending_specs` block (or its absence) is
+    // authoritative: SCS gates bending per thickness, not per material, so the
+    // snapshot's whole-material `canBend` flag is the coarser signal.
+    const bendingOffered = live ? live.bending != null : mat.canBend;
+    if (!bendingOffered) {
       rules.push({
         id: "bend-allowed",
         label: "Bending supported",
         status: "fail",
-        message: `${mat.name} cannot be bent by Send Cut Send. Remove bends or change material.`,
+        message: live
+          ? `SCS does not offer bending for this SKU (${live.sku}, ${mat.name}${live.thickness != null ? ` ${live.thickness}"` : ""}) — no bending_specs in sendcutsend-specs.json materials[sku=${live.sku}]. Remove bends or change material/thickness.`
+          : `${mat.name} cannot be bent by Send Cut Send. Remove bends or change material.`,
         suggestion: { bendAngles: "[]", bendRadius: null },
       });
       snapped.bendAngles = "[]";
@@ -559,6 +642,64 @@ export function validateSpec(spec: SpecInput): ValidationResult {
           label: "Bend radius ≥ material min",
           status: "pass",
           message: `Bend radius ${r}" ≥ ${minR}" minimum.`,
+        });
+      }
+    }
+
+    // Live bending limits. Warn where the geometry reasoning is approximate
+    // (we don't know which edge the bend runs along); fail only on the angle,
+    // which is a direct cited violation.
+    const bending = live?.bending ?? null;
+    if (live && bending) {
+      const effR = bending.effectiveBendRadius;
+      if (effR != null) {
+        const r = spec.bendRadius ?? 0;
+        if (r < effR) {
+          rules.push({
+            id: "bend-effective-radius",
+            label: "Bend radius matches SCS tooling",
+            status: "warn",
+            message: `Requested R${r}" is tighter than the R${effR}" Send Cut Send tools ${live.sku} at — the formed radius will come out near R${effR}" (${citeBending(live.sku, "effective_bend_radius")}).`,
+          });
+        } else {
+          rules.push({
+            id: "bend-effective-radius",
+            label: "Bend radius matches SCS tooling",
+            status: "pass",
+            message: `R${r}" ≥ the R${effR}" SCS tools ${live.sku} at.`,
+          });
+        }
+      }
+
+      const maxAngle = bending.maxBendAngle;
+      if (maxAngle != null) {
+        const over = angles.filter((a) => a > maxAngle);
+        if (over.length > 0) {
+          rules.push({
+            id: "bend-max-angle",
+            label: "Bend angle within SCS max",
+            status: "fail",
+            message: `Bend angle${over.length > 1 ? "s" : ""} ${over.join("°, ")}° exceed${over.length > 1 ? "" : "s"} the ${maxAngle}° maximum for ${live.sku} (${citeBending(live.sku, "max_bend_angle")}).`,
+          });
+        } else {
+          rules.push({
+            id: "bend-max-angle",
+            label: "Bend angle within SCS max",
+            status: "pass",
+            message: `All bend angles within the ${maxAngle}° maximum for ${live.sku}.`,
+          });
+        }
+      }
+
+      // Approximate: the bend line can't be longer than the part's longest
+      // side, so compare against that rather than guessing the bend axis.
+      const maxBendLen = bending.maxBendLength;
+      if (maxBendLen != null && w != null && h != null && Math.max(w, h) > maxBendLen) {
+        rules.push({
+          id: "bend-length",
+          label: "Bend line within SCS press capacity",
+          status: "warn",
+          message: `Longest side ${Math.max(w, h)}" exceeds the ${maxBendLen}" max bend length for ${live.sku} — a bend running that way won't fit the press brake (${citeBending(live.sku, "max_bend_length")}).`,
         });
       }
     }

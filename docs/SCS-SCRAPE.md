@@ -1,5 +1,13 @@
 # Refreshing the SendCutSend rules catalog
 
+> **Superseded (2026-08-16).** SCS publishes official machine-readable feeds, so
+> there is nothing left to scrape. `convex/scsSync.ts` fetches both
+> (`https://cdn.sendcutsend.com/specs/sendcutsend-catalog.json` and
+> `https://cdn.sendcutsend.com/specs/sendcutsend-specs.json`) on a daily cron
+> and caches the parsed rules in the `scsRuleCache` table; manual refresh is
+> `npx convex run scsSync:refreshNow`. The `scrape-scs` script and its
+> `@workspace/scripts` entry are gone. Everything below is kept for history.
+
 Fabware's `scsRules.ts` encodes SCS's public materials catalog (material names, thicknesses, powder-coat availability, bend capability) so the AI designer can validate parts at design time. That catalog drifts — SCS adds materials and stocks new thicknesses. This doc is how we keep ours in sync.
 
 ## Rules

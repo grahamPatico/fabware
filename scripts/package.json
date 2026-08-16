@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
-    "scrape-scs": "tsx ./src/scrape-scs.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

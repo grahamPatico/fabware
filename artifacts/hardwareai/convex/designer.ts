@@ -19,6 +19,7 @@ import {
   POWDER_COAT_COLORS,
   type ValidationResult,
 } from "./lib/scsRules";
+import { liveSkuFor, type ScsLiveRules, type ScsLiveSku } from "./lib/scsLive";
 import { MCMASTER_SEED, lookupSeedPart, findSeedPart } from "./lib/mcmasterSeed";
 import { buildFeatureGraph } from "./lib/featureGraph";
 import { generateSvgPreview, type FlatPreviewSpec } from "./lib/dxfGenerator";
@@ -154,7 +155,15 @@ const TOOLS: Anthropic.Messages.Tool[] = [
   },
 ];
 
-function validateForLlm(rawDsl: unknown): {
+/** Resolve the live SCS SKU for a legacy-shaped spec. */
+function liveFor(
+  liveRules: ScsLiveRules | null,
+  spec: { material?: string | null; thickness?: number | null },
+): ScsLiveSku | null {
+  return liveSkuFor(liveRules, spec.material ?? undefined, spec.thickness ?? NaN);
+}
+
+function validateForLlm(rawDsl: unknown, liveRules: ScsLiveRules | null): {
   parsed: PartDsl | null;
   validation: ValidationResult | null;
   parseError?: string;
@@ -178,7 +187,7 @@ function validateForLlm(rawDsl: unknown): {
     powderCoat: legacy.powderCoat,
     powderCoatColor: legacy.powderCoatColor,
     assemblyRefs: legacy.assemblyRefs ?? [],
-  });
+  }, liveFor(liveRules, legacy));
   return { parsed: dsl, validation };
 }
 
@@ -221,6 +230,7 @@ async function runAgentLoop(
   systemPrompt: string,
   initialMessages: Anthropic.Messages.MessageParam[],
   fallbackDsl: PartDsl,
+  liveRules: ScsLiveRules | null,
 ): Promise<{
   finalDsl: PartDsl;
   rationale: string;
@@ -267,7 +277,7 @@ async function runAgentLoop(
     for (const tu of toolUses) {
       if (tu.name === "validate_dsl") {
         const input = tu.input as { dsl: unknown };
-        const { parsed, validation, parseError } = validateForLlm(input.dsl);
+        const { parsed, validation, parseError } = validateForLlm(input.dsl, liveRules);
         if (!parsed || !validation) {
           toolResults.push({
             type: "tool_result",
@@ -326,7 +336,7 @@ async function runAgentLoop(
         });
       } else if (tu.name === "submit_final") {
         const input = tu.input as { dsl: unknown; rationale: string };
-        const { parsed, validation, parseError } = validateForLlm(input.dsl);
+        const { parsed, validation, parseError } = validateForLlm(input.dsl, liveRules);
         if (!parsed || !validation) {
           toolResults.push({
             type: "tool_result",
@@ -358,7 +368,7 @@ async function runAgentLoop(
       return {
         finalDsl,
         rationale: finalSubmitted.rationale,
-        finalValidation: validateSpec(snapped),
+        finalValidation: validateSpec(snapped, liveFor(liveRules, snapped)),
         iterations: iter,
         usages,
       };
@@ -373,7 +383,7 @@ async function runAgentLoop(
     return {
       finalDsl,
       rationale: "Snapped your design to Send Cut Send's catalog (model didn't finalize, used last validated draft).",
-      finalValidation: validateSpec(snapped),
+      finalValidation: validateSpec(snapped, liveFor(liveRules, snapped)),
       iterations: iter,
       usages,
     };
@@ -383,7 +393,7 @@ async function runAgentLoop(
   return {
     finalDsl: fallbackDsl,
     rationale: "Couldn't fully understand the request — kept the existing design.",
-    finalValidation: validateSpec(legacyFallback),
+    finalValidation: validateSpec(legacyFallback, liveFor(liveRules, legacyFallback)),
     iterations: iter,
     usages,
   };
@@ -495,9 +505,18 @@ export const generateDesign = internalAction({
 
     const client = new Anthropic({ apiKey });
 
+    // Cached SCS feeds, read once per turn. Null (cron never ran, or the read
+    // failed) just means validation falls back to the static snapshot.
+    let liveRules: ScsLiveRules | null = null;
+    try {
+      liveRules = (await ctx.runQuery(internal.scsSync.getLiveRules, {})) as ScsLiveRules | null;
+    } catch {
+      liveRules = null;
+    }
+
     let result;
     try {
-      result = await runAgentLoop(client, model, effort, systemPrompt, llmHistory, fallback);
+      result = await runAgentLoop(client, model, effort, systemPrompt, llmHistory, fallback, liveRules);
     } catch (err) {
       const message = err instanceof Error ? err.message : "unknown";
       return {

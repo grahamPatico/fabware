@@ -11,6 +11,8 @@ import {
   type FlatPreviewSpec,
 } from "./lib/dxfGenerator";
 import { validateSpec, applySnap } from "./lib/scsRules";
+import { liveSkuFor, type ScsLiveSku } from "./lib/scsLive";
+import { loadLiveRules } from "./scsSync";
 
 const partSpecPatchArgs = v.object({
   partType: v.optional(v.string()),
@@ -130,7 +132,12 @@ export const getValidation = query({
         // ignore
       }
     }
-    return validateSpec({ ...spec, assemblyRefs: assemblyRefs ?? [] });
+    const live = liveSkuFor(
+      await loadLiveRules(ctx.db),
+      spec.material,
+      spec.thickness ?? NaN,
+    );
+    return validateSpec({ ...spec, assemblyRefs: assemblyRefs ?? [] }, live);
   },
 });
 
@@ -142,7 +149,12 @@ export const applySuggestion = mutation({
       .withIndex("by_project", (q) => q.eq("projectId", projectId))
       .unique();
     if (!spec) throw new Error("No part spec to fix");
-    const validation = validateSpec(spec);
+    // Load the cache once; re-resolve the SKU after snapping since the snap can
+    // move material or thickness onto a different SKU.
+    const liveRules = await loadLiveRules(ctx.db);
+    const liveFor = (s: { material?: string; thickness?: number }): ScsLiveSku | null =>
+      liveSkuFor(liveRules, s.material, s.thickness ?? NaN);
+    const validation = validateSpec(spec, liveFor(spec));
     const snapped = applySnap(spec, validation.snappedSpec);
     const enriched = withGraph({ ...spec, ...snapped, dsl: null, featureGraph: null });
     const svgPreview = generateSvgPreview(enriched);
@@ -154,7 +166,7 @@ export const applySuggestion = mutation({
       updatedAt: Date.now(),
     });
     const updated = await ctx.db.get(spec._id);
-    return { partSpec: updated, validation: validateSpec(updated!) };
+    return { partSpec: updated, validation: validateSpec(updated!, liveFor(updated!)) };
   },
 });
 

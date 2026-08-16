@@ -14,6 +14,8 @@ import { validatePartByKind } from "./lib/partValidator";
 import { simulatePart } from "./lib/bendSim";
 import { estimatePartWeight } from "./lib/weight";
 import { estimatePartCost } from "./lib/cost";
+import { liveSkuFor } from "./lib/scsLive";
+import { loadLiveRules } from "./scsSync";
 
 export const costSummary = query({
   args: { projectId: v.id("projects") },
@@ -106,11 +108,13 @@ export const summarizeForProject = query({
     let totalFails = 0;
     let totalWarns = 0;
     let sheetCount = 0;
+    // One cache read for the whole project; the SKU is resolved per part.
+    const liveRules = await loadLiveRules(ctx.db);
 
     for (const p of parts) {
       if ((p.kind ?? "sheet_metal") !== "sheet_metal") continue;
       sheetCount += 1;
-      const validation = validatePartByKind(p);
+      const validation = validatePartByKind(p, liveSkuFor(liveRules, p.material, p.thickness ?? NaN));
       const failures = validation.rules.filter(r => r.status === "fail").length;
       const warnings = validation.rules.filter(r => r.status === "warn").length;
       totalFails += failures;

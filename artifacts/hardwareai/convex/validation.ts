@@ -4,6 +4,8 @@ import { validateAssembly, type AssemblyInput } from "./lib/assemblyRules";
 import { PartDslSchema } from "./lib/dsl";
 import { validatePartByKind } from "./lib/partValidator";
 import { computeIntersectionRules } from "./lib/intersectRules";
+import { liveSkuFor } from "./lib/scsLive";
+import { loadLiveRules } from "./scsSync";
 
 export const getAssemblyValidation = query({
   args: { projectId: v.id("projects") },
@@ -73,6 +75,13 @@ export const getPartValidation = query({
   handler: async (ctx, { partId }) => {
     const part = await ctx.db.get(partId);
     if (!part) return null;
-    return validatePartByKind(part);
+    // The parts row mirrors its DSL's material/thickness (see convex/parts.ts),
+    // so the row columns are enough to resolve the live SCS SKU.
+    const live = liveSkuFor(
+      await loadLiveRules(ctx.db),
+      part.material,
+      part.thickness ?? NaN,
+    );
+    return validatePartByKind(part, live);
   },
 });

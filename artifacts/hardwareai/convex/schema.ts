@@ -407,4 +407,16 @@ export default defineSchema({
     machineCostJson: v.optional(v.any()),
     assemblyScriptsJson: v.optional(v.any()),
   }).index("by_hash", ["revisionHash"]),
+
+  // --- SendCutSend live rules cache (see convex/scsSync.ts) ---
+  // One row, key "latest". `rulesJson` is a serialized ScsLiveRules parsed from
+  // SCS's official catalog + specs feeds by a daily cron. Stored as text so the
+  // shape can evolve in lib/scsLive.ts without a schema migration.
+  scsRuleCache: defineTable({
+    key: v.string(),
+    fetchedAt: v.number(),
+    rulesJson: v.string(),
+    catalogGeneratedAt: v.optional(v.string()),
+    specsGeneratedAt: v.optional(v.string()),
+  }).index("by_key", ["key"]),
 });
