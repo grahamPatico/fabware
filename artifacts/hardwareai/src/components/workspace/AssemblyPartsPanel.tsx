@@ -120,6 +120,24 @@ function BundleDownloadButton({ projectId }: { projectId: Id<"projects"> }) {
   );
 }
 
+/** Prefer the step.parts product page; fall back to mcmaster.com by part number. */
+function purchasedPartHref(p: { stepPageUrl?: string | null; purchasedPartNumber?: string | null }): string {
+  if (p.stepPageUrl) return p.stepPageUrl;
+  const raw = (p.purchasedPartNumber ?? "").trim();
+  // "step.parts:<id>" stands in when there's no McMaster number — rebuild the
+  // catalog page URL rather than mangling the id into a mcmaster.com path.
+  if (/^step\.parts:/i.test(raw)) {
+    return `https://www.step.parts/parts/${raw.slice("step.parts:".length)}`;
+  }
+  return `https://www.mcmaster.com/${raw.toUpperCase().replace(/[^A-Z0-9]/g, "")}/`;
+}
+
+/** Drop the "step.parts:" prefix used as a stand-in when there's no McMaster number. */
+function purchasedPartLabel(partNumber: string | null | undefined): string {
+  const raw = (partNumber ?? "").trim();
+  return raw.replace(/^step\.parts:/i, "");
+}
+
 function aggregateInterfaceHardware(
   interfaces: Array<{ hardwareRefs?: HardwareRef[] | null }> | undefined,
 ): Array<{ partNumber: string; quantity: number; roles: Set<string> }> {
@@ -369,15 +387,21 @@ export default function AssemblyPartsPanel({ projectId, readOnly = false }: { pr
             {purchasedParts.map(p => (
               <a
                 key={p._id}
-                href={`https://www.mcmaster.com/${(p.purchasedPartNumber ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "")}/`}
+                href={purchasedPartHref(p)}
                 target="_blank"
                 rel="noreferrer"
+                title={p.stepPageUrl ? "Open on step.parts" : "Open on mcmaster.com"}
                 className="font-mono text-[11px] flex items-center gap-2 hover:text-primary transition-colors"
               >
                 <Badge variant="secondary" className="font-mono text-[10px] w-10 justify-center">
                   ×{p.purchasedQuantity ?? 1}
                 </Badge>
-                <span className="text-primary">{p.purchasedPartNumber}</span>
+                <span className="text-primary">{purchasedPartLabel(p.purchasedPartNumber)}</span>
+                {p.stepPageUrl && (
+                  <Badge variant="outline" className="font-mono text-[9px] uppercase tracking-wider shrink-0">
+                    step
+                  </Badge>
+                )}
                 <span className="truncate text-muted-foreground">{p.label}</span>
               </a>
             ))}

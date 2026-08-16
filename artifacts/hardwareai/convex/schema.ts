@@ -111,6 +111,14 @@ export default defineSchema({
     purchasedPartNumber: v.optional(v.string()),
     purchasedQuantity: v.optional(v.number()),
     unitCostUsd: v.optional(v.number()),
+    // step.parts catalog linkage (only set when the part was resolved from
+    // https://api.step.parts — legacy purchased parts have none of these).
+    stepPartId: v.optional(v.string()),
+    stepGlbUrl: v.optional(v.string()),
+    stepStepUrl: v.optional(v.string()),
+    stepPageUrl: v.optional(v.string()),
+    stepPngUrl: v.optional(v.string()),
+    stepAttributesJson: v.optional(v.string()),
     status: v.optional(v.union(
       v.literal("pending"),
       v.literal("designing"),

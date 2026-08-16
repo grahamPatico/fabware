@@ -13,6 +13,19 @@ describe("validatePurchased", () => {
     expect(r.hasFailures).toBe(false);
   });
 
+  it("passes with a step.parts id even when the number isn't in the seed", () => {
+    const dsl: PurchasedDsl = {
+      version: 1, kind: "purchased",
+      mcmasterPartNumber: "step.parts:din913_set_screw_m3x3", quantity: 8,
+      label: "M3 x 3 set screw", stepPartId: "din913_set_screw_m3x3",
+    };
+    const r = validatePurchased(dsl);
+    const rule = r.rules.find(x => x.id === "catalog_known");
+    expect(rule?.status).toBe("pass");
+    expect(rule?.message).toBe("resolved from step.parts catalog (din913_set_screw_m3x3)");
+    expect(r.hasFailures).toBe(false);
+  });
+
   it("WARNs for an unknown McMaster part", () => {
     const dsl: PurchasedDsl = {
       version: 1, kind: "purchased",

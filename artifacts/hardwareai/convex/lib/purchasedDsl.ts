@@ -7,6 +7,8 @@ export const PurchasedDslSchema = z.object({
   quantity: z.number().int().positive(),
   label: z.string().min(1),
   unitCostUsd: z.number().nonnegative().optional(),
+  /** step.parts catalog id (e.g. "din913_set_screw_m3x3") when resolved from that catalog. */
+  stepPartId: z.string().min(1).optional(),
 });
 export type PurchasedDsl = z.infer<typeof PurchasedDslSchema>;
 

@@ -3,6 +3,7 @@ import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, Grid, Edges } from "@react-three/drei";
 import { useQuery, useMutation } from "convex/react";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { Home, Square } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -13,6 +14,7 @@ import { fastenerStackFromPartNumber } from "../../../convex/lib/fastenerStack";
 import { PartDslSchema } from "../../../convex/lib/dsl";
 import { flatPattern, type FlatPattern as FlatPatternRecord } from "../../../convex/lib/flatPattern";
 import { MCMASTER_SEED } from "../../../convex/lib/mcmasterSeed";
+import { glbSceneScale } from "../../lib/glbUnits";
 
 type Pose = { x: number; y: number; z: number; rotX: number; rotY: number; rotZ: number };
 
@@ -744,6 +746,159 @@ function PurchasedMesh({ position, selected, showBounds, onClick, category }: Pu
   );
 }
 
+/**
+ * One in-flight (or settled) load per GLB URL, shared by every instance of the
+ * same catalog part — an assembly with 12 identical M3 screws fetches once and
+ * clones the cached scene 12 times. A rejected load is evicted so a later
+ * mount retries instead of inheriting the failure forever.
+ */
+const stepGlbCache = new Map<string, Promise<THREE.Group>>();
+
+function loadStepGlb(url: string): Promise<THREE.Group> {
+  const cached = stepGlbCache.get(url);
+  if (cached) return cached;
+  const pending = new Promise<THREE.Group>((resolve, reject) => {
+    new GLTFLoader().load(url, gltf => resolve(gltf.scene), undefined, err => reject(err));
+  });
+  pending.catch(() => stepGlbCache.delete(url));
+  stepGlbCache.set(url, pending);
+  return pending;
+}
+
+interface LoadedStepGlb {
+  object: THREE.Group;
+  /** Uniform factor taking the file's own units to inches. */
+  scale: number;
+  /** Post-scale translation putting the bbox center on the group origin. */
+  offset: [number, number, number];
+  /** Post-scale bbox extents, for the selection/bounds wireframe. */
+  bounds: [number, number, number];
+}
+
+interface StepPartGlbProps {
+  url: string;
+  position: Pose;
+  selected: boolean;
+  showBounds: boolean;
+  onClick: (e: ThreeEvent<MouseEvent>) => void;
+  onError: () => void;
+}
+
+/**
+ * Render a purchased part's real catalog geometry. The GLB arrives in
+ * millimetres (see `glbSceneScale`), so it's uniformly scaled into the
+ * inch-based assembly frame and re-centered on its own bounding box before
+ * the part's pose is applied — same group transform PurchasedMesh uses, so
+ * swapping between the two doesn't move the part.
+ */
+function StepPartGlb({ url, position, selected, showBounds, onClick, onError }: StepPartGlbProps) {
+  const [model, setModel] = useState<LoadedStepGlb | null>(null);
+  const onErrorRef = useRef(onError);
+  useEffect(() => { onErrorRef.current = onError; }, [onError]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setModel(null);
+    loadStepGlb(url)
+      .then(scene => {
+        if (cancelled) return;
+        // Clone per instance; geometries and materials stay shared.
+        const object = scene.clone(true);
+        object.traverse(child => {
+          const mesh = child as THREE.Mesh;
+          if (mesh.isMesh) {
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+          }
+        });
+        const box = new THREE.Box3().setFromObject(object);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const scale = glbSceneScale(Math.max(size.x, size.y, size.z));
+        setModel({
+          object,
+          scale,
+          offset: [-center.x * scale, -center.y * scale, -center.z * scale],
+          bounds: [
+            Math.max(size.x * scale, 1e-3),
+            Math.max(size.y * scale, 1e-3),
+            Math.max(size.z * scale, 1e-3),
+          ],
+        });
+      })
+      .catch(() => {
+        if (!cancelled) onErrorRef.current();
+      });
+    return () => { cancelled = true; };
+  }, [url]);
+
+  if (!model) return null;
+  return (
+    <group
+      position={[position.x, position.z, position.y]}
+      rotation={[position.rotX, position.rotZ, position.rotY]}
+    >
+      <group
+        position={model.offset}
+        scale={model.scale}
+        onClick={(e: ThreeEvent<MouseEvent>) => { e.stopPropagation(); onClick(e); }}
+        onPointerOver={(e: ThreeEvent<MouseEvent>) => { e.stopPropagation(); document.body.style.cursor = "pointer"; }}
+        onPointerOut={() => { document.body.style.cursor = ""; }}
+      >
+        <primitive object={model.object} />
+      </group>
+      {(showBounds || selected) && (
+        <mesh>
+          <boxGeometry args={model.bounds} />
+          <meshBasicMaterial visible={false} />
+          <Edges color={selected ? "#38bdf8" : "#666666"} lineWidth={selected ? 2 : 1} threshold={1} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
+interface PurchasedPartViewProps {
+  glbUrl: string | null;
+  category: string;
+  position: Pose;
+  selected: boolean;
+  showBounds: boolean;
+  onClick: (e: ThreeEvent<MouseEvent>) => void;
+}
+
+/**
+ * Dispatch for a purchased part: real step.parts geometry when the row carries
+ * a GLB URL, the hand-built category proxies otherwise (and after a failed
+ * load). The failure flag lives here so the parts loop stays hook-free.
+ */
+function PurchasedPartView({ glbUrl, category, position, selected, showBounds, onClick }: PurchasedPartViewProps) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [glbUrl]);
+
+  if (glbUrl && !failed) {
+    return (
+      <StepPartGlb
+        url={glbUrl}
+        position={position}
+        selected={selected}
+        showBounds={showBounds}
+        onClick={onClick}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return (
+    <PurchasedMesh
+      position={position}
+      selected={selected}
+      showBounds={showBounds}
+      onClick={onClick}
+      category={category}
+    />
+  );
+}
+
 function printedBoundingBox(p: { dslJson?: string | null }): { w: number; d: number; h: number } {
   if (!p.dslJson) return { w: 25, d: 25, h: 5 };
   try {
@@ -1194,8 +1349,9 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
           }
           if (kind === "purchased") {
             return wrapWithHinge(
-              <PurchasedMesh
+              <PurchasedPartView
                 key={p._id}
+                glbUrl={p.stepGlbUrl ?? null}
                 position={p.position}
                 selected={selected}
                 showBounds={showBounds}

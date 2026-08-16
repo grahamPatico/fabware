@@ -19,15 +19,21 @@ export default function Export() {
   const buttonLabel = (k: string | null | undefined) =>
     k === "printed" ? "STL" : k === "purchased" ? "Open" : "DXF";
 
-  const downloadPart = async (part: { _id: Id<"parts">; kind?: string | null; purchasedPartNumber?: string | null; role: string }) => {
+  const downloadPart = async (part: { _id: Id<"parts">; kind?: string | null; purchasedPartNumber?: string | null; stepPageUrl?: string | null; role: string }) => {
     if (!projectId) return;
     setDownloadingId(part._id);
     setErrors(prev => ({ ...prev, [part._id]: "" }));
     try {
       const kind = part.kind ?? "sheet_metal";
       if (kind === "purchased") {
-        const clean = (part.purchasedPartNumber ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-        window.open(`https://www.mcmaster.com/${clean}/`, "_blank", "noopener,noreferrer");
+        // step.parts product page when the part came from that catalog,
+        // otherwise the mcmaster.com page for its part number.
+        const raw = (part.purchasedPartNumber ?? "").trim();
+        const href = part.stepPageUrl
+          || (/^step\.parts:/i.test(raw)
+            ? `https://www.step.parts/parts/${raw.slice("step.parts:".length)}`
+            : `https://www.mcmaster.com/${raw.toUpperCase().replace(/[^A-Z0-9]/g, "")}/`);
+        window.open(href, "_blank", "noopener,noreferrer");
         return;
       }
       const data = kind === "printed"
@@ -115,19 +121,29 @@ export default function Export() {
                       <div className="text-xs text-muted-foreground">{p.role} · {p.material ?? "—"}</div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <Button
-                        onClick={() => downloadPart(p)}
-                        disabled={downloadingId === p._id}
-                        className="gap-2"
-                        size="sm"
-                      >
-                        {downloadingId === p._id ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Download className="w-4 h-4" />
+                      <div className="flex items-center gap-2">
+                        {p.stepStepUrl && (
+                          <a href={p.stepStepUrl} target="_blank" rel="noopener noreferrer">
+                            <Button variant="outline" size="sm" className="gap-2" title="Download the catalog STEP file">
+                              <Download className="w-4 h-4" />
+                              STEP
+                            </Button>
+                          </a>
                         )}
-                        {buttonLabel(p.kind)}
-                      </Button>
+                        <Button
+                          onClick={() => downloadPart(p)}
+                          disabled={downloadingId === p._id}
+                          className="gap-2"
+                          size="sm"
+                        >
+                          {downloadingId === p._id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Download className="w-4 h-4" />
+                          )}
+                          {buttonLabel(p.kind)}
+                        </Button>
+                      </div>
                       {errors[p._id] && (
                         <p className="text-xs text-destructive">{errors[p._id]}</p>
                       )}

@@ -194,6 +194,13 @@ const purchasedPartArgs = {
   label: v.string(),
   position: poseArgs,
   dslJson: v.string(),    // PurchasedDsl JSON
+  // step.parts catalog linkage — omitted for plain McMaster purchased parts.
+  stepPartId: v.optional(v.string()),
+  stepGlbUrl: v.optional(v.string()),
+  stepStepUrl: v.optional(v.string()),
+  stepPageUrl: v.optional(v.string()),
+  stepPngUrl: v.optional(v.string()),
+  stepAttributesJson: v.optional(v.string()),
 };
 
 async function insertPurchasedPart(ctx: any, a: any) {
@@ -210,6 +217,12 @@ async function insertPurchasedPart(ctx: any, a: any) {
     purchasedPartNumber: dsl.mcmasterPartNumber,
     purchasedQuantity: dsl.quantity,
     unitCostUsd: dsl.unitCostUsd,
+    stepPartId: a.stepPartId ?? dsl.stepPartId,
+    stepGlbUrl: a.stepGlbUrl,
+    stepStepUrl: a.stepStepUrl,
+    stepPageUrl: a.stepPageUrl,
+    stepPngUrl: a.stepPngUrl,
+    stepAttributesJson: a.stepAttributesJson,
     createdAt: now,
     updatedAt: now,
   });
@@ -271,11 +284,16 @@ export const updatePartDslByKindInternal = internalMutation({
     }
     if (kind === "purchased") {
       const dsl = PurchasedDslSchema.parse(JSON.parse(dslJson));
+      // step.parts linkage rides along only when the incoming DSL names it.
+      // A refine that omits stepPartId leaves the existing catalog fields
+      // (and therefore the real GLB geometry) intact rather than orphaning
+      // the stepGlbUrl / stepStepUrl already on the row.
       await ctx.db.patch(partId, {
         dslJson,
         purchasedPartNumber: dsl.mcmasterPartNumber,
         purchasedQuantity: dsl.quantity,
         unitCostUsd: dsl.unitCostUsd,
+        ...(dsl.stepPartId ? { stepPartId: dsl.stepPartId } : {}),
         updatedAt: now,
       });
       return;

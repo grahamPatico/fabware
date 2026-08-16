@@ -11,6 +11,7 @@
 
 import type { Doc } from "../_generated/dataModel";
 import { PartDslSchema } from "./dsl";
+import { mcmasterUrl } from "./purchasedDsl";
 import { estimatePartWeight } from "./weight";
 import { estimatePartCost } from "./cost";
 
@@ -35,10 +36,17 @@ interface SheetGroup {
 }
 
 interface HardwareGroup {
+  /** Display form of the part number (see `bump` for the step.parts casing carve-out). */
   partNumber: string;
   quantity: number;
   source: Set<string>;
   notes: string[];
+  /** Human name for the line — first non-empty one wins. */
+  description: string;
+  /** Per-unit price when a purchased part row carried one. */
+  unitCostUsd: number | null;
+  /** step.parts product page, when the part was resolved from that catalog. */
+  stepPageUrl: string;
 }
 
 export interface BomInputs {
@@ -71,16 +79,35 @@ export function generateBom(input: BomInputs): string {
   }
 
   const hardware = new Map<string, HardwareGroup>();
-  const bump = (partNumber: string, quantity: number, source: string, note?: string) => {
+  const bump = (
+    partNumber: string,
+    quantity: number,
+    source: string,
+    note?: string,
+    extra?: { description?: string; unitCostUsd?: number; stepPageUrl?: string },
+  ) => {
     if (!partNumber) return;
-    const key = partNumber.trim().toUpperCase();
-    const g = hardware.get(key) ?? { partNumber: key, quantity: 0, source: new Set<string>(), notes: [] };
+    const trimmed = partNumber.trim();
+    const key = trimmed.toUpperCase();
+    // McMaster numbers are canonically upper-case, but a "step.parts:<id>"
+    // fallback number carries a snake_case catalog id that must survive
+    // verbatim — group on the upper-cased key either way, display the raw one.
+    const display = /^step\.parts:/i.test(trimmed) ? trimmed : key;
+    const g = hardware.get(key) ?? {
+      partNumber: display, quantity: 0, source: new Set<string>(), notes: [],
+      description: "", unitCostUsd: null, stepPageUrl: "",
+    };
     g.quantity += quantity;
     g.source.add(source);
     if (note) g.notes.push(note);
+    if (!g.description && extra?.description) g.description = extra.description;
+    if (g.unitCostUsd === null && typeof extra?.unitCostUsd === "number") g.unitCostUsd = extra.unitCostUsd;
+    if (!g.stepPageUrl && extra?.stepPageUrl) g.stepPageUrl = extra.stepPageUrl;
     hardware.set(key, g);
   };
-  for (const ap of input.assemblyParts) bump(ap.mcmasterPartNumber, ap.quantity, "assembly_part", ap.name);
+  for (const ap of input.assemblyParts) {
+    bump(ap.mcmasterPartNumber, ap.quantity, "assembly_part", ap.name, { description: ap.name });
+  }
   for (const iface of input.interfaces) {
     for (const ref of iface.hardwareRefs ?? []) {
       bump(ref.mcmasterPartNumber, ref.quantity, "interface", `${iface.kind}: ${ref.role ?? "?"}`);
@@ -88,7 +115,11 @@ export function generateBom(input: BomInputs): string {
   }
   for (const p of input.parts) {
     if (p.kind === "purchased" && p.purchasedPartNumber) {
-      bump(p.purchasedPartNumber, p.purchasedQuantity ?? 1, "purchased_part", p.label);
+      bump(p.purchasedPartNumber, p.purchasedQuantity ?? 1, "purchased_part", p.label, {
+        description: p.label,
+        unitCostUsd: p.unitCostUsd,
+        stepPageUrl: p.stepPageUrl,
+      });
     }
   }
 
@@ -112,13 +143,16 @@ export function generateBom(input: BomInputs): string {
   }
   lines.push("");
   lines.push("## Hardware (McMaster)");
-  lines.push(row("mcmaster_part_number", "quantity", "source", "notes"));
+  lines.push(row("mcmaster_part_number", "quantity", "source", "notes", "description", "unit_cost_usd", "url"));
   for (const g of [...hardware.values()].sort((a, b) => a.partNumber.localeCompare(b.partNumber))) {
     lines.push(row(
       g.partNumber,
       g.quantity,
       [...g.source].join("+"),
       g.notes.join(" | "),
+      g.description,
+      g.unitCostUsd === null ? "" : g.unitCostUsd.toFixed(2),
+      g.stepPageUrl || mcmasterUrl(g.partNumber),
     ));
   }
   return lines.join("\n") + "\n";

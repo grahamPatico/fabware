@@ -14,7 +14,14 @@ export function validatePurchased(dsl: PurchasedDsl): {
 } {
   const rules: PurchasedRuleResult[] = [];
   const seed = lookupSeedPart(dsl.mcmasterPartNumber);
-  if (seed) {
+  if (dsl.stepPartId) {
+    // Resolved against the live step.parts catalog — a real record with STEP
+    // geometry, so the curated McMaster seed has nothing to add.
+    rules.push({
+      id: "catalog_known", label: "Catalog match", status: "pass",
+      message: `resolved from step.parts catalog (${dsl.stepPartId})`,
+    });
+  } else if (seed) {
     rules.push({
       id: "catalog_known", label: "Catalog match", status: "pass",
       message: `${seed.partNumber} — ${seed.name}`,

@@ -4,6 +4,7 @@ import { action } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
 import { getArchetype } from "./archetypes";
+import { summarizeStepPartForAgent } from "./lib/stepParts";
 
 const SUPPORTED_MODELS = ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"];
 const EFFORT_LEVELS = ["low", "medium", "high", "max", "xhigh"];
@@ -495,12 +496,43 @@ async function applyToolCall(
         ppos.rotY = (ppos.rotY ?? 0) * (Math.PI / 180);
         ppos.rotZ = (ppos.rotZ ?? 0) * (Math.PI / 180);
       }
+      // When the model picked a step.parts id, resolve it to real STEP/GLB
+      // URLs. A failed lookup is not fatal — the part still lands, just with
+      // the generic proxy geometry, and the note tells the user why.
+      const stepPartId = typeof call.input.stepPartId === "string" ? call.input.stepPartId.trim() : "";
+      let stepFields: Record<string, string | undefined> = {};
+      let resolvedId: string | null = null;
+      let stepNote = "";
+      if (stepPartId) {
+        const resolved: any = await ctx.runAction(internal.stepPartsCatalog.resolveInternal, { id: stepPartId });
+        if (resolved?.ok) {
+          resolvedId = resolved.part.id;
+          stepFields = {
+            stepPartId: resolved.part.id,
+            stepGlbUrl: resolved.part.glbUrl || undefined,
+            stepStepUrl: resolved.part.stepUrl || undefined,
+            stepPageUrl: resolved.part.pageUrl || undefined,
+            stepPngUrl: resolved.part.pngUrl || undefined,
+            stepAttributesJson: JSON.stringify(resolved.part.attributes),
+          };
+        } else {
+          stepNote = ` ⚠ ${resolved?.error ?? "step.parts lookup failed"} — added without 3D geometry.`;
+        }
+      }
+      // purchasedPartNumber stays populated for every downstream reader (BOM,
+      // assembly panel, export page) even when the model gave only a catalog id.
+      const purchasedNumber = String(call.input.mcmasterPartNumber ?? "").trim()
+        || (stepPartId ? `step.parts:${stepPartId}` : "");
+      if (!purchasedNumber) {
+        return `Couldn't add purchased part ${call.input.role}: needs mcmasterPartNumber or stepPartId.`;
+      }
       const dsl = JSON.stringify({
         version: 1,
         kind: "purchased",
-        mcmasterPartNumber: call.input.mcmasterPartNumber,
+        mcmasterPartNumber: purchasedNumber,
         quantity: call.input.quantity,
         label: call.input.label,
+        ...(resolvedId ? { stepPartId: resolvedId } : {}),
       });
       try {
         await ctx.runMutation(internal.parts.addPurchasedPartInternal, {
@@ -509,11 +541,32 @@ async function applyToolCall(
           label: call.input.label,
           position: ppos,
           dslJson: dsl,
+          ...stepFields,
         });
       } catch (err: any) {
         return `Couldn't add purchased part ${call.input.role}: ${err?.message?.slice(0, 200) ?? "error"}`;
       }
-      return `Added purchased: ${call.input.quantity} × ${call.input.label} (${call.input.mcmasterPartNumber}).`;
+      const geometryNote = resolvedId ? " — real STEP geometry attached." : "";
+      return `Added purchased: ${call.input.quantity} × ${call.input.label} (${purchasedNumber})${geometryNote}${stepNote}`;
+    }
+
+    case "search_step_parts": {
+      const res: any = await ctx.runAction(internal.stepPartsCatalog.searchInternal, {
+        query: call.input.query,
+        category: call.input.category,
+        family: call.input.family,
+        limit: 8,
+      });
+      if (!res?.ok) return `🔎 step.parts search failed: ${res?.error ?? "unknown error"}`;
+      const hits = (res.results ?? []).slice(0, 8);
+      if (hits.length === 0) {
+        return `🔎 step.parts: no match for "${call.input.query}". Use a curated McMaster number instead.`;
+      }
+      return [
+        `🔎 step.parts — ${hits.length} match${hits.length === 1 ? "" : "es"} for "${call.input.query}" ` +
+        `(pass an id to add_purchased_part as stepPartId):`,
+        ...hits.map((r: any) => `  • ${summarizeStepPartForAgent(r)}`),
+      ].join("\n");
     }
 
     case "add_pipe": {

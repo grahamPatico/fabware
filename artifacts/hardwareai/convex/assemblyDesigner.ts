@@ -318,14 +318,28 @@ const TOOLS = [
     },
   },
   {
+    name: "search_step_parts",
+    description: "Search the step.parts catalog — 16,000+ real, purchasable hardware parts (DIN/ISO fasteners, bearings, motors, standoffs, pulleys, electronics), each with a downloadable STEP file, a GLB preview, and dimensional attributes. **Call this BEFORE `add_purchased_part` whenever the user names generic hardware** (\"M3 screws\", \"608 bearing\", \"NEMA 17 motor\", \"M3 standoff\") instead of guessing a McMaster part number. Each result carries an `id` you pass straight to `add_purchased_part` as `stepPartId` — the part then gets REAL 3D geometry in the assembly view and a STEP download on the export page, which a McMaster number alone can never give you. Results also carry the dimensional attributes (thread, lengthMm, boreMm, outerDiameterMm…) you need to size mating holes. Every token in `query` must match, so keep it short (\"M3 set screw\", not \"a small metric set screw for the bracket\").",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Short search text; every token must match. e.g. 'M3 socket head screw', '608 bearing', 'nema 17'." },
+        category: { type: "string", description: "Optional category filter: electronics, power-transmission, fastener, stock, mechanical-hardware, motion, spacer, actuator, enclosure." },
+        family: { type: "string", description: "Optional family filter, e.g. 'set-screw', 'deep-groove-ball-bearing', 'hex-nut'." },
+      },
+      required: ["query"],
+    },
+  },
+  {
     name: "add_purchased_part",
-    description: "Add a purchased part referencing a McMaster part number. Use for fasteners, bearings, hinges, rubber feet, and other off-the-shelf hardware that's cheaper to buy than to make.",
+    description: "Add a purchased off-the-shelf part. Use for fasteners, bearings, hinges, rubber feet, and other hardware that's cheaper to buy than to make. Prefer passing `stepPartId` from a `search_step_parts` result (gives real geometry + a STEP file); fall back to `mcmasterPartNumber` when the catalog has no match. Supply at least one of the two.",
     input_schema: {
       type: "object",
       properties: {
         role: { type: "string" },
         label: { type: "string" },
-        mcmasterPartNumber: { type: "string" },
+        mcmasterPartNumber: { type: "string", description: "McMaster part number. Optional when `stepPartId` is supplied." },
+        stepPartId: { type: "string", description: "`id` from a `search_step_parts` result (e.g. 'din913_set_screw_m3x3'). When set, the part gets real 3D geometry in the assembly view and a STEP download." },
         quantity: { type: "number" },
         position: {
           type: "object",
@@ -334,7 +348,7 @@ const TOOLS = [
         },
         rationale: { type: "string" },
       },
-      required: ["role", "label", "mcmasterPartNumber", "quantity", "position", "rationale"],
+      required: ["role", "label", "quantity", "position", "rationale"],
     },
   },
   {
@@ -550,9 +564,25 @@ self-collide, or the customer needs to disassemble it.
 - Don't ask the user for sheet-metal rules they don't know — pick sensible
   defaults from the tier and call them out in your rationale.
 
+## Buying hardware: step.parts first, curated McMaster second
+
+Two catalogs are available, in this order of preference:
+
+1. **step.parts** (\`search_step_parts\`) — 16,000+ real purchasable parts with a
+   STEP file, a GLB preview, and dimensional attributes each. **Search this
+   first** whenever the user names generic hardware ("M3 screws", "608
+   bearing", "NEMA 17 motor", "10mm standoff") instead of guessing a McMaster
+   number. Pass the winning result's \`id\` to \`add_purchased_part\` as
+   \`stepPartId\` — that's the only path that gives the part real 3D geometry
+   in the assembly view and a STEP download on the export page. The attributes
+   on each result (thread, lengthMm, boreMm, outerDiameterMm) are what you size
+   the mating holes from.
+2. **Curated McMaster seed** (below) — use when \`search_step_parts\` returns
+   nothing usable, or when the joint needs a specific McMaster SKU.
+
 ## McMaster-Carr catalog (curated — use these part numbers verbatim)
 
-When you need a fastener, nut, washer, bearing, hinge, etc., pick the closest match from this curated catalog rather than asking the user for a part number:
+When step.parts has no match and you need a fastener, nut, washer, bearing, hinge, etc., pick the closest match from this curated catalog rather than asking the user for a part number:
 
 ${mcmasterCatalog}
 
@@ -565,7 +595,7 @@ If the user asks for an item the catalog doesn't have (e.g. a specific 3" OD alu
 
 **If the user pastes a McMaster part number** (e.g. "use 95475A150 instead"), accept it as-is and call \`add_purchased_part\` with that number — the user has just verified it on mcmaster.com. The post-action validator will WARN that it's not in the curated seed, which is informational only.
 
-**Never** invent or guess part numbers that aren't either in the curated list above OR pasted by the user.
+**Never** invent or guess part numbers that aren't either in the curated list above OR pasted by the user. A \`search_step_parts\` \`id\` is not a guess — it came from the live catalog, so passing it as \`stepPartId\` is always safe, and a part added that way validates as a catalog match instead of a warn.
 
 ## Choosing a part kind
 
@@ -577,7 +607,7 @@ Every custom part you add is one of three kinds:
 
   **Acrylic joinery** — acrylic enclosures are *solvent-welded* (Weld-On 4 / 16 capillary cement chemically fuses the panel edges; no fasteners, no through-holes), not bolted around the perimeter. The \`hinged_enclosure\` archetype detects acrylic and uses \`bodyConstruction: "solvent_welded"\` automatically — only the lid hinge has real fasteners. Don't override this with \`bolted_plates\` for acrylic unless the user explicitly asks for through-bolted corners (e.g. for serviceability). Mitered corners + solvent are even cleaner if the user wants display-case quality, but plain butt-edges + solvent is structurally fine.
 - **printed** — 3D-printed parts (FDM/resin). Use for small custom shapes with complex 3D geometry: bezels, knobs, cable grommets, snap-fit clips, mounting standoffs. Add via \`add_printed_part\`.
-- **purchased** — off-the-shelf parts from McMaster. Use for fasteners, bearings, hinges, rubber feet, springs, magnets — anything where buying is cheaper, faster, and higher quality than making. Add via \`add_purchased_part\`.
+- **purchased** — off-the-shelf parts. Use for fasteners, bearings, hinges, rubber feet, springs, magnets — anything where buying is cheaper, faster, and higher quality than making. Call \`search_step_parts\` first and add via \`add_purchased_part\` with the resulting \`stepPartId\`; fall back to a curated McMaster number only when the catalog has no match.
 
 When the user asks for something and it's not obvious which kind to use, call \`decide_make_or_buy\` first. Defaults:
 
@@ -587,7 +617,7 @@ When the user asks for something and it's not obvious which kind to use, call \`
 - If the user explicitly says "3D print", "PLA", "STL" → printed.
 - If the user says "stainless 304" or "powder coat" → sheet metal.
 
-Never invent McMaster part numbers; ask the user or use only numbers from the curated catalog you've already seen in the system prompt.
+Never invent McMaster part numbers; search step.parts, ask the user, or use only numbers from the curated catalog you've already seen in the system prompt.
 `;
 }
 
