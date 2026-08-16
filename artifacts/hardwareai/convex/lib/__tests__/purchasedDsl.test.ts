@@ -20,7 +20,7 @@ describe("PurchasedDslSchema", () => {
 
   it("summarizePurchased renders qty × label", () => {
     const dsl = {
-      version: 1, kind: "purchased" as const,
+      version: 1 as const, kind: "purchased" as const,
       mcmasterPartNumber: "91251A540", quantity: 4, label: "1/4-20 SHCS",
     };
     expect(summarizePurchased(dsl)).toContain("4 ×");

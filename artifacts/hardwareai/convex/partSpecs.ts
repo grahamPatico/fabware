@@ -1,4 +1,5 @@
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import {
   PartDslSchema,
@@ -158,13 +159,21 @@ export const applySuggestion = mutation({
     const snapped = applySnap(spec, validation.snappedSpec);
     const enriched = withGraph({ ...spec, ...snapped, dsl: null, featureGraph: null });
     const svgPreview = generateSvgPreview(enriched);
+    // `applySnap` is typed against the legacy `SpecInput` shape, whose fields
+    // are `T | null` and which carries an `assemblyRefs` key that is not a
+    // partSpecs column. The runtime value here is `spec` overlaid with the
+    // snap; a snap can clear bendRadius/powderCoatColor to null, which the
+    // schema's v.optional fields reject — map those to undefined so the patch
+    // removes the field instead of throwing.
     await ctx.db.patch(spec._id, {
       ...snapped,
+      bendRadius: snapped.bendRadius ?? undefined,
+      powderCoatColor: snapped.powderCoatColor ?? undefined,
       svgPreview,
       dslJson: enriched.dsl ? JSON.stringify(enriched.dsl) : undefined,
       featureGraphJson: enriched.featureGraph ? JSON.stringify(enriched.featureGraph) : undefined,
       updatedAt: Date.now(),
-    });
+    } as Partial<Doc<"partSpecs">>);
     const updated = await ctx.db.get(spec._id);
     return { partSpec: updated, validation: validateSpec(updated!, liveFor(updated!)) };
   },

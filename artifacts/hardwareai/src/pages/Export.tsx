@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "convex/react";
 import { CheckCircle2, ArrowLeft, Download, ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../convex/_generated/dataModel";
 
 export default function Export() {
   const params = useParams();
@@ -114,7 +114,7 @@ export default function Export() {
 
             {hasParts ? (
               <div className="space-y-3">
-                {parts.map(p => (
+                {parts.map((p: Doc<"parts">) => (
                   <div key={p._id} className="flex items-center justify-between p-3 border border-border rounded bg-card">
                     <div>
                       <div className="font-bold">{p.label}</div>

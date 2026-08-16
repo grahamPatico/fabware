@@ -74,7 +74,7 @@ function paramDefaults(scope: ProjectScope): Params {
   // Compute the relevant edge length so the default fastener count satisfies
   // the validator out of the box. Other styles use the tier default (4).
   const doorFace: "top" | "front" = isLocker ? "front" : "top";
-  const hingeSide: Params["hingeSide"] = isLocker ? "right" : "back";
+  const hingeSide = (isLocker ? "right" : "back") as Params["hingeSide"];
   const tThick = tier.thickness!;
   const outerW = inner.w + 2 * tThick;
   const outerD = inner.d + 2 * tThick;

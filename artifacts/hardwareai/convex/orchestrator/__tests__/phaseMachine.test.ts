@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeNextAction } from "../phaseMachine";
+import { computeNextAction, type Action } from "../phaseMachine";
 import type { ProjectPhase } from "../../plugins/types";
 
 const baseProject = (phase: ProjectPhase) => ({
@@ -7,12 +7,12 @@ const baseProject = (phase: ProjectPhase) => ({
   phase,
   useNewHarness: true,
   scope: undefined,
-} as never);
+});
 
 describe("computeNextAction", () => {
   it("returns 'wait' when an open escalation exists, regardless of phase", () => {
     const action = computeNextAction({
-      project: baseProject("designing"),
+      project: baseProject("designing") as never,
       parts: [],
       openEscalations: [{ _id: "e1" } as never],
       registeredKinds: ["sheet_metal"],
@@ -22,7 +22,7 @@ describe("computeNextAction", () => {
 
   it("returns 'wait' in 'scoping' when scope is missing (the wizard advances it)", () => {
     const action = computeNextAction({
-      project: baseProject("scoping"),
+      project: baseProject("scoping") as never,
       parts: [],
       openEscalations: [],
       registeredKinds: [],
@@ -52,7 +52,7 @@ describe("computeNextAction", () => {
       registeredKinds: [],
     });
     expect(action.kind).toBe("noop");
-    expect(action.reason).toMatch(/no plugin registered/i);
+    expect((action as Extract<Action, { kind: "noop" }>).reason).toMatch(/no plugin registered/i);
   });
 
   it("returns 'designPart' when a pending part has a registered plugin", () => {
@@ -99,7 +99,7 @@ describe("computeNextAction", () => {
 
   it("returns 'noop' in validating phase (assembly validator not yet wired)", () => {
     const action = computeNextAction({
-      project: baseProject("validating"),
+      project: baseProject("validating") as never,
       parts: [],
       openEscalations: [],
       registeredKinds: [],
@@ -109,7 +109,7 @@ describe("computeNextAction", () => {
 
   it("returns 'noop' in exporting phase (exporter not yet wired)", () => {
     const action = computeNextAction({
-      project: baseProject("exporting"),
+      project: baseProject("exporting") as never,
       parts: [],
       openEscalations: [],
       registeredKinds: [],
@@ -119,7 +119,7 @@ describe("computeNextAction", () => {
 
   it("returns 'wait' when project is done", () => {
     const action = computeNextAction({
-      project: baseProject("done"),
+      project: baseProject("done") as never,
       parts: [],
       openEscalations: [],
       registeredKinds: [],

@@ -91,7 +91,7 @@ export default function RulesStatusStrip({ projectId }: { projectId: Id<"project
   }
 
   const aggregated = aggregate(data.rules);
-  const passInstances = data.rules.filter(r => r.status === "pass").length;
+  const passInstances = data.rules.filter((r: { status: string }) => r.status === "pass").length;
 
   return (
     <div className="px-3 py-2 border-b border-border bg-card/60 backdrop-blur">

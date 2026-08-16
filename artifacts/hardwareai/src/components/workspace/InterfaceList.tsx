@@ -1,7 +1,7 @@
 import { useQuery } from "convex/react";
 import { Bolt, Hammer, MoveDiagonal, Cog, Flame } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../../convex/_generated/dataModel";
 
 const KIND_META: Record<string, { label: string; icon: typeof Bolt; tone: string; verb: string }> = {
   bolted:        { label: "Bolted",   icon: Bolt,         tone: "border-amber-500/40 bg-amber-500/5 text-amber-200",   verb: "bolted to" },
@@ -15,7 +15,9 @@ const KIND_META: Record<string, { label: string; icon: typeof Bolt; tone: string
 export default function InterfaceList({ projectId }: { projectId: Id<"projects"> }) {
   const interfaces = useQuery(api.interfaces.listForProject, projectId ? { projectId } : "skip");
   const parts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
-  const partMap = new Map((parts ?? []).map(p => [p._id, { label: p.label, role: p.role }]));
+  const partMap = new Map<Id<"parts">, { label: string; role: string }>(
+    (parts ?? []).map((p: Doc<"parts">) => [p._id, { label: p.label, role: p.role }]),
+  );
 
   return (
     <div className="border-t border-border">
@@ -35,7 +37,7 @@ export default function InterfaceList({ projectId }: { projectId: Id<"projects">
             None yet — interfaces appear when parts are connected.
           </div>
         )}
-        {interfaces?.map(i => {
+        {interfaces?.map((i: Doc<"interfaces">) => {
           const meta = KIND_META[i.kind] ?? { label: i.kind, icon: Cog, tone: "border-border bg-muted/20 text-muted-foreground", verb: "connected to" };
           const Icon = meta.icon;
           const a = partMap.get(i.partA);

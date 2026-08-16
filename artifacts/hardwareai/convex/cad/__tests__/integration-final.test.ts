@@ -623,7 +623,7 @@ describe("Phase 19 — mega-integration smoke test", () => {
       ...ir,
       parts: {
         ...ir.parts,
-        body: { ...ir.parts!["body"], ir: bodyWithDesc },
+        body: { ...ir.parts!["body"], ir: bodyWithDesc } as PartRef,
       },
     };
     // Re-validate the patched IR — all tiers should still be clean

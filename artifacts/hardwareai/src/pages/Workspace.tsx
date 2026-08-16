@@ -32,7 +32,7 @@ import ArchetypeInfoChip from "@/components/workspace/ArchetypeInfoChip";
 import ScopeEditor from "@/components/workspace/ScopeEditor";
 import { Button } from "@/components/ui/button";
 import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../convex/_generated/dataModel";
 
 const RESIZE_HANDLE = "w-1 bg-border data-[resize-handle-state=hover]:bg-primary/40 data-[resize-handle-state=drag]:bg-primary transition-colors";
 const RESIZE_HANDLE_HORIZ = "h-1 bg-border data-[resize-handle-state=hover]:bg-primary/40 data-[resize-handle-state=drag]:bg-primary transition-colors";
@@ -76,7 +76,7 @@ export default function Workspace({
   const [assemblyCollapsed, setAssemblyCollapsed] = useState(false);
 
   const parts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
-  const focusedPart = parts?.find(p => p._id === focusedPartId) ?? null;
+  const focusedPart = parts?.find((p: Doc<"parts">) => p._id === focusedPartId) ?? null;
 
   const snapshotStatus = useQuery(api.assemblySnapshots.status, projectId ? { projectId } : "skip");
   const undoMut = useMutation(api.assemblySnapshots.undo);

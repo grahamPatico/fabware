@@ -118,7 +118,7 @@ export function simulatePart(dsl: PartDsl): SimStep[] {
     compatNotes.push(`${mat.name} can't be press-brake bent.`);
   }
   if (mat.bendRadiusMultiplier > 1.001 && mat.bendRadiusMultiplier < 90) {
-    if (compatStatus !== "fail") compatStatus = compatStatus === "warn" ? "warn" : "warn";
+    if (compatStatus !== "fail") compatStatus = "warn";
     compatNotes.push(`${mat.name} requires bend radius ≥ ${mat.bendRadiusMultiplier.toFixed(1)} × thickness (${(mat.bendRadiusMultiplier * t).toFixed(3)}" at ${t}").`);
   }
   if (compatStatus === "pass") {

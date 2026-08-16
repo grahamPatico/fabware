@@ -5,9 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../../convex/_generated/dataModel";
+import type { SeedPart } from "../../../convex/lib/mcmasterSeed";
 
 type HardwareRef = { mcmasterPartNumber: string; quantity: number; role?: string };
+
+/** Row shape returned by `api.assemblyParts.list` (doc + derived catalog URL). */
+type AssemblyPartRow = Doc<"assemblyParts"> & { mcmasterProductUrl: string };
 
 function BomDownloadButton({ projectId }: { projectId: Id<"projects"> }) {
   const convex = useConvex();
@@ -165,7 +169,7 @@ export default function AssemblyPartsPanel({ projectId, readOnly = false }: { pr
   const parts = useQuery(api.assemblyParts.list, projectId ? { projectId } : "skip");
   const allParts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
   const interfaces = useQuery(api.interfaces.listForProject, projectId ? { projectId } : "skip");
-  const purchasedParts = (allParts ?? []).filter(p => (p.kind ?? "sheet_metal") === "purchased");
+  const purchasedParts: Doc<"parts">[] = (allParts ?? []).filter((p: Doc<"parts">) => (p.kind ?? "sheet_metal") === "purchased");
   const interfaceHardware = aggregateInterfaceHardware(interfaces);
   const createPart = useMutation(api.assemblyParts.create);
   const deletePart = useMutation(api.assemblyParts.remove);
@@ -235,7 +239,7 @@ export default function AssemblyPartsPanel({ projectId, readOnly = false }: { pr
         />
         {matches && matches.matches.length > 0 && (
           <div className="border border-border rounded-md divide-y divide-border/50 max-h-40 overflow-y-auto">
-            {matches.matches.map((m) => (
+            {matches.matches.map((m: SeedPart) => (
               <button
                 key={m.partNumber}
                 type="button"
@@ -336,7 +340,7 @@ export default function AssemblyPartsPanel({ projectId, readOnly = false }: { pr
             ))}
           </div>
         )}
-        {(parts ?? []).map((p) => (
+        {(parts ?? []).map((p: AssemblyPartRow) => (
           <div
             key={p._id}
             className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 group"

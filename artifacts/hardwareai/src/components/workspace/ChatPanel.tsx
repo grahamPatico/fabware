@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../../convex/_generated/dataModel";
 
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 
@@ -226,7 +226,7 @@ export default function ChatPanel({ projectId, focusedPartRole, disabled = false
             <p className="text-xs opacity-70">You can also attach a reference photo or sketch.</p>
           </div>
         ) : (
-          messages.map((msg, idx) => {
+          messages.map((msg: Doc<"messages">, idx: number) => {
             const isLast = idx === messages.length - 1;
             const options = msg.role === "assistant" && isLast ? parseOptions(msg.content) : [];
             return (

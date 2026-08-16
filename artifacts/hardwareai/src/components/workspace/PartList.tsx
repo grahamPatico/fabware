@@ -2,8 +2,12 @@ import { useState } from "react";
 import { useMutation, useQuery, useConvex } from "convex/react";
 import { Eye, EyeOff, Trash2, Download, FileText } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { PartKindBadge } from "./PartKindBadge";
+
+/** Per-part rows returned by `api.manufacturing.weightSummary` / `costSummary`. */
+type WeightRow = { partId: string; role: string; label: string; material: string | null; thickness: number | null; pounds: number; kg: number; areaIn2: number };
+type CostRow = { partId: string; role: string; label: string; material: number; cuts: number; bends: number; finish: number; totalUsd: number };
 
 interface Props {
   projectId: Id<"projects">;
@@ -18,8 +22,8 @@ export default function PartList({ projectId, focusedPartId, onFocusPart, hidden
   const parts = useQuery(api.parts.listForProject, projectId ? { projectId } : "skip");
   const weights = useQuery(api.manufacturing.weightSummary, projectId ? { projectId } : "skip");
   const costs = useQuery(api.manufacturing.costSummary, projectId ? { projectId } : "skip");
-  const weightByPart = new Map((weights?.perPart ?? []).map(w => [w.partId, w]));
-  const costByPart = new Map((costs?.perPart ?? []).map(c => [c.partId, c]));
+  const weightByPart = new Map<string, WeightRow>((weights?.perPart ?? []).map((w: WeightRow) => [w.partId, w]));
+  const costByPart = new Map<string, CostRow>((costs?.perPart ?? []).map((c: CostRow) => [c.partId, c]));
   const removePart = useMutation(api.parts.removePart);
   const convex = useConvex();
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -98,7 +102,7 @@ export default function PartList({ projectId, focusedPartId, onFocusPart, hidden
       <div className="flex-1 overflow-y-auto">
         {parts === undefined && <div className="p-3 text-xs font-mono text-muted-foreground">Loading…</div>}
         {parts?.length === 0 && <div className="p-3 text-xs font-mono text-muted-foreground italic">No parts yet.</div>}
-        {parts?.map(p => {
+        {parts?.map((p: Doc<"parts">) => {
           const hidden = hiddenPartIds?.has(p._id as unknown as string) ?? false;
           return (
             <div

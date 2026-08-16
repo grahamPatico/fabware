@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../convex/_generated/dataModel";
 
 const MODELS = [
   { id: "claude-opus-4-7", label: "Opus 4.7 (smartest)" },
@@ -72,7 +72,7 @@ function ChatInner() {
   );
 
   const activeThread = useMemo(
-    () => threads?.find((t) => t._id === activeId) ?? null,
+    () => threads?.find((t: Doc<"threads">) => t._id === activeId) ?? null,
     [threads, activeId],
   );
 
@@ -148,7 +148,7 @@ function ChatInner() {
           {threads && threads.length === 0 && (
             <div className="p-4 text-xs font-mono text-muted-foreground">No conversations yet</div>
           )}
-          {threads?.map((t) => (
+          {threads?.map((t: Doc<"threads">) => (
             <button
               key={t._id}
               onClick={() => setActiveId(t._id)}
@@ -233,7 +233,7 @@ function ChatInner() {
             </div>
           )}
           {activeId &&
-            messages?.map((m) => (
+            messages?.map((m: Doc<"messages">) => (
               <div
                 key={m._id}
                 className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}

@@ -1,7 +1,7 @@
 import { PartDslSchema, dslToLegacy, type HoleFeature, type PartDsl } from "./dsl";
 import { PrintedDslSchema } from "./printedDsl";
 import { PurchasedDslSchema } from "./purchasedDsl";
-import { validateSpec, type ValidationResult } from "./scsRules";
+import { validateSpec, type RuleStatus, type ValidationResult } from "./scsRules";
 import { citeCutting, type ScsLiveSku } from "./scsLive";
 import { holePositionsFor } from "./flatPattern";
 import { validatePrinted } from "./printedRules";
@@ -12,7 +12,7 @@ import { bendRulesForPartValidator } from "./bendSim";
 export interface UnifiedRuleResult {
   id: string;
   label: string;
-  status: "pass" | "warn" | "fail";
+  status: RuleStatus;
   message: string;
   suggestion?: string;
 }

@@ -20,7 +20,7 @@ describe("anthropicClient pure helpers", () => {
     const params = buildClientParams(input);
     expect(params.model).toBe("claude-sonnet-4-6");
     expect(params.system).toBe("You are a sheet-metal repair specialist.");
-    expect(params.tools.length).toBe(1);
+    expect(params.tools!.length).toBe(1);
     expect((params as { output_config?: unknown }).output_config).toBeDefined();
   });
 

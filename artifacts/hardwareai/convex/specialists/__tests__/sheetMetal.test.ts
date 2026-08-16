@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { runSpecialistOnce, type SpecialistResult, buildRepairPrompt, applyToolCallToDsl } from "../_helpers";
 import { sheetMetalPlugin } from "../../plugins/sheet_metal";
+import type { Dsl } from "../../plugins/sheet_metal/dsl";
 
 const baseDsl = {
   version: 1 as const,
@@ -12,7 +13,7 @@ const baseDsl = {
 
 describe("runSpecialistOnce (pure)", () => {
   it("returns status='ok' with no violations on a clean DSL", () => {
-    const result: SpecialistResult<typeof baseDsl> = runSpecialistOnce(sheetMetalPlugin, baseDsl, { scope: null, peerParts: [] });
+    const result: SpecialistResult<Dsl> = runSpecialistOnce(sheetMetalPlugin, baseDsl, { scope: null, peerParts: [] });
     expect(result.violations.length).toBe(0);
     expect(result.status).toBe("ok");
     expect(result.repairedDsl).toBe(baseDsl); // unchanged

@@ -17,6 +17,16 @@ import { Button } from "@/components/ui/button";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
+/** Row shape returned by `api.revisions.list`. */
+type RevisionRow = {
+  id: Id<"partRevisions">;
+  projectId: Id<"projects">;
+  revisionNumber: number;
+  dslJson: string;
+  rationale?: string;
+  createdAt: number;
+};
+
 const FoldedPreview = lazy(() => import("./FoldedPreview"));
 
 function safeJsonArray(s: string | null | undefined): number[] {
@@ -64,10 +74,10 @@ export default function CanvasPanel({
   const isPreviewing = previewRevisionId != null;
   const partSpec = isPreviewing ? previewData?.partSpec ?? null : activeSpec ?? null;
   const revs = revisions ?? [];
-  const previewRev = isPreviewing ? revs.find((r) => r.id === previewRevisionId) : null;
+  const previewRev = isPreviewing ? revs.find((r: RevisionRow) => r.id === previewRevisionId) : null;
 
   const currentIdx = activeSpec?.currentRevisionId
-    ? revs.findIndex((r) => r.id === activeSpec.currentRevisionId)
+    ? revs.findIndex((r: RevisionRow) => r.id === activeSpec.currentRevisionId)
     : revs.length - 1;
   const canUndo = currentIdx > 0;
   const canRedo = currentIdx >= 0 && currentIdx < revs.length - 1;

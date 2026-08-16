@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { NewProjectWizard } from "./NewProjectWizard";
 
 export default function Home() {
@@ -74,7 +74,7 @@ export default function Home() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project) => {
+            {projects.map((project: Doc<"projects">) => {
               const isConfirming = confirmDeleteId === project._id;
               const isRemoving = removingId === project._id;
               const handleDeleteClick = (e: React.MouseEvent) => {

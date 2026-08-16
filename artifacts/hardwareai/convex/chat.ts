@@ -2,6 +2,7 @@
 
 import { action } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -59,8 +60,8 @@ export const send = action({
     // Build conversation history for the model call.
     const history = await ctx.runQuery(internal.messages.listForThreadInternal, { threadId });
     const conversationMessages = history
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) => ({ role: m.role, content: m.content }));
+      .filter((m: Doc<"messages">) => m.role === "user" || m.role === "assistant")
+      .map((m: Doc<"messages">) => ({ role: m.role, content: m.content }));
 
     const client = new Anthropic({ apiKey });
 

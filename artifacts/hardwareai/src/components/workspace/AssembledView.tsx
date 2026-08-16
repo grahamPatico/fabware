@@ -6,7 +6,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { Home, Square } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { CadPreview } from "../CadPreview";
 import { holeWorldPositions } from "../../../convex/lib/featuresInWorld";
 import { holesPostBend } from "../../../convex/lib/bentGeometry";
@@ -1128,7 +1128,7 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
 
   const partBounds = useMemo(() => {
     if (!parts) return [];
-    return parts.map(p => {
+    return parts.map((p: Doc<"parts">) => {
       const kind = p.kind ?? "sheet_metal";
       if (kind === "printed") {
         const bb = printedBoundingBox(p);
@@ -1162,7 +1162,7 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
     onFocusPart(id === focusedPartId ? null : id);
   };
 
-  const focusedPart = parts?.find(p => p._id === focusedPartId);
+  const focusedPart = parts?.find((p: Doc<"parts">) => p._id === focusedPartId);
 
   return (
     <div className="relative w-full h-full">
@@ -1299,11 +1299,11 @@ export default function AssembledView({ projectId, focusedPartId = null, onFocus
         <SceneController parts={partBounds} controlsRef={controlsRef} homeSignal={homeSignal} />
         {showBolts && parts && interfaces && (
           <BoltMeshes
-            parts={parts.filter(p => !hiddenPartIds?.has(p._id as unknown as string))}
+            parts={parts.filter((p: Doc<"parts">) => !hiddenPartIds?.has(p._id as unknown as string))}
             interfaces={interfaces}
           />
         )}
-        {parts?.map(p => {
+        {parts?.map((p: Doc<"parts">) => {
           const kind = p.kind ?? "sheet_metal";
           const selected = p._id === focusedPartId;
           if (hiddenPartIds?.has(p._id as unknown as string)) return null;

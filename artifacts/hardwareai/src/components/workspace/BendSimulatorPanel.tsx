@@ -3,6 +3,7 @@ import { useQuery } from "convex/react";
 import { Scissors, CornerUpRight, Layers, AlertTriangle, CheckCircle2, XCircle, ChevronRight } from "lucide-react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import type { SimRule, SimStep } from "../../../convex/lib/bendSim";
 
 interface Props {
   focusedPartId: Id<"parts"> | null;
@@ -30,11 +31,11 @@ export default function BendSimulatorPanel({ focusedPartId }: Props) {
   // Reset to first step when the focused part changes.
   useEffect(() => { setActiveIdx(0); }, [focusedPartId]);
 
-  const stepSummary = useMemo(() => {
+  const stepSummary = useMemo<Array<{ id: string; status: "pass" | "warn" | "fail"; label: string; kind: SimStep["kind"] }> | null>(() => {
     if (!sim) return null;
-    return sim.steps.map(s => {
-      const fails = s.rules.filter(r => r.status === "fail").length;
-      const warns = s.rules.filter(r => r.status === "warn").length;
+    return sim.steps.map((s: SimStep) => {
+      const fails = s.rules.filter((r: SimRule) => r.status === "fail").length;
+      const warns = s.rules.filter((r: SimRule) => r.status === "warn").length;
       const status: "pass" | "warn" | "fail" = fails > 0 ? "fail" : warns > 0 ? "warn" : "pass";
       return { id: s.id, status, label: s.label, kind: s.kind };
     });
@@ -112,7 +113,7 @@ export default function BendSimulatorPanel({ focusedPartId }: Props) {
           {active.rules.length === 0 && (
             <div className="font-mono text-[11px] text-muted-foreground/70 italic">No checks for this step.</div>
           )}
-          {active.rules.map(r => {
+          {active.rules.map((r: SimRule) => {
             const tone = STATUS_TONE[r.status];
             return (
               <div key={r.id} className={`flex items-start gap-2 px-2 py-1.5 rounded border ${tone}`}>

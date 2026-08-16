@@ -2,9 +2,11 @@
 
 import { action } from "./_generated/server";
 import { api, internal } from "./_generated/api";
+import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { getArchetype } from "./archetypes";
 import { summarizeStepPartForAgent } from "./lib/stepParts";
+import type { AgentToolCall } from "./lib/anthropicClient";
 
 const SUPPORTED_MODELS = ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"];
 const EFFORT_LEVELS = ["low", "medium", "high", "max", "xhigh"];
@@ -46,8 +48,8 @@ export const send = action({
 
     const last = history[history.length - 1];
     const priorHistory = history
-      .filter(m => !(m._id === last?._id && m.role === "user"))
-      .map(m => ({ role: m.role, content: m.content }));
+      .filter((m: Doc<"messages">) => !(m._id === last?._id && m.role === "user"))
+      .map((m: Doc<"messages">) => ({ role: m.role, content: m.content }));
 
     // Run current validation BEFORE the agent so it can see what's broken and
     // proactively repair on this turn instead of needing another round-trip.
@@ -65,8 +67,8 @@ export const send = action({
       scope: project.scope ?? null,
       archetypeId: project.archetypeId ?? null,
       archetypeParams: project.archetypeParams ?? null,
-      parts: parts.map(p => ({ role: p.role, label: p.label, dslJson: p.dslJson ?? undefined })),
-      interfaces: interfaces.map(i => ({
+      parts: parts.map((p: Doc<"parts">) => ({ role: p.role, label: p.label, dslJson: p.dslJson ?? undefined })),
+      interfaces: interfaces.map((i: Doc<"interfaces">) => ({
         kind: i.kind, partA: i.partA, partB: i.partB,
         featureRefs: i.featureRefs, hardwareRefs: i.hardwareRefs ?? [],
       })),
@@ -117,7 +119,7 @@ export const send = action({
       "add_interface", "remove_part",
       "refine_part", "add_feature_to_part", "break_out", "capture_scope",
     ]);
-    const stateChanged = agentResult.toolCalls.some(c => STATE_CHANGING_TOOLS.has(c.name));
+    const stateChanged = agentResult.toolCalls.some((c: AgentToolCall) => STATE_CHANGING_TOOLS.has(c.name));
     if (stateChanged) {
       const summary = a.content.length > 60 ? a.content.slice(0, 57) + "…" : a.content;
       await ctx.runMutation(internal.assemblySnapshots.captureInternal, {
@@ -408,8 +410,8 @@ async function applyToolCall(
 
     case "add_interface": {
       const all = await ctx.runQuery(api.parts.listForProject, { projectId });
-      const partA = all.find(p => p.role === call.input.roleA);
-      const partB = all.find(p => p.role === call.input.roleB);
+      const partA = all.find((p: Doc<"parts">) => p.role === call.input.roleA);
+      const partB = all.find((p: Doc<"parts">) => p.role === call.input.roleB);
       if (!partA || !partB) {
         return `Couldn't add interface: role not found (${!partA ? call.input.roleA : call.input.roleB}).`;
       }
@@ -435,7 +437,7 @@ async function applyToolCall(
 
     case "remove_part": {
       const all = await ctx.runQuery(api.parts.listForProject, { projectId });
-      const target = all.find(p => p.role === call.input.role);
+      const target = all.find((p: Doc<"parts">) => p.role === call.input.role);
       if (!target) return `No part with role ${call.input.role}.`;
       await ctx.runMutation(api.parts.removePart, { partId: target._id });
       return `🗑 Removed ${call.input.role}.`;

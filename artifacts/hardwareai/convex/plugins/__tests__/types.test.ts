@@ -27,7 +27,7 @@ describe("plugin contract types", () => {
   it("ProcessPlugin shape compiles for a stub", () => {
     const stub: ProcessPlugin<{ x: number }> = {
       kind: "sheet_metal",
-      dslSchema: { parse: (v) => v as { x: number } } as never,
+      dslSchema: { parse: (v: unknown) => v as { x: number } } as never,
       tools: [],
       systemPromptFragment: "",
       rules: [],
