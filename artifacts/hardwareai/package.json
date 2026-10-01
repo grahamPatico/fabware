@@ -78,7 +78,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.70.0",
+    "@anthropic-ai/sdk": "^0.129.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.0",
     "@vercel/sandbox": "^1.10.0",

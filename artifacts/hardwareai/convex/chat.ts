@@ -5,28 +5,9 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
 import Anthropic from "@anthropic-ai/sdk";
+import type { Id } from "./_generated/dataModel";
+import { getModel, isEffort, resolveEffort } from "./lib/models";
 
-export const SUPPORTED_MODELS = [
-  "claude-opus-4-7",
-  "claude-sonnet-4-6",
-  "claude-haiku-4-5",
-] as const;
-
-export const EFFORT_LEVELS = ["low", "medium", "high", "max", "xhigh"] as const;
-
-type Effort = (typeof EFFORT_LEVELS)[number];
-
-function supportsEffort(model: string): boolean {
-  return model === "claude-opus-4-7" || model === "claude-sonnet-4-6";
-}
-
-function supportsMaxEffort(model: string): boolean {
-  return model === "claude-opus-4-7";
-}
-
-function supportsXhighEffort(model: string): boolean {
-  return model === "claude-opus-4-7";
-}
 
 export const send = action({
   args: {
@@ -35,7 +16,10 @@ export const send = action({
     model: v.string(),
     effort: v.string(),
   },
-  handler: async (ctx, { threadId, content, model, effort }) => {
+  handler: async (
+    ctx,
+    { threadId, content, model, effort },
+  ): Promise<{ messageId: Id<"messages">; stopReason: string | null }> => {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       throw new Error(
@@ -43,12 +27,9 @@ export const send = action({
       );
     }
 
-    if (!(SUPPORTED_MODELS as readonly string[]).includes(model)) {
-      throw new Error(`Unsupported model: ${model}`);
-    }
-    if (!(EFFORT_LEVELS as readonly string[]).includes(effort)) {
-      throw new Error(`Unsupported effort: ${effort}`);
-    }
+    const spec = getModel(model);
+    if (!spec) throw new Error(`Unsupported model: ${model}`);
+    if (!isEffort(effort)) throw new Error(`Unsupported effort: ${effort}`);
 
     // Persist the user message immediately so the UI can render it.
     await ctx.runMutation(internal.messages.insert, {
@@ -65,29 +46,18 @@ export const send = action({
 
     const client = new Anthropic({ apiKey });
 
-    const outputConfig: { effort?: Effort } = {};
-    if (supportsEffort(model)) {
-      let resolvedEffort: Effort = effort as Effort;
-      if (resolvedEffort === "max" && !supportsMaxEffort(model)) resolvedEffort = "high";
-      if (resolvedEffort === "xhigh" && !supportsXhighEffort(model)) resolvedEffort = "high";
-      outputConfig.effort = resolvedEffort;
-    }
-
-    const createArgs: Anthropic.Messages.MessageCreateParamsNonStreaming = {
-      model,
-      max_tokens: 16000,
-      messages: conversationMessages,
-    };
-    if (supportsEffort(model)) {
-      (createArgs as unknown as { thinking: { type: string } }).thinking = { type: "adaptive" };
-    }
-    if (outputConfig.effort) {
-      (createArgs as unknown as { output_config: { effort: Effort } }).output_config = {
-        effort: outputConfig.effort,
-      };
-    }
-
-    const response = await client.messages.create(createArgs);
+    const resolvedEffort = resolveEffort(model, effort);
+    // Streamed so a long answer can't outlive the HTTP timeout; `summarized`
+    // because the thread view shows the model's reasoning.
+    const response = await client.messages
+      .stream({
+        model,
+        max_tokens: 16000,
+        messages: conversationMessages,
+        ...(spec.thinking === "none" ? {} : { thinking: { type: "adaptive" as const, display: "summarized" as const } }),
+        ...(resolvedEffort ? { output_config: { effort: resolvedEffort } } : {}),
+      })
+      .finalMessage();
 
     let textOut = "";
     let thinkingOut = "";
@@ -96,7 +66,7 @@ export const send = action({
       else if (block.type === "thinking") thinkingOut += block.thinking;
     }
 
-    const assistantId = await ctx.runMutation(internal.messages.insert, {
+    const assistantId: Id<"messages"> = await ctx.runMutation(internal.messages.insert, {
       threadId,
       role: "assistant",
       content: textOut,

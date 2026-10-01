@@ -57,7 +57,13 @@ export function computeIntersectionRules(
     hingedPairs.add(key);
   }
 
-  const obbs = parts.map(p => ({ part: p, obb: partToObb(p) }));
+  // Purchased hardware has no modelled extents (partToObb gives it a nominal
+  // 0.5" cube) and is meant to sit inside its mating part — a screw through a
+  // clearance hole, a bearing in a bore. Checking that proxy box would report
+  // every fastener as a collision, so only fabricated parts take part.
+  const obbs = parts
+    .filter(p => p.kind !== "purchased")
+    .map(p => ({ part: p, obb: partToObb(p) }));
   const rules: IntersectionRuleResult[] = [];
 
   for (let i = 0; i < obbs.length; i++) {

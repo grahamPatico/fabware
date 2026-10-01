@@ -1,16 +1,51 @@
 "use node";
 
-import { action } from "./_generated/server";
+import { action, internalAction, type ActionCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
+import Anthropic from "@anthropic-ai/sdk";
 import { getArchetype } from "./archetypes";
 import { summarizeStepPartForAgent } from "./lib/stepParts";
-import type { AgentToolCall } from "./lib/anthropicClient";
+import { TOOLS, buildInstructions, buildProjectContext } from "./assemblyDesigner";
+import { getModel, resolveEffort } from "./lib/models";
+import {
+  describeToolCall, formatValidatorNote, isFailureResult, priorTurns, type Violation,
+} from "./lib/agentLoop";
 
-const SUPPORTED_MODELS = ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"];
-const EFFORT_LEVELS = ["low", "medium", "high", "max", "xhigh"];
+type ContentParam = Anthropic.Beta.BetaContentBlockParam;
+type MessageParam = Anthropic.Beta.BetaMessageParam;
+type TextBlock = Anthropic.Beta.BetaTextBlock;
+type ToolUseBlock = Anthropic.Beta.BetaToolUseBlock;
 
+// One user message may take this many model round-trips. A new design usually
+// needs 3–6 (research → scope → build → fix validator findings → summary).
+export const MAX_ITERATIONS = 14;
+// Convex kills an action at 10 minutes. Past the soft deadline the model is
+// told to wrap up; a call still streaming at the hard limit is aborted so the
+// run can close out cleanly instead of being killed mid-write.
+const RUN_DEADLINE_MS = 6.5 * 60 * 1000;
+const RUN_HARD_LIMIT_MS = 9 * 60 * 1000;
+const MAX_OUTPUT_TOKENS = 32_000;
+// Spend guard for a public, unauthenticated studio: once the day's model
+// spend across all projects passes this, new turns are refused until 00:00 UTC.
+const DEFAULT_DAILY_USD_CAP = 25;
+
+const STATE_CHANGING_TOOLS = new Set([
+  "select_archetype", "update_archetype_params",
+  "add_sheet_metal_part", "add_printed_part", "add_purchased_part",
+  "add_freeform_2d_part", "add_pipe",
+  "add_interface", "remove_part",
+  "refine_part", "add_feature_to_part", "break_out", "capture_scope",
+]);
+
+/** An error whose message is written for the person using the studio. */
+export class UserFacingError extends Error {}
+
+/**
+ * Legacy entry point, kept so browser tabs still running the previous bundle
+ * keep working across a deploy. New clients call `agentRuns.start` directly.
+ */
 export const send = action({
   args: {
     projectId: v.id("projects"),
@@ -21,134 +56,360 @@ export const send = action({
     effort: v.string(),
     focusedRole: v.optional(v.string()),
   },
-  handler: async (ctx, a) => {
-    if (!SUPPORTED_MODELS.includes(a.model)) throw new Error(`Unsupported model: ${a.model}`);
-    if (!EFFORT_LEVELS.includes(a.effort)) throw new Error(`Unsupported effort: ${a.effort}`);
-
-    await ctx.runMutation(internal.messages.insertProjectMessage, {
-      projectId: a.projectId, role: "user", content: a.content,
-      imageData: a.imageData, imageMediaType: a.imageMediaType,
-      model: a.model, effort: a.effort,
-    });
-
-    const project = await ctx.runQuery(api.projects.get, { projectId: a.projectId });
-    if (!project) throw new Error("Project not found");
-
-    // Snapshot the project's pre-turn state so the user can undo back to it
-    // even if this is the first turn. Only captures when no snapshot exists yet.
-    if (!project.currentSnapshotId) {
-      await ctx.runMutation(internal.assemblySnapshots.captureInternal, {
-        projectId: a.projectId,
-        label: "Initial state",
-      });
-    }
-    const parts = await ctx.runQuery(api.parts.listForProject, { projectId: a.projectId });
-    const interfaces = await ctx.runQuery(api.interfaces.listForProject, { projectId: a.projectId });
-    const history = await ctx.runQuery(internal.messages.listForProjectInternal, { projectId: a.projectId });
-
-    const last = history[history.length - 1];
-    const priorHistory = history
-      .filter((m: Doc<"messages">) => !(m._id === last?._id && m.role === "user"))
-      .map((m: Doc<"messages">) => ({ role: m.role, content: m.content }));
-
-    // Run current validation BEFORE the agent so it can see what's broken and
-    // proactively repair on this turn instead of needing another round-trip.
-    const currentValidation = parts.length > 0
-      ? await ctx.runQuery(api.validation.getAssemblyValidation, { projectId: a.projectId })
-      : { rules: [], hasFailures: false };
-    const violations = currentValidation.rules
-      .filter((r: any) => r.status === "fail" || r.status === "warn")
-      .map((r: any) => ({
-        id: r.id, label: r.label, status: r.status,
-        message: r.message, suggestion: r.suggestion,
-      }));
-
-    const projectState = {
-      scope: project.scope ?? null,
-      archetypeId: project.archetypeId ?? null,
-      archetypeParams: project.archetypeParams ?? null,
-      parts: parts.map((p: Doc<"parts">) => ({ role: p.role, label: p.label, dslJson: p.dslJson ?? undefined })),
-      interfaces: interfaces.map((i: Doc<"interfaces">) => ({
-        kind: i.kind, partA: i.partA, partB: i.partB,
-        featureRefs: i.featureRefs, hardwareRefs: i.hardwareRefs ?? [],
-      })),
-      violations,
-    };
-
-    const agentResult = await ctx.runAction(internal.assemblyDesigner.runAgent, {
-      projectId: a.projectId,
-      userMessage: a.content,
-      focusedRole: a.focusedRole,
-      model: a.model,
-      effort: a.effort,
-      history: priorHistory,
-      projectState,
-    });
-
-    let livePartsSnapshot = parts;
-    // Stream each tool result as its own assistant message so the user sees
-    // progress in real time (Convex queries are reactive — frontend updates
-    // the moment each insert lands).
-    for (const call of agentResult.toolCalls) {
-      const result = await applyToolCall(ctx, a.projectId, livePartsSnapshot, interfaces, call);
-      if (result && result.trim().length > 0) {
-        await ctx.runMutation(internal.messages.insertProjectMessage, {
-          projectId: a.projectId, role: "assistant", content: result,
-          model: a.model, effort: a.effort,
-        });
-      }
-      if (
-        call.name === "select_archetype" ||
-        call.name === "update_archetype_params" ||
-        call.name === "add_printed_part" ||
-        call.name === "add_purchased_part" ||
-        call.name === "add_freeform_2d_part" ||
-        call.name === "add_pipe" ||
-        call.name === "add_sheet_metal_part"
-      ) {
-        livePartsSnapshot = await ctx.runQuery(api.parts.listForProject, { projectId: a.projectId });
-      }
-    }
-
-    // Capture a post-turn snapshot if any tool call landed state changes —
-    // gives the user one undo step per agent turn.
-    const STATE_CHANGING_TOOLS = new Set([
-      "select_archetype", "update_archetype_params",
-      "add_sheet_metal_part", "add_printed_part", "add_purchased_part",
-      "add_freeform_2d_part", "add_pipe",
-      "add_interface", "remove_part",
-      "refine_part", "add_feature_to_part", "break_out", "capture_scope",
-    ]);
-    const stateChanged = agentResult.toolCalls.some((c: AgentToolCall) => STATE_CHANGING_TOOLS.has(c.name));
-    if (stateChanged) {
-      const summary = a.content.length > 60 ? a.content.slice(0, 57) + "…" : a.content;
-      await ctx.runMutation(internal.assemblySnapshots.captureInternal, {
-        projectId: a.projectId,
-        label: summary,
-      });
-    }
-
-    const assistantText = agentResult.responseText.trim();
-    if (assistantText) {
-      await ctx.runMutation(internal.messages.insertProjectMessage, {
-        projectId: a.projectId, role: "assistant", content: assistantText,
-        model: a.model, effort: a.effort,
-      });
-    } else if (agentResult.toolCalls.length === 0) {
-      await ctx.runMutation(internal.messages.insertProjectMessage, {
-        projectId: a.projectId, role: "assistant", content: "Updated.",
-        model: a.model, effort: a.effort,
-      });
-    }
-
-    const validation = await ctx.runQuery(api.validation.getAssemblyValidation, { projectId: a.projectId });
-    return { validation };
+  handler: async (ctx, a): Promise<{ runId: string }> => {
+    return await ctx.runMutation(api.agentRuns.start, a);
   },
 });
 
+/**
+ * One agent turn: call Claude, apply the tools it asks for, feed the results
+ * (plus fresh validator findings) back, and repeat until it stops calling
+ * tools. Progress is written to the project and message tables as it happens,
+ * so the workspace follows along reactively.
+ */
+export const runTurn = internalAction({
+  args: {
+    projectId: v.id("projects"),
+    runId: v.string(),
+    content: v.string(),
+    imageData: v.optional(v.string()),
+    imageMediaType: v.optional(v.string()),
+    model: v.string(),
+    effort: v.string(),
+    focusedRole: v.optional(v.string()),
+  },
+  handler: async (ctx, a): Promise<void> => {
+    try {
+      const outcome = await runAgentLoop(ctx, a);
+      await ctx.runMutation(internal.agentRuns.finish, {
+        projectId: a.projectId, runId: a.runId, status: outcome,
+      });
+    } catch (err) {
+      const message = describeFailure(err);
+      console.error(`[runTurn ${a.runId}]`, err);
+      await ctx.runMutation(internal.messages.insertProjectMessage, {
+        projectId: a.projectId, role: "assistant", content: message,
+        model: a.model, effort: a.effort, kind: "error", isError: true, runId: a.runId,
+      });
+      await ctx.runMutation(internal.agentRuns.finish, {
+        projectId: a.projectId, runId: a.runId, status: "error", error: message,
+      });
+    }
+  },
+});
+
+export type TurnArgs = {
+  projectId: Id<"projects">;
+  runId: string;
+  content: string;
+  imageData?: string;
+  imageMediaType?: string;
+  model: string;
+  effort: string;
+  focusedRole?: string;
+};
+
+type ModelRequest = Omit<Anthropic.Beta.Messages.MessageCreateParamsNonStreaming, "messages">;
+
+/**
+ * One model call. `abortAfterMs` bounds the whole streamed response so the
+ * surrounding action always gets to finish its bookkeeping.
+ */
+export type CallModel = (
+  request: ModelRequest,
+  messages: MessageParam[],
+  abortAfterMs: number,
+) => Promise<Anthropic.Beta.BetaMessage>;
+
+function anthropicCaller(): CallModel {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new UserFacingError("The design agent isn't configured on this deployment (no API key).");
+  const client = new Anthropic({ apiKey });
+  return async (request, messages, abortAfterMs) => {
+    // Streamed so a long response can't hit an HTTP timeout.
+    const stream = client.beta.messages.stream({ ...request, messages });
+    const timer = setTimeout(() => stream.abort(), abortAfterMs);
+    try {
+      return await stream.finalMessage();
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
+/** Exported for tests, which pass a scripted `callModel`. */
+export async function runAgentLoop(
+  ctx: ActionCtx,
+  a: TurnArgs,
+  callModel: CallModel = anthropicCaller(),
+): Promise<"done" | "cancelled"> {
+  const startedAt = Date.now();
+  const spec = getModel(a.model);
+  if (!spec) throw new UserFacingError(`Unsupported model: ${a.model}`);
+
+  const cap = Number(process.env.FABWARE_DAILY_USD_CAP ?? DEFAULT_DAILY_USD_CAP);
+  const dayStart = new Date().setUTCHours(0, 0, 0, 0);
+  const spentToday: number = await ctx.runQuery(internal.tokenUsage.spendSince, { sinceMs: dayStart });
+  if (Number.isFinite(cap) && spentToday >= cap) {
+    throw new UserFacingError("Fabware has reached its AI budget for today. It resets at midnight UTC.");
+  }
+
+  const project = await ctx.runQuery(api.projects.get, { projectId: a.projectId });
+  if (!project) throw new UserFacingError("This project no longer exists.");
+
+  // Snapshot the pre-turn state so the user can undo back to it even on the
+  // first turn. Only captures when no snapshot exists yet.
+  if (!project.currentSnapshotId) {
+    await ctx.runMutation(internal.assemblySnapshots.captureInternal, {
+      projectId: a.projectId, label: "Initial state",
+    });
+  }
+  let parts: Doc<"parts">[] = await ctx.runQuery(api.parts.listForProject, { projectId: a.projectId });
+  const interfaces: Doc<"interfaces">[] = await ctx.runQuery(api.interfaces.listForProject, { projectId: a.projectId });
+  const history: Doc<"messages">[] = await ctx.runQuery(internal.messages.listForProjectInternal, { projectId: a.projectId });
+
+  const violations = parts.length > 0 ? await currentViolations(ctx, a.projectId) : [];
+  const projectState = {
+    scope: project.scope ?? null,
+    archetypeId: project.archetypeId ?? null,
+    archetypeParams: project.archetypeParams ?? null,
+    parts: parts.map((p) => ({ role: p.role, label: p.label, position: p.position, dslJson: p.dslJson ?? undefined })),
+    interfaces: interfaces.map((i) => ({
+      kind: i.kind, partA: i.partA, partB: i.partB,
+      featureRefs: i.featureRefs, hardwareRefs: i.hardwareRefs ?? [],
+    })),
+    violations,
+  };
+
+  const userContent: ContentParam[] = [];
+  if (a.imageData && a.imageMediaType) {
+    userContent.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: a.imageMediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+        data: a.imageData,
+      },
+    });
+  }
+  userContent.push({ type: "text", text: a.content || "Use this reference image to design the part." });
+
+  const messages: MessageParam[] = [
+    ...priorTurns(history),
+    { role: "user", content: userContent },
+  ];
+
+  const effort = resolveEffort(a.model, a.effort);
+  const request: ModelRequest = {
+    model: a.model,
+    max_tokens: MAX_OUTPUT_TOKENS,
+    // The instructions are identical on every turn of every project, so they
+    // sit behind their own cache breakpoint; the top-level cache_control then
+    // caches the growing transcript between iterations of this turn.
+    system: [
+      { type: "text" as const, text: buildInstructions(), cache_control: { type: "ephemeral" as const } },
+      { type: "text" as const, text: buildProjectContext(projectState, a.focusedRole) },
+    ],
+    cache_control: { type: "ephemeral" as const },
+    tools: TOOLS as unknown as Anthropic.Beta.BetaTool[],
+    ...(spec.thinking === "adaptive" ? { thinking: { type: "adaptive" as const } } : {}),
+    ...(effort ? { output_config: { effort } } : {}),
+    // If a safety classifier declines a request, let the API retry it on a
+    // fallback model inside the same call instead of failing the turn.
+    ...(spec.fallbacks
+      ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
+      : {}),
+  };
+
+  let stateChanged = false;
+  let toolCallCount = 0;
+  let wroteText = false;
+  let outcome: "done" | "cancelled" = "done";
+
+  const isCancelled = async (): Promise<"superseded" | "cancelled" | null> => {
+    const run = await ctx.runQuery(internal.agentRuns.getRun, { projectId: a.projectId });
+    if (!run || run.runId !== a.runId) return "superseded";
+    return run.cancelRequested ? "cancelled" : null;
+  };
+  const say = async (content: string) => {
+    wroteText = true;
+    await ctx.runMutation(internal.messages.insertProjectMessage, {
+      projectId: a.projectId, role: "assistant", content,
+      model: a.model, effort: a.effort, kind: "text", runId: a.runId,
+    });
+  };
+
+  try {
+    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+      const cancelled = await isCancelled();
+      if (cancelled === "superseded") return "cancelled"; // a newer run owns the project
+      if (cancelled) { outcome = "cancelled"; break; }
+
+      await ctx.runMutation(internal.agentRuns.setProgress, {
+        projectId: a.projectId, runId: a.runId,
+        step: iteration === 0 ? "Thinking through the design" : "Reviewing results",
+        iteration, toolCalls: toolCallCount,
+      });
+
+      const remainingMs = RUN_HARD_LIMIT_MS - (Date.now() - startedAt);
+      if (remainingMs < 15_000) {
+        await say("I ran out of time on this turn. What's done so far is kept. Send \"continue\" and I'll pick up from here.");
+        break;
+      }
+      let response: Anthropic.Beta.BetaMessage;
+      try {
+        response = await callModel(request, messages, remainingMs - 10_000);
+      } catch (err) {
+        if (err instanceof Anthropic.APIUserAbortError) {
+          throw new UserFacingError(
+            "That took longer than one turn allows. What's done so far is kept. Send \"continue\" to pick up from here.",
+          );
+        }
+        throw err;
+      }
+
+      await ctx.runMutation(internal.tokenUsage.record, {
+        feature: "assembly_designer",
+        // A refusal fallback may have served this; cost it at that model's
+        // rates when we know them.
+        model: getModel(response.model) ? response.model : a.model,
+        effort: a.effort,
+        projectId: a.projectId,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+        cacheReadTokens: response.usage.cache_read_input_tokens ?? undefined,
+        cacheCreationTokens: response.usage.cache_creation_input_tokens ?? undefined,
+      });
+
+      if (response.stop_reason === "refusal") {
+        throw new UserFacingError(
+          "The model declined this request. Try rephrasing it, or describe the part in more concrete terms.",
+        );
+      }
+
+      const text = response.content
+        .filter((b): b is TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("")
+        .trim();
+      if (text) await say(text);
+
+      const toolUses = response.content.filter((b): b is ToolUseBlock => b.type === "tool_use");
+      if (toolUses.length === 0) break;
+      if (response.stop_reason === "max_tokens") {
+        // A tool call cut off mid-input would run on a truncated design.
+        throw new UserFacingError(
+          "That step was too large to finish in one go. Try asking for the design in smaller pieces.",
+        );
+      }
+      if (iteration === MAX_ITERATIONS - 1) {
+        // Already told to wrap up and still asking for tools: stop here rather
+        // than apply changes the model will never see the result of.
+        await say("I've used all the steps for this turn. Send \"continue\" and I'll keep going.");
+        break;
+      }
+      // The model call can take a while; honour a Stop pressed during it
+      // before changing anything.
+      const cancelledMidCall = await isCancelled();
+      if (cancelledMidCall === "superseded") return "cancelled";
+      if (cancelledMidCall) { outcome = "cancelled"; break; }
+
+      // Echo the full content back, thinking blocks included, so the model
+      // keeps its reasoning across iterations.
+      messages.push({ role: "assistant", content: response.content as ContentParam[] });
+
+      const results: ContentParam[] = [];
+      let changedThisIteration = false;
+      for (const call of toolUses) {
+        await ctx.runMutation(internal.agentRuns.setProgress, {
+          projectId: a.projectId, runId: a.runId,
+          step: describeToolCall(call.name, call.input), toolCalls: toolCallCount,
+        });
+        let result: string;
+        try {
+          result = await applyToolCall(ctx, a.projectId, parts, interfaces, { name: call.name, input: call.input });
+        } catch (err: any) {
+          result = `Couldn't run ${call.name}: ${String(err?.message ?? err).slice(0, 300)}`;
+        }
+        const failed = isFailureResult(result);
+        toolCallCount++;
+        await ctx.runMutation(internal.messages.insertProjectMessage, {
+          projectId: a.projectId, role: "assistant", content: result,
+          model: a.model, effort: a.effort,
+          kind: "tool", toolName: call.name, isError: failed, runId: a.runId,
+        });
+        results.push({ type: "tool_result", tool_use_id: call.id, content: result, is_error: failed });
+        if (STATE_CHANGING_TOOLS.has(call.name) && !failed) {
+          changedThisIteration = true;
+          stateChanged = true;
+          parts = await ctx.runQuery(api.parts.listForProject, { projectId: a.projectId });
+        }
+      }
+
+      const notes: string[] = [];
+      if (changedThisIteration) {
+        notes.push(formatValidatorNote(parts.length > 0 ? await currentViolations(ctx, a.projectId) : []));
+      }
+      const outOfTime = Date.now() - startedAt > RUN_DEADLINE_MS;
+      if (outOfTime || iteration === MAX_ITERATIONS - 2) {
+        notes.push(
+          "You are out of steps for this turn. Do not call any more tools. Reply now with a short summary of " +
+          "what is done and what is still open, so the user can ask you to continue.",
+        );
+      }
+      // All tool results go back in one user message; notes follow them.
+      messages.push({ role: "user", content: [...results, ...notes.map((t) => ({ type: "text" as const, text: t }))] });
+    }
+  } finally {
+    // One undo step per turn that changed the assembly — also when the turn
+    // failed part-way, so undo/redo never skips over applied changes.
+    if (stateChanged) {
+      const label = a.content.length > 60 ? a.content.slice(0, 57) + "…" : a.content || "Reference image";
+      await ctx.runMutation(internal.assemblySnapshots.captureInternal, { projectId: a.projectId, label });
+    }
+  }
+
+  if (outcome === "cancelled") {
+    await say(stateChanged ? "Stopped. The changes made so far are kept. Use undo to roll them back." : "Stopped.");
+  } else if (!wroteText) {
+    // The model ended without a closing note; don't leave the chat silent.
+    await say(toolCallCount > 0
+      ? "Done. The assembly is updated."
+      : "I didn't find anything to change for that. Try describing what you want in a bit more detail.");
+  }
+  return outcome;
+}
+
+async function currentViolations(ctx: ActionCtx, projectId: Id<"projects">): Promise<Violation[]> {
+  const validation: { rules: any[] } = await ctx.runQuery(api.validation.getAssemblyValidation, { projectId });
+  return validation.rules
+    .filter((r) => r.status === "fail" || r.status === "warn")
+    .map((r) => ({ id: r.id, label: r.label, status: r.status, message: r.message, suggestion: r.suggestion }));
+}
+
+function describeFailure(err: unknown): string {
+  if (err instanceof UserFacingError) return err.message;
+  if (err instanceof Anthropic.RateLimitError) {
+    return "The AI service is rate-limiting requests right now. Give it a minute and send your message again.";
+  }
+  if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+    return "The design agent's API credentials were rejected. This needs fixing on the deployment.";
+  }
+  if (err instanceof Anthropic.BadRequestError) {
+    return `The AI service rejected the request: ${err.message.slice(0, 200)}`;
+  }
+  if (err instanceof Anthropic.APIConnectionError) {
+    return "Couldn't reach the AI service. Check back in a moment and send your message again.";
+  }
+  if (err instanceof Anthropic.APIError) {
+    return "The AI service had a problem handling that request. Send your message again to retry.";
+  }
+  return "Something went wrong while working on that. Send your message again to retry.";
+}
+
 async function applyToolCall(
-  ctx: any,
-  projectId: any,
+  ctx: ActionCtx,
+  projectId: Id<"projects">,
   partsSnapshot: any[],
   _interfacesSnapshot: any[],
   call: { name: string; input: any },
@@ -230,9 +491,10 @@ async function applyToolCall(
     case "update_archetype_params": {
       const project = await ctx.runQuery(api.projects.get, { projectId });
       if (!project?.archetypeId) return "Project has no archetype — can't update params.";
+      if (!project.scope) return "Cannot resize the archetype without scope. Call capture_scope first.";
       const arch = getArchetype(project.archetypeId);
       if (!arch) return `Unknown archetype: ${project.archetypeId}`;
-      const baseDefaults = project.scope ? arch.paramDefaults(project.scope) : {};
+      const baseDefaults = arch.paramDefaults(project.scope);
       const merged = { ...baseDefaults, ...(project.archetypeParams ?? {}), ...(call.input.paramPatch ?? {}) };
       let params;
       try {

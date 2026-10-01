@@ -2,10 +2,39 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 
+/**
+ * A project as clients may see it. The owner key is a bearer secret for the
+ * owner's whole project list, and anyone holding a project id (a share-link
+ * viewer, say) can call these functions — so it never leaves the server.
+ */
+function withoutOwnerKey<T extends { ownerKey?: string }>(project: T): Omit<T, "ownerKey"> {
+  const { ownerKey: _ownerKey, ...rest } = project;
+  return rest;
+}
+
+/**
+ * The studio's project list, scoped to one browser's anonymous owner key.
+ * With no key there is nothing to show — the studio never lists other
+ * people's projects.
+ */
 export const list = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db.query("projects").withIndex("by_updated").order("desc").collect();
+  args: { ownerKey: v.optional(v.string()) },
+  handler: async (ctx, { ownerKey }) => {
+    if (!ownerKey) return [];
+    const projects = await ctx.db
+      .query("projects")
+      .withIndex("by_owner_updated", (q) => q.eq("ownerKey", ownerKey))
+      .order("desc")
+      .collect();
+    return await Promise.all(
+      projects.map(async (p) => {
+        const parts = await ctx.db
+          .query("parts")
+          .withIndex("by_project", (q) => q.eq("projectId", p._id))
+          .collect();
+        return { ...withoutOwnerKey(p), partCount: parts.length };
+      }),
+    );
   },
 });
 
@@ -46,7 +75,8 @@ export const listRecent = query({
 export const get = query({
   args: { projectId: v.id("projects") },
   handler: async (ctx, { projectId }) => {
-    return await ctx.db.get(projectId);
+    const project = await ctx.db.get(projectId);
+    return project ? withoutOwnerKey(project) : null;
   },
 });
 
@@ -112,12 +142,14 @@ export const create = mutation({
   args: {
     name: v.string(),
     description: v.optional(v.string()),
+    ownerKey: v.optional(v.string()),
   },
-  handler: async (ctx, { name, description }) => {
+  handler: async (ctx, { name, description, ownerKey }) => {
     const now = Date.now();
     const projectId = await ctx.db.insert("projects", {
-      name,
+      name: name.trim() || "Untitled project",
       description,
+      ownerKey,
       status: "draft",
       createdAt: now,
       updatedAt: now,
@@ -128,7 +160,8 @@ export const create = mutation({
       totalRevisions: 0,
       updatedAt: now,
     });
-    return await ctx.db.get(projectId);
+    const saved = await ctx.db.get(projectId);
+    return saved ? withoutOwnerKey(saved) : null;
   },
 });
 
@@ -144,7 +177,27 @@ export const update = mutation({
     if (!existing) throw new Error("Project not found");
     const next = { ...patch, updatedAt: Date.now() };
     await ctx.db.patch(projectId, next);
-    return await ctx.db.get(projectId);
+    const saved = await ctx.db.get(projectId);
+    return saved ? withoutOwnerKey(saved) : null;
+  },
+});
+
+/**
+ * One-off migration: hand every project created before owner keys existed to
+ * a single key, so those projects stay reachable from the browser that holds
+ * it. Run from the CLI: `npx convex run projects:claimUnowned '{"ownerKey":"…"}'`.
+ */
+export const claimUnowned = internalMutation({
+  args: { ownerKey: v.string() },
+  handler: async (ctx, { ownerKey }) => {
+    const all = await ctx.db.query("projects").collect();
+    let claimed = 0;
+    for (const p of all) {
+      if (p.ownerKey) continue;
+      await ctx.db.patch(p._id, { ownerKey });
+      claimed++;
+    }
+    return { claimed, total: all.length };
   },
 });
 
@@ -242,7 +295,8 @@ export const updateScope = mutation({
     if (project?.useNewHarness === true) {
       await ctx.scheduler.runAfter(0, internal.orchestrator.tick.tick, { projectId });
     }
-    return await ctx.db.get(projectId);
+    const saved = await ctx.db.get(projectId);
+    return saved ? withoutOwnerKey(saved) : null;
   },
 });
 
@@ -259,7 +313,8 @@ export const setArchetype = mutation({
   },
   handler: async (ctx, { projectId, archetypeId, archetypeParams }) => {
     await ctx.db.patch(projectId, { archetypeId, archetypeParams, updatedAt: Date.now() });
-    return await ctx.db.get(projectId);
+    const saved = await ctx.db.get(projectId);
+    return saved ? withoutOwnerKey(saved) : null;
   },
 });
 
@@ -278,7 +333,8 @@ export const breakOut = mutation({
   args: { projectId: v.id("projects") },
   handler: async (ctx, { projectId }) => {
     await ctx.db.patch(projectId, { archetypeId: null, archetypeParams: null, updatedAt: Date.now() });
-    return await ctx.db.get(projectId);
+    const saved = await ctx.db.get(projectId);
+    return saved ? withoutOwnerKey(saved) : null;
   },
 });
 

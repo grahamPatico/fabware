@@ -3,7 +3,7 @@
 // Bypasses the agent entirely so results don't depend on LLM behavior.
 
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
 import { listArchetypes } from "./archetypes";
 import { computeIntersectionRules } from "./lib/intersectRules";
@@ -146,7 +146,7 @@ export const auditObj = internalAction({
     await ctx.runMutation(internal._audit.generateArchetypeDeterministic, {
       projectId: pid, archetypeId: "hinged_enclosure",
     });
-    const result: any = await ctx.runQuery(internal.obj.projectObj, { projectId: pid });
+    const result: any = await ctx.runQuery(api.obj.projectObj, { projectId: pid });
     const lines: string[] = result.obj.split("\n");
     let groups = 0, verts = 0, faces = 0;
     for (const l of lines) {
@@ -175,7 +175,7 @@ export const auditBundle = internalAction({
     await ctx.runMutation(internal._audit.generateArchetypeDeterministic, {
       projectId: pid, archetypeId: "hinged_enclosure",
     });
-    const result: any = await ctx.runQuery(internal.bundle.projectZip, { projectId: pid });
+    const result: any = await ctx.runQuery(api.bundle.projectZip, { projectId: pid });
     if (!result) throw new Error("bundle returned null");
     const bin = atob(result.base64);
     const head = bin.slice(0, 4);

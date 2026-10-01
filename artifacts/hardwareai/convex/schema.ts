@@ -54,10 +54,34 @@ export default defineSchema({
     useNewHarness: v.optional(v.boolean()),
     currentSnapshotId: v.optional(v.id("assemblySnapshots")),
     shareSlug: v.optional(v.string()),
+    // Anonymous per-browser owner token (localStorage). Scopes the studio's
+    // project list to "mine"; it is NOT authentication.
+    ownerKey: v.optional(v.string()),
+    // State of the design agent's current/last turn for this project. The
+    // workspace reads it reactively, so progress survives reloads and tab
+    // switches instead of living in component state.
+    agentRun: v.optional(v.object({
+      runId: v.string(),
+      status: v.union(
+        v.literal("running"),
+        v.literal("done"),
+        v.literal("error"),
+        v.literal("cancelled"),
+      ),
+      startedAt: v.number(),
+      finishedAt: v.optional(v.number()),
+      // Human-readable description of what the agent is doing right now.
+      step: v.optional(v.string()),
+      iteration: v.optional(v.number()),
+      toolCalls: v.optional(v.number()),
+      error: v.optional(v.string()),
+      cancelRequested: v.optional(v.boolean()),
+    })),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_updated", ["updatedAt"])
+    .index("by_owner_updated", ["ownerKey", "updatedAt"])
     .index("by_share_slug", ["shareSlug"]),
 
   // --- Assembly snapshots (project-level undo/redo history) ---
@@ -188,6 +212,12 @@ export default defineSchema({
         cacheCreationTokens: v.optional(v.number()),
       }),
     ),
+    // Project-chat only. "tool" = one agent action and its result (rendered as
+    // a compact activity row); "error" = a failed run. Absent = plain text.
+    kind: v.optional(v.union(v.literal("text"), v.literal("tool"), v.literal("error"))),
+    toolName: v.optional(v.string()),
+    isError: v.optional(v.boolean()),
+    runId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_thread", ["threadId", "createdAt"])

@@ -1,150 +1,330 @@
 import React from "react";
 import { useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
+import type { FunctionReturnType } from "convex/server";
 import { Link } from "wouter";
-import { Plus, Hammer, Settings2, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { Link2, Plus, Search, Settings2, Trash2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
+import {
+  NewProjectComposer,
+  type NewProjectComposerHandle,
+} from "@/components/NewProjectComposer";
+import { toast } from "@/hooks/use-toast";
+import { consumeOwnerParam, deviceLink, getOwnerKey } from "@/lib/owner";
 import { api } from "../../convex/_generated/api";
-import type { Doc, Id } from "../../convex/_generated/dataModel";
-import { NewProjectWizard } from "./NewProjectWizard";
+
+type ProjectRow = FunctionReturnType<typeof api.projects.list>[number];
+
+// Matches the backend's stale-run cutoff: a run still marked "running" after
+// this long has no live action behind it.
+const RUN_FRESH_MS = 11 * 60 * 1000;
+const SEARCH_THRESHOLD = 6;
+
+const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+/** "just now", "5 min ago", "3 h ago", "2 d ago", then a locale date. */
+function formatUpdated(timestamp: number, now: number = Date.now()): string {
+  const elapsed = now - timestamp;
+  if (elapsed < MINUTE) return "just now";
+  if (elapsed < HOUR) return `${Math.floor(elapsed / MINUTE)} min ago`;
+  if (elapsed < DAY) return `${Math.floor(elapsed / HOUR)} h ago`;
+  if (elapsed < 7 * DAY) return `${Math.floor(elapsed / DAY)} d ago`;
+  return new Date(timestamp).toLocaleDateString();
+}
+
+function partCountLabel(count: number): string {
+  if (count <= 0) return "Empty";
+  return count === 1 ? "1 part" : `${count} parts`;
+}
+
+function statusColor(status: string): string {
+  switch (status) {
+    case "in_progress":
+      return "bg-blue-600 text-blue-100";
+    case "ready_to_order":
+      return "bg-green-600 text-green-100";
+    case "ordered":
+      return "bg-primary text-primary-foreground";
+    default:
+      return "bg-slate-600 text-slate-100";
+  }
+}
+
+function isDesigning(project: ProjectRow, now: number): boolean {
+  const run = project.agentRun;
+  return run?.status === "running" && now - run.startedAt < RUN_FRESH_MS;
+}
 
 export default function Home() {
-  const projects = useQuery(api.projects.list);
+  // The owner param has to be consumed before the key is first read, or a
+  // shared link would list this browser's own projects instead.
+  const [ownerKey] = React.useState(() => {
+    consumeOwnerParam();
+    return getOwnerKey();
+  });
+
+  const projects = useQuery(api.projects.list, { ownerKey });
   const removeProject = useMutation(api.projects.remove);
 
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = React.useState<Id<"projects"> | null>(null);
-  const [removingId, setRemovingId] = React.useState<Id<"projects"> | null>(null);
+  const composerRef = React.useRef<NewProjectComposerHandle>(null);
+  const [search, setSearch] = React.useState("");
+  const [pendingDelete, setPendingDelete] = React.useState<ProjectRow | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
 
-  const isLoading = projects === undefined;
+  // Keeps relative times and the "Designing" badge honest while the page sits open.
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "draft":
-        return "bg-slate-600 text-slate-100";
-      case "in_progress":
-        return "bg-blue-600 text-blue-100";
-      case "ready_to_order":
-        return "bg-green-600 text-green-100";
-      case "ordered":
-        return "bg-primary text-primary-foreground";
-      default:
-        return "bg-slate-600 text-slate-100";
+  const showSearch = projects !== undefined && projects.length > SEARCH_THRESHOLD;
+  const needle = showSearch ? search.trim().toLowerCase() : "";
+  const visible = React.useMemo(() => {
+    if (!projects) return [];
+    if (!needle) return projects;
+    return projects.filter(
+      (p) =>
+        p.name.toLowerCase().includes(needle) ||
+        (p.description ?? "").toLowerCase().includes(needle),
+    );
+  }, [projects, needle]);
+
+  const confirmDelete = async () => {
+    if (!pendingDelete || deleting) return;
+    setDeleting(true);
+    try {
+      await removeProject({ projectId: pendingDelete._id });
+    } catch (err) {
+      console.error("Project delete failed", err);
+      toast({
+        variant: "destructive",
+        title: "Couldn't delete the project",
+        description:
+          err instanceof ConvexError
+            ? String(err.data)
+            : "Check your connection and try again.",
+      });
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
+    }
+  };
+
+  const copyDeviceLink = async () => {
+    const link = deviceLink();
+    try {
+      await navigator.clipboard.writeText(link);
+      toast({
+        title: "Link copied. Open it on your other device to see these projects.",
+      });
+    } catch (err) {
+      console.error("Clipboard write failed", err);
+      toast({
+        title: "Couldn't copy the link. Copy it from here:",
+        description: <span className="select-all break-all font-mono text-xs">{link}</span>,
+      });
     }
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <header className="border-b border-border bg-card px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-primary text-primary-foreground rounded-md flex items-center justify-center">
+      <header className="border-b border-border bg-card px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
+        <Link
+          href="/"
+          className="flex items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <span className="w-8 h-8 bg-primary text-primary-foreground rounded-md flex items-center justify-center">
             <Settings2 className="w-5 h-5" />
-          </div>
-          <h1 className="text-xl font-bold tracking-tight uppercase">Fabware</h1>
-        </div>
-        <Button onClick={() => setIsDialogOpen(true)} className="gap-2 font-mono uppercase tracking-wider text-xs">
-          <Plus className="w-4 h-4" /> New Project
+          </span>
+          <span className="text-xl font-bold tracking-tight uppercase">Fabware</span>
+        </Link>
+        <Button
+          onClick={() => composerRef.current?.focus()}
+          className="gap-2 font-mono uppercase tracking-wider text-xs shrink-0"
+        >
+          <Plus className="w-4 h-4" /> New project
         </Button>
-        <NewProjectWizard open={isDialogOpen} onOpenChange={setIsDialogOpen} />
       </header>
 
-      <main className="flex-1 p-6 md:p-12 max-w-6xl mx-auto w-full">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-mono uppercase tracking-widest text-muted-foreground">
-            Recent Projects
-          </h2>
-        </div>
+      <main className="flex-1 w-full max-w-6xl mx-auto p-4 sm:p-6 md:p-10">
+        <NewProjectComposer ref={composerRef} className="mx-auto w-full max-w-3xl" />
 
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <Card key={i} className="h-40 animate-pulse bg-muted border-border" />
-            ))}
+        <section className="mt-10 md:mt-14" aria-labelledby="your-projects">
+          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2
+              id="your-projects"
+              className="font-mono text-sm uppercase tracking-widest text-muted-foreground"
+            >
+              Your projects
+            </h2>
+            {showSearch && (
+              <div className="relative w-full sm:w-64">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search projects"
+                  aria-label="Search projects"
+                  className="bg-card pl-8 font-mono text-sm"
+                />
+              </div>
+            )}
           </div>
-        ) : projects.length === 0 ? (
-          <div className="text-center py-20 border border-dashed border-border rounded-lg bg-card/50">
-            <Hammer className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-            <h3 className="text-lg font-mono text-muted-foreground uppercase">
-              No projects yet
-            </h3>
-            <p className="text-sm text-muted-foreground/70 mt-2 max-w-sm mx-auto">
-              Start a new project to design an assembly from plain text.
+
+          {projects === undefined ? (
+            <div
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6"
+              aria-busy="true"
+              aria-label="Loading projects"
+            >
+              {[0, 1, 2].map((i) => (
+                <Card key={i} className="h-40 bg-card border-border p-6 flex flex-col">
+                  <Skeleton className="h-5 w-2/3" />
+                  <Skeleton className="mt-4 h-3 w-full" />
+                  <Skeleton className="mt-2 h-3 w-4/5" />
+                  <Skeleton className="mt-auto h-3 w-1/3" />
+                </Card>
+              ))}
+            </div>
+          ) : projects.length === 0 ? (
+            <p className="font-mono text-sm text-muted-foreground">
+              Nothing here yet. Your projects are saved to this browser.
             </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project: Doc<"projects">) => {
-              const isConfirming = confirmDeleteId === project._id;
-              const isRemoving = removingId === project._id;
-              const handleDeleteClick = (e: React.MouseEvent) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (isRemoving) return;
-                if (!isConfirming) {
-                  setConfirmDeleteId(project._id);
-                  return;
-                }
-                setRemovingId(project._id);
-                removeProject({ projectId: project._id })
-                  .finally(() => {
-                    setRemovingId(null);
-                    setConfirmDeleteId(null);
-                  });
-              };
-              return (
-                <div key={project._id} className="group relative">
-                  <Link href={`/project/${project._id}`}>
-                    <Card className="cursor-pointer group-hover:border-primary transition-colors bg-card border-border h-full flex flex-col">
-                      <CardHeader className="pb-3">
-                        <div className="flex justify-between items-start gap-2">
-                          <CardTitle className="font-mono text-lg truncate pr-4 flex-1">
-                            {project.name}
-                          </CardTitle>
-                          <Badge
-                            className={`${getStatusColor(project.status)} hover:${getStatusColor(project.status)} font-mono text-[10px] uppercase border-none`}
-                          >
-                            {project.status.replace(/_/g, " ")}
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="flex-1">
-                        <div className="text-sm text-muted-foreground font-mono">
-                          {project.description ? (
-                            <p className="line-clamp-2">{project.description}</p>
-                          ) : (
-                            <p className="opacity-50 italic">No description provided</p>
-                          )}
-                        </div>
-                      </CardContent>
-                      <CardFooter className="pt-3 border-t border-border/50 text-xs text-muted-foreground font-mono justify-between">
-                        <span>ID: {project._id.slice(-4)}</span>
-                        <span>{new Date(project.updatedAt).toLocaleDateString()}</span>
-                      </CardFooter>
-                    </Card>
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={handleDeleteClick}
-                    onMouseLeave={() => isConfirming && !isRemoving && setConfirmDeleteId(null)}
-                    disabled={isRemoving}
-                    title={isConfirming ? "Click again to confirm delete" : "Delete project"}
-                    className={
-                      "absolute bottom-3 right-3 z-10 rounded-md p-1.5 transition-all " +
-                      (isConfirming
-                        ? "bg-destructive text-destructive-foreground opacity-100"
-                        : "bg-background/80 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive") +
-                      " disabled:opacity-50"
-                    }
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+          ) : (
+            <>
+              {visible.length === 0 ? (
+                <p className="font-mono text-sm text-muted-foreground">No matches</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                  {visible.map((project) => {
+                    const designing = isDesigning(project, now);
+                    return (
+                      <div key={project._id} className="group relative min-w-0">
+                        <Link
+                          href={`/project/${project._id}`}
+                          className="block h-full rounded-xl focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        >
+                          <Card className="h-full flex flex-col bg-card border-border transition-colors group-hover:border-primary">
+                            <CardHeader className="p-4 sm:p-6 pb-3 sm:pb-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <CardTitle className="min-w-0 flex-1 truncate font-mono text-lg leading-tight">
+                                  {project.name}
+                                </CardTitle>
+                                {designing ? (
+                                  <Badge className="shrink-0 gap-1.5 border-primary/40 bg-primary/10 font-mono text-[10px] uppercase tracking-wider text-primary shadow-none">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+                                    Designing
+                                  </Badge>
+                                ) : project.status !== "draft" ? (
+                                  <Badge
+                                    className={`${statusColor(project.status)} shrink-0 border-none font-mono text-[10px] uppercase`}
+                                  >
+                                    {project.status.replace(/_/g, " ")}
+                                  </Badge>
+                                ) : null}
+                              </div>
+                            </CardHeader>
+                            <CardContent className="flex-1 px-4 sm:px-6 pb-4">
+                              {project.description ? (
+                                <p className="line-clamp-2 break-words font-mono text-sm text-muted-foreground">
+                                  {project.description}
+                                </p>
+                              ) : (
+                                <p className="font-mono text-sm italic text-muted-foreground/50">
+                                  No description
+                                </p>
+                              )}
+                            </CardContent>
+                            <CardFooter className="justify-between gap-3 border-t border-border/50 pl-4 sm:pl-6 pr-14 pt-3 pb-3 font-mono text-xs text-muted-foreground">
+                              <span>{partCountLabel(project.partCount)}</span>
+                              <span className="truncate">{formatUpdated(project.updatedAt, now)}</span>
+                            </CardFooter>
+                          </Card>
+                        </Link>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setPendingDelete(project)}
+                          aria-label={`Delete ${project.name}`}
+                          title="Delete project"
+                          className="absolute bottom-1 right-2 z-10 h-8 w-8 text-muted-foreground opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:hover)]:opacity-0"
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
-        )}
+              )}
+
+              <div className="mt-8 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-xs text-muted-foreground">
+                <span>Projects are saved to this browser.</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={copyDeviceLink}
+                  className="gap-1.5 font-mono text-[11px] font-normal"
+                >
+                  <Link2 />
+                  Copy link for another device
+                </Button>
+              </div>
+            </>
+          )}
+        </section>
       </main>
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent className="bg-card border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this project?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the design, its parts, and its chat history. It can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(e) => {
+                // Keep the dialog open until the mutation settles.
+                e.preventDefault();
+                void confirmDelete();
+              }}
+              className={buttonVariants({ variant: "destructive" })}
+            >
+              {deleting && <Spinner />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

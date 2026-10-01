@@ -6,45 +6,44 @@ Chat left, design right. A "Lovable for hardware."
 
 ## Status
 
-Early. Inherits a working prototype (chat → DSL → DXF → SCS handoff) and adds McMaster-Carr assembly parts. No auth yet — run locally.
+Live at https://fabware-drab.vercel.app. The studio is open: no sign-in, and projects are scoped to an anonymous per-browser key (`localStorage` `fabware.owner`). That key keeps project lists separate; it is not authentication, so anyone holding a project URL can open and edit it.
 
 See [`docs/PLAN.md`](docs/PLAN.md) for scope and roadmap.
 
-## Monorepo layout
+## Layout
 
 ```
-lib/
-  api-spec/          OpenAPI source of truth (orval generates the rest)
-  api-zod/           Generated Zod schemas
-  api-client-react/  Generated React Query hooks
-  db/                Drizzle schema (Postgres)
-  integrations-anthropic-ai/
 artifacts/
-  api-server/        Express API
-  hardwareai/        Vite + React + shadcn/ui workspace (chat + canvas)
+  hardwareai/        The app: Vite + React + shadcn/ui + react-three-fiber, Convex backend
+    src/             Landing, studio (project list), workspace (chat + 3D + BOM), export
+    convex/          Schema, design agent, validators, DXF/PDF/OBJ export, SCS rule sync
   mockup-sandbox/    Scratch
-docs/
-  PLAN.md
+docs/                Plan, ADRs, conventions
 ```
+
+## How a design turn runs
+
+1. The browser calls `agentRuns.start`: it stores the user's message, marks the project `agentRun.status = "running"`, and schedules `projectChat.runTurn`.
+2. `runTurn` loops: call Claude with the tools in `convex/assemblyDesigner.ts`, apply each tool call, send the results back along with the validator's current findings, repeat until the model stops calling tools (or hits the step / time limit).
+3. Every action and the closing summary are written to `messages` as they happen and `projects.agentRun.step` tracks the current step, so the workspace follows along through reactive queries. Stop sets `cancelRequested`; the loop halts before its next model call.
+
+Models and pricing live in `convex/lib/models.ts`. A daily spend cap (`FABWARE_DAILY_USD_CAP`, default $25) refuses new turns once the day's model spend passes it.
 
 ## Getting started
 
-Requires `pnpm`, Node 20+, and a Postgres database.
+Requires `pnpm` and Node 20+.
 
 ```bash
 pnpm install
-export DATABASE_URL=postgres://...
-export ANTHROPIC_API_KEY=...
-pnpm -r --filter @workspace/db run migrate     # if migrations are set up
-pnpm -r run build
+cd artifacts/hardwareai
+npx convex dev                                  # your own dev deployment
+npx convex env set ANTHROPIC_API_KEY <key>
+VITE_CONVEX_URL=<deployment url> pnpm dev       # http://localhost:5173
 ```
 
-Dev:
+Checks: `pnpm test` (vitest), `npx tsc -p tsconfig.json --noEmit` (app), `npx tsc -p convex/tsconfig.json --noEmit` (backend).
 
-```bash
-pnpm --filter @workspace/api-server run dev
-pnpm --filter @workspace/hardwareai run dev
-```
+Deploy: `npx convex deploy` from `artifacts/hardwareai`, then push `main` (Vercel builds the frontend). Deploy the backend first: the frontend calls functions that must already exist.
 
 ## Partners
 

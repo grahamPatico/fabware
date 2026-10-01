@@ -72,6 +72,10 @@ export const insertProjectMessage = internalMutation({
     imageMediaType: v.optional(v.string()),
     model: v.optional(v.string()),
     effort: v.optional(v.string()),
+    kind: v.optional(v.union(v.literal("text"), v.literal("tool"), v.literal("error"))),
+    toolName: v.optional(v.string()),
+    isError: v.optional(v.boolean()),
+    runId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("messages", { ...args, createdAt: Date.now() });

@@ -165,6 +165,13 @@ export default function Landing() {
             </p>
             <div className="pt-2">
               <WaitlistForm />
+              <Link
+                href="/studio"
+                className="mt-3 inline-flex items-center gap-1 font-mono text-xs uppercase tracking-wider text-muted-foreground underline-offset-4 transition-colors hover:text-primary hover:underline focus-visible:outline-none focus-visible:text-primary focus-visible:underline"
+              >
+                Or open the studio now
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
             <div className="flex flex-wrap items-center gap-6 pt-4 text-xs font-mono uppercase tracking-wider text-muted-foreground">
               <span className="flex items-center gap-2">

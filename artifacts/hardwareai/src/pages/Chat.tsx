@@ -12,23 +12,22 @@ import {
 } from "@/components/ui/select";
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
+import {
+  DEFAULT_EFFORT,
+  DEFAULT_MODEL,
+  SELECTABLE_MODELS,
+  getModel,
+  modelLabel,
+  type Effort,
+} from "../../convex/lib/models";
 
-const MODELS = [
-  { id: "claude-opus-4-7", label: "Opus 4.7 (smartest)" },
-  { id: "claude-sonnet-4-6", label: "Sonnet 4.6 (balanced)" },
-  { id: "claude-haiku-4-5", label: "Haiku 4.5 (fastest)" },
-];
-
-const EFFORTS = [
-  { id: "low", label: "Low" },
-  { id: "medium", label: "Medium" },
-  { id: "high", label: "High" },
-  { id: "xhigh", label: "X-High (Opus 4.7)" },
-  { id: "max", label: "Max (Opus only)" },
-];
-
-const DEFAULT_MODEL = "claude-opus-4-7";
-const DEFAULT_EFFORT = "high";
+const EFFORT_LABELS: Record<Effort, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "X-High",
+  max: "Max",
+};
 
 function configMissing(): string | null {
   if (!import.meta.env.VITE_CONVEX_URL) {
@@ -82,6 +81,17 @@ function ChatInner() {
       setEffort(activeThread.effort);
     }
   }, [activeThread]);
+
+  // Effort levels the selected model accepts; empty for models with none.
+  const efforts: readonly Effort[] = getModel(model)?.efforts ?? [];
+  // A thread saved on a model that is no longer listed keeps it in the picker.
+  const legacyModel = SELECTABLE_MODELS.some((m) => m.id === model) ? null : getModel(model);
+
+  // Switching to a model that doesn't take the current effort resets it.
+  useEffect(() => {
+    const allowed: readonly string[] = getModel(model)?.efforts ?? [];
+    if (!allowed.includes(effort)) setEffort(DEFAULT_EFFORT);
+  }, [model, effort]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -195,24 +205,33 @@ function ChatInner() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {MODELS.map((m) => (
+                  {SELECTABLE_MODELS.map((m) => (
                     <SelectItem key={m.id} value={m.id} className="text-xs font-mono">
                       {m.label}
                     </SelectItem>
                   ))}
+                  {legacyModel && (
+                    <SelectItem value={legacyModel.id} className="text-xs font-mono">
+                      {legacyModel.label}
+                    </SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
             <div className="flex items-center gap-1.5">
               <Gauge className="w-3.5 h-3.5 text-muted-foreground" />
-              <Select value={effort} onValueChange={setEffort}>
+              <Select
+                value={efforts.length > 0 ? effort : ""}
+                onValueChange={setEffort}
+                disabled={efforts.length === 0}
+              >
                 <SelectTrigger className="h-8 text-xs font-mono w-[180px]">
-                  <SelectValue />
+                  <SelectValue placeholder="No effort setting" />
                 </SelectTrigger>
                 <SelectContent>
-                  {EFFORTS.map((e) => (
-                    <SelectItem key={e.id} value={e.id} className="text-xs font-mono">
-                      {e.label}
+                  {efforts.map((e) => (
+                    <SelectItem key={e} value={e} className="text-xs font-mono">
+                      {EFFORT_LABELS[e]}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -239,7 +258,7 @@ function ChatInner() {
                 className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}
               >
                 <span className="text-[10px] font-mono text-muted-foreground uppercase mb-1 px-1">
-                  {m.role === "user" ? "You" : m.model ? m.model.replace("claude-", "") : "Assistant"}
+                  {m.role === "user" ? "You" : m.model ? modelLabel(m.model) : "Assistant"}
                 </span>
                 <div
                   className={`max-w-[80%] rounded p-3 font-mono text-sm whitespace-pre-wrap ${

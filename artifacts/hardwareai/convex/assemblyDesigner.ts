@@ -1,23 +1,16 @@
-"use node";
-
 /**
- * @deprecated Legacy agent loop. Used only for projects where useNewHarness !== true.
- * Plan 9 removes this file once the new harness reaches feature parity.
+ * Tool definitions and system prompt for the assembly-design agent. The agent
+ * loop that calls Claude and applies these tools lives in projectChat.ts
+ * (`runTurn`).
  *
- * The Anthropic call has been extracted to convex/lib/anthropicClient.ts.
- * The sheet-metal-specific tools are being ported to convex/plugins/sheet_metal/tools.ts (Plan 3).
- * Decomposition / archetype tools (capture_scope, select_archetype) will move to the
- * orchestrator's decomposition agent (Plan 4+).
+ * Projects with useNewHarness === true are driven by convex/orchestrator
+ * instead; that path does not use this file.
  */
 
-import { internalAction } from "./_generated/server";
-import { internal } from "./_generated/api";
-import { v } from "convex/values";
-import Anthropic from "@anthropic-ai/sdk";
 import { listArchetypes } from "./archetypes";
 import { MCMASTER_SEED } from "./lib/mcmasterSeed";
 
-const TOOLS = [
+export const TOOLS = [
   {
     name: "capture_scope",
     description: "Store the project's scope. Call on new-project creation and whenever the user updates intent.",
@@ -113,15 +106,6 @@ const TOOLS = [
       type: "object",
       properties: { reason: { type: "string" } },
       required: ["reason"],
-    },
-  },
-  {
-    name: "decompose_freeform",
-    description: "[STUB — returns unsupported message in v1.] Propose a free-form part breakdown from intent without using an archetype.",
-    input_schema: {
-      type: "object",
-      properties: { intent: { type: "string" } },
-      required: ["intent"],
     },
   },
   {
@@ -390,34 +374,35 @@ const TOOLS = [
   },
 ] as const;
 
-function buildSystemPrompt(
-  archetypes: Array<{ id: string; label: string; description: string; tags: string[] }>,
-  state: any,
-  focusedRole: string | undefined,
-): string {
-  const archList = archetypes.map(a => `- ${a.id}: ${a.label} — ${a.description} [tags: ${a.tags.join(", ")}]`).join("\n");
+/**
+ * The stable half of the system prompt: instructions, archetype library and
+ * the curated catalog. Identical for every turn of every project, so it sits
+ * behind a prompt-cache breakpoint.
+ */
+export function buildInstructions(): string {
+  const archList = listArchetypes()
+    .map(a => `- ${a.id}: ${a.label} — ${a.description} [tags: ${a.tags.join(", ")}]`)
+    .join("\n");
   const mcmasterCatalog = MCMASTER_SEED.map(
     p => `- ${p.partNumber}: ${p.name} — ${p.description}`
   ).join("\n");
-  const focusedClause = focusedRole
-    ? `The user currently has part "${focusedRole}" focused. Interpret refinement requests as targeting this part unless the message says otherwise.`
-    : "No part is focused. Messages apply to the whole project.";
-  const violations: any[] = (state?.violations ?? []).filter((v: any) => v && (v.status === "fail" || v.status === "warn"));
-  const violationsBlock = violations.length === 0
-    ? "No active validation violations."
-    : violations.map((v: any) =>
-        `- [${v.status.toUpperCase()}] ${v.label} (${v.id}): ${v.message}` +
-        (v.suggestion ? `\n  → suggested: ${v.suggestion}` : "")
-      ).join("\n");
   return `You are Fabware's assembly designer. You design multi-part sheet-metal assemblies from user intent.
+
+## How you work
+
+You run in a loop: every tool you call returns its result to you, and you keep going until the design is done. One user message should normally end with a finished, valid assembly — not with a plan and a request for permission.
+
+- Act on what the user asked for. Don't stop to ask "shall I proceed?" for steps they already requested. Ask a question only when a real ambiguity blocks you and a wrong guess would waste the user's time; then offer 2–4 numbered options, one per line, so they can pick with one click.
+- After any tool that changes the assembly you receive the validator's current findings. Treat every FAIL as yours to fix before you finish: adjust positions, hole patterns, sizes or interfaces and check again. A WARN is worth one attempt; if it can't be cleared cheaply, say so in your summary.
+- If a tool returns an error ("Couldn't add …"), read the message, correct the input and retry. Don't repeat the same call unchanged.
+- When the design is complete, end with a short plain-text summary (2–4 sentences, no headings): what you built, the key dimensions and material, anything still open, and one useful next step. This is the only prose the user needs from you — keep it concrete.
 
 ## Workflow
 
-1. **Gather inspiration FIRST** when the user describes a new thing (or a meaningful redesign). Before \`select_archetype\` or any \`add_*\` call, invoke \`gather_inspiration\` with the topic — recall 3–5 reference products / designs (McMaster, IKEA, Grainger, Pelican, industrial catalogs, common consumer items), the dimensional ranges they live in, and their distinctive features (hinge style, vent pattern, latch, handle). The recommendations you produce should drive the archetype + param choices and any custom shapes.
-2. If the project has no archetype yet and the user is describing a new thing: call \`gather_inspiration\` → \`capture_scope\` (if scope is missing) → \`select_archetype\` with the closest-matching archetype.
-3. If the project already has an archetype and the user is refining: call \`refine_part\`, \`add_feature_to_part\`, or \`update_archetype_params\`.
-4. If the user asks for a shape that isn't a rectangle (star, hexagon, disc, logo, custom outline): use \`add_freeform_2d_part\`. Lasers cut **any** 2D outline from a flat sheet — there is no shape constraint as long as the outline is a single closed polygon.
-5. **If no archetype fits at all** (custom multi-part assembly, weird geometry, novel category like a kayak rack or a soldering-iron stand): build piece-by-piece with \`add_sheet_metal_part\` for each plate, then call \`add_interface\` to connect them. After each batch of \`add_sheet_metal_part\` + \`add_interface\` calls, call \`check_manufacturing\` to surface any rule failures and refine. \`remove_part\` cleans up if you change your mind. Use this path when "select an archetype" feels like jamming a square peg into a round hole — the agent should reach for primitives, not stretch the existing archetypes.
+1. **New design:** call \`gather_inspiration\` once (recall 3–5 reference products, their dimensional ranges and distinctive features), then \`capture_scope\` if scope is missing, then build: \`select_archetype\` with the closest-matching archetype, or primitives (step 4) when none fits.
+2. **Refining an existing design:** call \`refine_part\`, \`add_feature_to_part\`, or \`update_archetype_params\`. Skip \`gather_inspiration\`.
+3. If the user asks for a shape that isn't a rectangle (star, hexagon, disc, logo, custom outline): use \`add_freeform_2d_part\`. Lasers cut **any** 2D outline from a flat sheet — there is no shape constraint as long as the outline is a single closed polygon.
+4. **If no archetype fits at all** (custom multi-part assembly, weird geometry, novel category like a kayak rack or a soldering-iron stand): build piece-by-piece with \`add_sheet_metal_part\` for each plate, then call \`add_interface\` to connect them, then \`check_manufacturing\`. \`remove_part\` cleans up if you change your mind. Use this path when "select an archetype" feels like jamming a square peg into a round hole — reach for primitives, not a stretched archetype.
 
    **Default to standard gauges.** Mild Steel and Stainless Steel stock at 0.030, 0.036, 0.048, 0.060, 0.075, 0.090, 0.105, 0.120, 0.135, 0.187, 0.250"; Aluminum 5052 stocks 0.030, 0.048, 0.060, 0.075, 0.090, 0.105, 0.135". Pick the closest stocked gauge — never an arbitrary thickness like 0.080" or 0.111". Non-stock plate adds lead time and minimum-order surcharges and is only justified when a production run absolutely requires the exact thickness; even then, ask the user first.
 
@@ -429,8 +414,7 @@ function buildSystemPrompt(
    - \`slot\`: \`{ kind: "slot", name, count, length, width, pattern: same as hole }\`
    - \`tab\`:  \`{ kind: "tab", name, count, length, width, edge: "top"|"bottom"|"left"|"right" }\`
    - \`fillet\`: \`{ kind: "fillet", name, radius, corners: "all"|"top"|"bottom" }\`
-5. If the user asks something you can't do (e.g., "add an electromagnetic lock", "switch to 3D printing"): explain politely what's not yet supported.
-6. Never output a final assistant message summarizing what you did — tools carry the rationale. Keep spoken output short.
+5. If the user asks for something the tools can't model (e.g. wiring, firmware, a custom motor mount with no catalog part): build what you can, add the nearest purchasable part if one exists, and say plainly what is left for them to source or design.
 
 ## Params for select_archetype / update_archetype_params
 
@@ -462,28 +446,12 @@ Don't specify material, thickness, fastenerCount, etc. unless the user explicitl
 
 ${archList}
 
-## Current project state
-
-${JSON.stringify(state, null, 2)}
-
-## Focused part
-
-${focusedClause}
-
-## Active validation violations (from the post-tool-call validator)
-
-These are the rules currently failing or warning on the assembly. **If the
-user asks you to "fix the intersection", "fix the geometry", or similar,
-this list is what you should act on.** Each \`fail\` violation must be
-resolved before the assembly is considered correct.
-
-${violationsBlock}
-
 ## Rules
 
 - Numbers are in inches, degrees, or dimensionless counts. Never millimeters.
-- Use your own knowledge for sheet-metal manufacturing rules and SCS part conventions; the orchestrator validates assemblies after each change and surfaces issues in the rules strip.
-- \`decompose_freeform\` is a stub in this version; if you call it, you'll get back a message to the user to pick an archetype instead.
+- Use your own knowledge for sheet-metal manufacturing rules and SCS part conventions; the validator checks the assembly after each change and its findings come back to you with the tool results.
+- Positions are the part's origin in the assembly frame (inches); rotations are radians. Lay parts out so fabricated parts never share volume — the validator fails any overlap deeper than 0.020".
+- A purchased part is drawn once at its position regardless of quantity. For fasteners that belong to a joint between two parts, list them in that \`add_interface\` call's \`hardwareRefs\` (they are drawn at the hole positions and counted in the BOM) rather than adding a separate purchased part.
 
 ## Sheet-metal manufacturing primer
 
@@ -621,65 +589,36 @@ Never invent McMaster part numbers; search step.parts, ask the user, or use only
 `;
 }
 
-export const runAgent = internalAction({
-  args: {
-    projectId: v.id("projects"),
-    userMessage: v.string(),
-    focusedRole: v.optional(v.string()),
-    model: v.string(),
-    effort: v.string(),
-    history: v.array(v.object({ role: v.union(v.literal("user"), v.literal("assistant")), content: v.string() })),
-    projectState: v.object({
-      scope: v.any(),
-      archetypeId: v.optional(v.any()),
-      archetypeParams: v.optional(v.any()),
-      parts: v.array(v.object({ role: v.string(), label: v.string(), dslJson: v.optional(v.string()) })),
-      interfaces: v.array(v.any()),
-      violations: v.optional(v.array(v.any())),
-    }),
-  },
-  handler: async (ctx, args): Promise<{ toolCalls: Array<{ name: string; input: any }>; responseText: string }> => {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
+/**
+ * The volatile half: this project's scope, parts, interfaces and open
+ * validation findings as of the start of the turn. Later changes reach the
+ * model through tool results, so the system prompt stays byte-stable for the
+ * whole turn.
+ */
+export function buildProjectContext(state: any, focusedRole: string | undefined): string {
+  const focusedClause = focusedRole
+    ? `The user currently has part "${focusedRole}" focused. Interpret refinement requests as targeting this part unless the message says otherwise.`
+    : "No part is focused. Messages apply to the whole project.";
+  const violations: any[] = (state?.violations ?? []).filter((v: any) => v && (v.status === "fail" || v.status === "warn"));
+  const violationsBlock = violations.length === 0
+    ? "No active validation violations."
+    : violations.map((v: any) =>
+        `- [${v.status.toUpperCase()}] ${v.label} (${v.id}): ${v.message}` +
+        (v.suggestion ? `\n  → suggested: ${v.suggestion}` : "")
+      ).join("\n");
+  return `## Project state at the start of this turn
 
-    const archetypeList = listArchetypes().map(a => ({ id: a.id, label: a.label, description: a.description, tags: a.tags }));
-    const system = buildSystemPrompt(archetypeList, args.projectState, args.focusedRole);
-    const client = new Anthropic({ apiKey });
+${JSON.stringify(state, null, 2)}
 
-    const messages: Anthropic.Messages.MessageParam[] = [
-      ...args.history.map(m => ({ role: m.role, content: m.content })),
-      { role: "user", content: args.userMessage },
-    ];
+## Focused part
 
-    const params: Anthropic.Messages.MessageCreateParamsNonStreaming = {
-      model: args.model,
-      max_tokens: 8192,
-      system,
-      tools: TOOLS as unknown as Anthropic.Messages.Tool[],
-      messages,
-    };
-    if ((args.model === "claude-opus-4-7" || args.model === "claude-sonnet-4-6") && args.effort) {
-      (params as any).output_config = { effort: args.effort };
-    }
-    const response = await client.messages.create(params);
+${focusedClause}
 
-    await ctx.runMutation(internal.tokenUsage.record, {
-      feature: "assembly_designer",
-      model: args.model,
-      effort: args.effort,
-      projectId: args.projectId,
-      inputTokens: response.usage.input_tokens,
-      outputTokens: response.usage.output_tokens,
-      cacheReadTokens: response.usage.cache_read_input_tokens ?? undefined,
-      cacheCreationTokens: response.usage.cache_creation_input_tokens ?? undefined,
-    });
+## Validation findings at the start of this turn
 
-    const toolCalls: Array<{ name: string; input: any }> = [];
-    let responseText = "";
-    for (const block of response.content) {
-      if (block.type === "tool_use") toolCalls.push({ name: block.name, input: block.input });
-      else if (block.type === "text") responseText += block.text;
-    }
-    return { toolCalls, responseText };
-  },
-});
+If the user asks you to "fix the intersection", "fix the geometry", or
+similar, this list is what to act on.
+
+${violationsBlock}
+`;
+}

@@ -1,6 +1,7 @@
 "use node";
 
 import Anthropic from "@anthropic-ai/sdk";
+import { resolveEffort } from "./models";
 
 // NOTE: structurally identical to AgentTool in convex/plugins/types.ts. Plan 4 should
 // consolidate to a single canonical source — likely by re-exporting from plugins/types
@@ -36,9 +37,7 @@ export interface AgentTurnResult {
 }
 
 /** Pure builder — assembles the Claude request params from typed input. */
-export function buildClientParams(input: AgentTurnInput): Anthropic.Messages.MessageCreateParamsNonStreaming & {
-  output_config?: { effort: "low" | "med" | "high" };
-} {
+export function buildClientParams(input: AgentTurnInput): Anthropic.Messages.MessageCreateParamsNonStreaming {
   const params: Anthropic.Messages.MessageCreateParamsNonStreaming = {
     model: input.model,
     max_tokens: input.maxTokens ?? 8192,
@@ -46,10 +45,9 @@ export function buildClientParams(input: AgentTurnInput): Anthropic.Messages.Mes
     tools: input.tools as unknown as Anthropic.Messages.Tool[],
     messages: input.messages.map((m) => ({ role: m.role, content: m.content })),
   };
-  if ((input.model === "claude-opus-4-7" || input.model === "claude-sonnet-4-6") && input.effort) {
-    return { ...params, output_config: { effort: input.effort } };
-  }
-  return params;
+  // The harness says "med"; the API's level is "medium".
+  const effort = resolveEffort(input.model, input.effort === "med" ? "medium" : input.effort);
+  return effort ? { ...params, output_config: { effort } } : params;
 }
 
 /** Pure parser — extracts tool_use + text blocks from a Claude response. */
