@@ -239,7 +239,7 @@ export default function AssemblyPartsPanel({ projectId, readOnly = false }: { pr
         />
         {matches && matches.matches.length > 0 && (
           <div className="border border-border rounded-md divide-y divide-border/50 max-h-40 overflow-y-auto">
-            {matches.matches.map((m: SeedPart) => (
+            {matches.matches.map((m: Omit<SeedPart, "keywords">) => (
               <button
                 key={m.partNumber}
                 type="button"

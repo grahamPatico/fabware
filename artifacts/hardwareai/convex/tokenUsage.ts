@@ -1,20 +1,12 @@
-import { internalMutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 import { v } from "convex/values";
+import { DEFAULT_MODEL, getModel, type ModelSpec } from "./lib/models";
 
-type Pricing = {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-};
+type Pricing = ModelSpec["pricing"];
 
-const PRICING: Record<string, Pricing> = {
-  "claude-opus-4-7": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
-  "claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-  "claude-haiku-4-5": { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
-};
-
-const DEFAULT_PRICING: Pricing = PRICING["claude-sonnet-4-6"];
+// Unknown model ids (e.g. the new-harness specialists' defaults) are costed at
+// the default model's rates so spend is never under-reported as zero.
+const DEFAULT_PRICING: Pricing = getModel(DEFAULT_MODEL)!.pricing;
 
 export function computeCostUsd(
   model: string,
@@ -25,7 +17,7 @@ export function computeCostUsd(
     cacheCreationTokens: number;
   },
 ): number {
-  const p = PRICING[model] ?? DEFAULT_PRICING;
+  const p = getModel(model)?.pricing ?? DEFAULT_PRICING;
   const perMTok = (n: number, rate: number) => (n / 1_000_000) * rate;
   return (
     perMTok(tokens.inputTokens, p.input) +
@@ -71,6 +63,18 @@ export const record = internalMutation({
       costUsd,
       createdAt: Date.now(),
     });
+  },
+});
+
+/** Total USD spent across every feature since `sinceMs` — feeds the daily cap. */
+export const spendSince = internalQuery({
+  args: { sinceMs: v.number() },
+  handler: async (ctx, { sinceMs }) => {
+    const rows = await ctx.db
+      .query("tokenUsage")
+      .withIndex("by_time", (q) => q.gte("createdAt", sinceMs))
+      .collect();
+    return rows.reduce((sum, r) => sum + r.costUsd, 0);
   },
 });
 

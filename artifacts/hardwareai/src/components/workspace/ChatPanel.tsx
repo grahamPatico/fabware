@@ -1,87 +1,60 @@
-import React, { useEffect, useRef, useState } from "react";
-import { useQuery, useAction } from "convex/react";
-import { Send, Terminal, Loader2, ImagePlus, X, Cpu, Gauge } from "lucide-react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
+import { useMutation, useQuery } from "convex/react";
+import { ConvexError } from "convex/values";
+import { ArrowDown, ImagePlus, Loader2, Send, Square, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { prepareImage, type PreparedImage } from "@/lib/image";
 import { api } from "../../../convex/_generated/api";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
+import ActivityBlock from "./chat/ActivityBlock";
+import ChatHeader from "./chat/ChatHeader";
+import EmptyState from "./chat/EmptyState";
+import { AssistantMessage, ErrorMessage, UserMessage } from "./chat/Messages";
+import RunStatus from "./chat/RunStatus";
+import { parseOptions, type ReplyOption } from "./chat/options";
+import { useChatPrefs } from "./chat/prefs";
 
-const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+type Message = Doc<"messages">;
 
-const MODELS = [
-  { id: "claude-opus-4-7", label: "Opus 4.7 (smartest)" },
-  { id: "claude-sonnet-4-6", label: "Sonnet 4.6 (balanced)" },
-  { id: "claude-haiku-4-5", label: "Haiku 4.5 (fastest)" },
-];
-const EFFORTS = [
-  { id: "low", label: "Low" },
-  { id: "medium", label: "Medium" },
-  { id: "high", label: "High" },
-  { id: "xhigh", label: "X-High (Opus 4.7)" },
-  { id: "max", label: "Max (Opus only)" },
-];
-const LS_MODEL = "fabware.chat.model";
-const LS_EFFORT = "fabware.chat.effort";
+// A Convex action is killed at 10 minutes, so a run still marked "running"
+// after this long has nothing behind it. Mirrors `convex/agentRuns.ts`.
+const STALE_RUN_MS = 11 * 60 * 1000;
+/** How close to the bottom still counts as "following the conversation". */
+const NEAR_BOTTOM_PX = 120;
+const SEND_FAILED = "Couldn't send that. Check your connection and try again.";
+const IMAGE_ONLY_PROMPT = "Use this reference image to design the part.";
+const NO_OPTIONS: ReplyOption[] = [];
 
-const PHASES = [
-  { icon: "🔍", text: "Researching reference designs in McMaster, IKEA, Grainger, industrial catalogs..." },
-  { icon: "📐", text: "Recalling typical dimensions, hinge orientations, vent patterns..." },
-  { icon: "🧩", text: "Picking the closest archetype from the library..." },
-  { icon: "⚙️", text: "Generating parts and interfaces..." },
-  { icon: "🔩", text: "Sizing fasteners and clearance holes..." },
-  { icon: "📏", text: "Validating manufacturability against Send Cut Send rules..." },
-  { icon: "🔎", text: "Checking for part intersections..." },
-  { icon: "🪛", text: "Tightening geometry..." },
-];
+type ChatItem =
+  | { type: "message"; key: string; msg: Message }
+  | { type: "activity"; key: string; rows: Message[] };
 
-function SendingIndicator() {
-  const [start] = React.useState(() => Date.now());
-  const [tick, setTick] = React.useState(0);
-  React.useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 1100);
-    return () => clearInterval(id);
-  }, []);
-  const elapsed = Math.floor((Date.now() - start) / 1000);
-  const phase = PHASES[tick % PHASES.length];
-  return (
-    <div className="flex flex-col items-start">
-      <span className="text-[10px] font-mono text-muted-foreground uppercase mb-1 px-1">System</span>
-      <div className="bg-card border border-primary/30 rounded p-3 font-mono text-sm flex items-start gap-3 text-foreground/90 max-w-[85%] shadow-lg shadow-primary/5">
-        <Loader2 className="w-4 h-4 animate-spin text-primary mt-0.5 shrink-0" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
-            <span className="text-base leading-tight">{phase.icon}</span>
-            <span className="text-foreground/90">{phase.text}</span>
-          </div>
-          <div className="mt-1 text-[10px] uppercase tracking-widest text-muted-foreground">
-            {elapsed}s · phase {(tick % PHASES.length) + 1}/{PHASES.length}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+/** Collapse each run of consecutive tool rows into a single activity item. */
+function groupMessages(messages: Message[]): ChatItem[] {
+  const items: ChatItem[] = [];
+  for (const msg of messages) {
+    if (msg.kind === "tool") {
+      const last = items[items.length - 1];
+      if (last && last.type === "activity") last.rows.push(msg);
+      else items.push({ type: "activity", key: `activity-${msg._id}`, rows: [msg] });
+    } else {
+      items.push({ type: "message", key: msg._id, msg });
+    }
+  }
+  return items;
 }
 
-// Detect numbered options the agent presented (e.g., "1. **Thinner washer** I can do…").
-// Returns at least 2 options or none — we don't want to turn arbitrary "step 1, 2, 3"
-// instructions into pickable buttons.
-function parseOptions(text: string): Array<{ n: number; label: string }> {
-  const found: Array<{ n: number; label: string }> = [];
-  const re = /^\s*(\d+)\.\s+(?:\*\*([^*]+)\*\*|(\S[^\n]{0,80}))/gm;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    const n = parseInt(m[1], 10);
-    const label = (m[2] ?? m[3] ?? "").trim();
-    if (label && n >= 1 && n <= 9) found.push({ n, label });
-  }
-  return found.length >= 2 ? found : [];
+function errorText(err: unknown, fallback: string): string {
+  return err instanceof ConvexError ? String(err.data) : fallback;
 }
 
 interface ChatPanelProps {
@@ -91,53 +64,111 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ projectId, focusedPartRole, disabled = false }: ChatPanelProps) {
-  const messages = useQuery(api.messages.listForProject, projectId ? { projectId } : "skip");
-  const sendMessage = useAction(api.projectChat.send);
+  const messages = useQuery(api.messages.listForProject, { projectId });
+  const project = useQuery(api.projects.get, { projectId });
+  const startRun = useMutation(api.agentRuns.start);
+  const cancelRun = useMutation(api.agentRuns.cancel);
+  const { model, effort, setModel, setEffort } = useChatPrefs();
 
   const [input, setInput] = useState("");
-  const [pendingImage, setPendingImage] = useState<{ data: string; mediaType: string; preview: string } | null>(null);
+  const [pendingImage, setPendingImage] = useState<PreparedImage | null>(null);
+  const [imageBusy, setImageBusy] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const [model, setModel] = useState<string>(() => localStorage.getItem(LS_MODEL) ?? "claude-opus-4-7");
-  const [effort, setEffort] = useState<string>(() => localStorage.getItem(LS_EFFORT) ?? "high");
+  const [stopPendingRunId, setStopPendingRunId] = useState<string | null>(null);
+  const [showJump, setShowJump] = useState(false);
 
-  useEffect(() => localStorage.setItem(LS_MODEL, model), [model]);
-  useEffect(() => localStorage.setItem(LS_EFFORT, effort), [effort]);
+  // ── Run state: owned by the server, read reactively ─────────────────────
+  const run = project?.agentRun;
+  const isRunning = run?.status === "running" && Date.now() - run.startedAt < STALE_RUN_MS;
+  const stopping =
+    isRunning && (run?.cancelRequested === true || stopPendingRunId === run?.runId);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
+  // `isRunning` depends on the clock. Re-render once at the moment a run that
+  // never reported back goes stale, so the composer unlocks on its own.
+  const [, rerender] = useReducer((n: number) => n + 1, 0);
+  const runStatus = run?.status;
+  const runStartedAt = run?.startedAt;
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, sending]);
+    if (runStatus !== "running" || runStartedAt === undefined) return;
+    const remaining = runStartedAt + STALE_RUN_MS - Date.now();
+    if (remaining <= 0) return;
+    const id = window.setTimeout(rerender, remaining + 50);
+    return () => window.clearTimeout(id);
+  }, [runStatus, runStartedAt]);
 
-  const handlePickImage = () => fileInputRef.current?.click();
+  // ── Scrolling ───────────────────────────────────────────────────────────
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const nearBottomRef = useRef(true);
+  const seenCountRef = useRef(0);
 
-  const handleImageSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setImageError(null);
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > MAX_IMAGE_BYTES) {
-      setImageError("Image must be under 6 MB.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const [, base64] = dataUrl.split(",");
-      setPendingImage({ data: base64, mediaType: file.type, preview: dataUrl });
-    };
-    reader.readAsDataURL(file);
-    e.target.value = "";
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  }, []);
+
+  const handleScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    nearBottomRef.current = near;
+    if (near) setShowJump(false);
   };
 
-  const sendContent = async (content: string, image?: { data: string; mediaType: string }) => {
-    if (disabled || sending) return;
+  const messageCount = messages?.length ?? 0;
+  const lastMessage = messageCount > 0 ? messages![messageCount - 1] : undefined;
+  const lastMessageId = lastMessage?._id;
+  const messagesLoaded = messages !== undefined;
+
+  useLayoutEffect(() => {
+    if (!messagesLoaded) return;
+    const grew = messageCount > seenCountRef.current;
+    seenCountRef.current = messageCount;
+    if (nearBottomRef.current) scrollToBottom();
+    else if (grew) setShowJump(true);
+  }, [messagesLoaded, messageCount, lastMessageId, isRunning, scrollToBottom]);
+
+  // The viewport itself changes size too: the panel is dragged, the composer
+  // grows, or the mobile Chat tab comes back from hidden. Stay pinned then.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (nearBottomRef.current) scrollToBottom();
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [scrollToBottom]);
+
+  // Images change the list height after layout; keep the bottom pinned.
+  const handleImageLoad = useCallback(() => {
+    if (nearBottomRef.current) scrollToBottom();
+  }, [scrollToBottom]);
+
+  const jumpToLatest = () => {
+    nearBottomRef.current = true;
+    setShowJump(false);
+    scrollToBottom(true);
+  };
+
+  // ── Sending ─────────────────────────────────────────────────────────────
+  const sendingRef = useRef(false);
+
+  const send = async (
+    content: string,
+    image?: { data: string; mediaType: string },
+  ): Promise<boolean> => {
+    if (disabled || isRunning || sendingRef.current) return false;
     const trimmed = content.trim();
-    if (!trimmed && !image) return;
+    if (!trimmed && !image) return false;
+    sendingRef.current = true;
     setSending(true);
+    // The user's own message should always come into view.
+    nearBottomRef.current = true;
     try {
-      await sendMessage({
+      await startRun({
         projectId,
         content: trimmed,
         imageData: image?.data,
@@ -146,191 +177,318 @@ export default function ChatPanel({ projectId, focusedPartRole, disabled = false
         effort,
         focusedRole: focusedPartRole ?? undefined,
       });
+      setSendError(null);
+      return true;
+    } catch (err) {
+      setSendError(errorText(err, SEND_FAILED));
+      return false;
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   };
 
-  const handleSend = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if ((!input.trim() && !pendingImage) || sending) return;
-    const content = input.trim() || (pendingImage ? "Use this reference image to design the part." : "");
+  // Message rows are memoised; hand them callbacks whose identity never
+  // changes but which always run the latest `send`.
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  const lastUserMessage = useMemo(() => {
+    if (!messages) return undefined;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "user") return messages[i];
+    }
+    return undefined;
+  }, [messages]);
+  const lastUserRef = useRef(lastUserMessage);
+  lastUserRef.current = lastUserMessage;
+
+  const handlePickOption = useCallback((n: number) => {
+    void sendRef.current(String(n));
+  }, []);
+  const handlePickStarter = useCallback((prompt: string) => {
+    void sendRef.current(prompt);
+  }, []);
+  const handleRetry = useCallback(() => {
+    const prev = lastUserRef.current;
+    if (!prev) return;
+    const image =
+      prev.imageData && prev.imageMediaType
+        ? { data: prev.imageData, mediaType: prev.imageMediaType }
+        : undefined;
+    void sendRef.current(prev.content, image);
+  }, []);
+
+  const canSubmit = !disabled && !isRunning && !sending && (input.trim() !== "" || pendingImage !== null);
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!canSubmit) return;
+    const typed = input;
     const image = pendingImage;
+    const content = typed.trim() || (image ? IMAGE_ONLY_PROMPT : "");
     setInput("");
     setPendingImage(null);
-    await sendContent(content, image ?? undefined);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+    const ok = await send(content, image ?? undefined);
+    if (!ok) {
+      // Put the draft back so nothing the user wrote is lost.
+      setInput((current) => (current ? current : typed));
+      setPendingImage((current) => current ?? image);
     }
   };
 
-  const isLoading = messages === undefined;
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
+    // Enter never inserts a newline (Shift+Enter does). While the agent is
+    // working it does nothing, so the draft stays put for the next turn.
+    e.preventDefault();
+    if (!isRunning) void handleSubmit();
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    if (sendError) setSendError(null);
+  };
+
+  const handleStop = async () => {
+    if (!run || !isRunning || stopping) return;
+    setStopPendingRunId(run.runId);
+    try {
+      await cancelRun({ projectId });
+    } catch (err) {
+      setStopPendingRunId(null);
+      setSendError(errorText(err, "Couldn't stop that. Check your connection and try again."));
+    }
+  };
+
+  // ── Images ──────────────────────────────────────────────────────────────
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const stageImage = async (file: File) => {
+    setImageError(null);
+    setImageBusy(true);
+    try {
+      setPendingImage(await prepareImage(file));
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : "Couldn't read that image.");
+    } finally {
+      setImageBusy(false);
+    }
+  };
+
+  const handleImageSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) void stageImage(file);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (disabled) return;
+    const data = e.clipboardData;
+    // Some apps put both text and a rendered picture of it on the clipboard;
+    // there the text is what the user meant to paste.
+    if (!data || data.getData("text/plain")) return;
+    for (const item of Array.from(data.items)) {
+      if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+      const file = item.getAsFile();
+      if (!file) continue;
+      e.preventDefault();
+      void stageImage(file);
+      return;
+    }
+  };
+
+  // ── Rendering ───────────────────────────────────────────────────────────
+  const items = useMemo(() => (messages ? groupMessages(messages) : []), [messages]);
+
+  const lastIsAssistantText =
+    lastMessage !== undefined &&
+    lastMessage.role === "assistant" &&
+    (lastMessage.kind === undefined || lastMessage.kind === "text");
+  const lastAssistantText = lastIsAssistantText ? lastMessage.content : null;
+  const lastOptions = useMemo(
+    () => (lastAssistantText !== null ? parseOptions(lastAssistantText) : NO_OPTIONS),
+    [lastAssistantText],
+  );
+  const actionsBlocked = disabled || sending || isRunning;
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-3 border-b border-border bg-card shrink-0 flex items-center gap-2 flex-wrap">
-        <h2 className="font-mono text-xs uppercase tracking-widest text-muted-foreground flex items-center gap-2 mr-auto">
-          <Terminal className="w-3 h-3" /> Command Input
-          {focusedPartRole && (
-            <span className="ml-2 px-1.5 py-0.5 rounded bg-primary/10 border border-primary/20 text-primary text-[10px] uppercase tracking-wider">
-              Focused: {focusedPartRole}
-            </span>
-          )}
-        </h2>
-        <div className="flex items-center gap-1">
-          <Cpu className="w-3 h-3 text-muted-foreground" />
-          <Select value={model} onValueChange={setModel}>
-            <SelectTrigger className="h-7 text-[11px] font-mono w-[170px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MODELS.map((m) => (
-                <SelectItem key={m.id} value={m.id} className="text-[11px] font-mono">
-                  {m.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-1">
-          <Gauge className="w-3 h-3 text-muted-foreground" />
-          <Select value={effort} onValueChange={setEffort}>
-            <SelectTrigger className="h-7 text-[11px] font-mono w-[130px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {EFFORTS.map((e) => (
-                <SelectItem key={e.id} value={e.id} className="text-[11px] font-mono">
-                  {e.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+    <div className="flex h-full min-h-0 flex-col">
+      <ChatHeader
+        focusedPartRole={focusedPartRole}
+        model={model}
+        effort={effort}
+        onModelChange={setModel}
+        onEffortChange={setEffort}
+      />
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6" ref={scrollRef}>
-        {isLoading ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground font-mono text-sm">
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Initializing comms...
-          </div>
-        ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-muted-foreground/50 font-mono text-sm px-8 text-center space-y-4">
-            <Terminal className="w-8 h-8 opacity-50" />
-            <p>Describe the part you need to manufacture.</p>
-            <p className="text-xs">e.g., "I need a steel mounting bracket with 4 holes for M4 screws."</p>
-            <p className="text-xs opacity-70">You can also attach a reference photo or sketch.</p>
-          </div>
-        ) : (
-          messages.map((msg: Doc<"messages">, idx: number) => {
-            const isLast = idx === messages.length - 1;
-            const options = msg.role === "assistant" && isLast ? parseOptions(msg.content) : [];
-            return (
-              <div
-                key={msg._id ?? idx}
-                className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
-              >
-                <span className="text-[10px] font-mono text-muted-foreground uppercase mb-1 px-1">
-                  {msg.role === "user" ? "User" : msg.model ? msg.model.replace("claude-", "") : "System"}
-                </span>
-                <div
-                  className={`max-w-[85%] rounded p-3 font-mono text-sm whitespace-pre-wrap ${
-                    msg.role === "user"
-                      ? "bg-primary/10 border border-primary/20 text-primary-foreground"
-                      : "bg-card border border-border text-foreground"
-                  }`}
-                >
-                  {msg.imageData && msg.imageMediaType && (
-                    <img
-                      src={`data:${msg.imageMediaType};base64,${msg.imageData}`}
-                      alt="reference"
-                      className="max-w-full max-h-48 mb-2 rounded border border-border"
+      <div className="relative min-h-0 flex-1">
+        <div ref={scrollRef} onScroll={handleScroll} className="h-full overflow-y-auto p-4">
+          {!messagesLoaded ? (
+            <div className="flex h-full items-center justify-center font-mono text-sm text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> Loading chat
+            </div>
+          ) : messageCount === 0 && !isRunning ? (
+            <EmptyState disabled={disabled || sending} onPick={handlePickStarter} />
+          ) : (
+            <div className="space-y-5">
+              {items.map((item) => {
+                if (item.type === "activity") {
+                  return <ActivityBlock key={item.key} rows={item.rows} />;
+                }
+                const { msg } = item;
+                const isLast = msg._id === lastMessageId;
+                if (msg.role === "user") {
+                  return <UserMessage key={item.key} msg={msg} onImageLoad={handleImageLoad} />;
+                }
+                if (msg.kind === "error") {
+                  const canRetry = isLast && !isRunning && lastUserMessage !== undefined;
+                  return (
+                    <ErrorMessage
+                      key={item.key}
+                      msg={msg}
+                      onRetry={canRetry ? handleRetry : undefined}
+                      retryDisabled={disabled || sending}
                     />
-                  )}
-                  {msg.content}
-                </div>
-                {options.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2 max-w-[85%]">
-                    {options.map(o => (
-                      <Button
-                        key={o.n}
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={disabled || sending}
-                        onClick={() => sendContent(String(o.n))}
-                        className="font-mono text-xs gap-2 border-primary/30 hover:bg-primary/10"
-                        title={o.label}
-                      >
-                        <span className="font-bold text-primary">{o.n}</span>
-                        <span className="text-muted-foreground">·</span>
-                        <span className="truncate max-w-[260px]">{o.label}</span>
-                      </Button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })
+                  );
+                }
+                return (
+                  <AssistantMessage
+                    key={item.key}
+                    msg={msg}
+                    options={isLast && !isRunning ? lastOptions : NO_OPTIONS}
+                    optionsDisabled={actionsBlocked}
+                    onPickOption={handlePickOption}
+                    onImageLoad={handleImageLoad}
+                  />
+                );
+              })}
+              {isRunning && run && (
+                <RunStatus startedAt={run.startedAt} step={run.step} toolCalls={run.toolCalls} />
+              )}
+            </div>
+          )}
+        </div>
+        {showJump && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={jumpToLatest}
+            className="absolute bottom-3 left-1/2 h-7 -translate-x-1/2 gap-1.5 rounded-full px-3 font-mono text-[10px] uppercase tracking-widest shadow-lg"
+          >
+            <ArrowDown className="h-3 w-3" aria-hidden="true" />
+            Jump to latest
+          </Button>
         )}
-
-        {sending && <SendingIndicator />}
       </div>
 
-      <div className="p-4 bg-card border-t border-border shrink-0 space-y-2">
+      <div className="shrink-0 space-y-2 border-t border-border bg-card p-3">
         {disabled && (
-          <div className="bg-primary/10 border border-primary/30 rounded p-2 font-mono text-[11px] text-primary uppercase tracking-widest">
+          <div className="rounded border border-primary/30 bg-primary/10 p-2 font-mono text-[11px] uppercase tracking-widest text-primary">
             Previewing a past revision · restore it or return to current to continue editing
           </div>
         )}
-        {pendingImage && (
-          <div className="flex items-center gap-3 bg-background border border-border rounded p-2">
-            <img src={pendingImage.preview} alt="staged" className="w-12 h-12 object-cover rounded" />
-            <span className="text-xs font-mono text-muted-foreground flex-1">Reference image attached</span>
-            <Button size="icon" variant="ghost" type="button" className="h-6 w-6" onClick={() => setPendingImage(null)}>
-              <X className="w-3 h-3" />
-            </Button>
+        {(pendingImage || imageBusy) && (
+          <div className="flex items-center gap-3 rounded border border-border bg-background p-2">
+            {pendingImage ? (
+              <img src={pendingImage.preview} alt="Attached reference" className="h-12 w-12 rounded object-cover" />
+            ) : (
+              <div className="flex h-12 w-12 items-center justify-center rounded border border-border">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden="true" />
+              </div>
+            )}
+            <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+              {imageBusy ? "Preparing image" : "Reference image attached"}
+            </span>
+            {pendingImage && (
+              <Button
+                size="icon"
+                variant="ghost"
+                type="button"
+                className="h-6 w-6"
+                onClick={() => setPendingImage(null)}
+                aria-label="Remove attached image"
+                title="Remove attached image"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            )}
           </div>
         )}
-        {imageError && <p className="text-xs font-mono text-destructive">{imageError}</p>}
-        <form onSubmit={handleSend} className="relative">
+        {imageError && (
+          <p role="alert" className="font-mono text-xs text-destructive">
+            {imageError}
+          </p>
+        )}
+        {sendError && (
+          <p role="alert" className="font-mono text-xs text-destructive">
+            {sendError}
+          </p>
+        )}
+        <form
+          onSubmit={handleSubmit}
+          className="rounded-md border border-border bg-background focus-within:ring-1 focus-within:ring-primary"
+        >
           <Textarea
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder={disabled ? "Return to current revision to continue..." : "Specify part parameters..."}
+            onPaste={handlePaste}
+            placeholder={disabled ? "Return to current revision to continue..." : "Describe a part or a change"}
+            aria-label="Message"
             disabled={disabled}
-            className="min-h-[80px] resize-none pr-20 pl-10 font-mono text-sm bg-background border-border focus-visible:ring-1 focus-visible:ring-primary disabled:opacity-50"
+            className="max-h-48 min-h-[72px] resize-none border-0 bg-transparent px-3 pb-1 pt-2.5 font-mono text-base shadow-none focus-visible:ring-0 disabled:opacity-50 md:text-sm"
             autoFocus
           />
-          <Button
-            size="icon"
-            type="button"
-            variant="ghost"
-            disabled={disabled}
-            className="absolute bottom-2 left-2 h-8 w-8"
-            onClick={handlePickImage}
-            title="Attach reference image"
-          >
-            <ImagePlus className="w-4 h-4" />
-          </Button>
-          <Button
-            size="icon"
-            type="submit"
-            disabled={disabled || (!input.trim() && !pendingImage) || sending}
-            className="absolute bottom-2 right-2 h-8 w-8"
-          >
-            <Send className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-2 px-2 pb-2">
+            <Button
+              size="icon"
+              type="button"
+              variant="ghost"
+              disabled={disabled || imageBusy}
+              className="h-8 w-8"
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach reference image"
+              aria-label="Attach reference image"
+            >
+              <ImagePlus className="h-4 w-4" />
+            </Button>
+            <div className="ml-auto">
+              {isRunning ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={stopping}
+                  onClick={handleStop}
+                  className="h-8 gap-2 px-2.5 font-mono text-[10px] uppercase tracking-widest [&_svg]:size-3"
+                  title={stopping ? "Stopping" : "Stop the agent"}
+                  aria-label={stopping ? "Stopping" : "Stop the agent"}
+                >
+                  <Square className="h-3 w-3 fill-current" />
+                  {stopping ? "Stopping" : "Stop"}
+                </Button>
+              ) : (
+                <Button
+                  size="icon"
+                  type="submit"
+                  disabled={!canSubmit}
+                  className="h-8 w-8"
+                  title="Send"
+                  aria-label="Send message"
+                >
+                  {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              )}
+            </div>
+          </div>
           <input
             ref={fileInputRef}
             type="file"
             accept="image/png,image/jpeg,image/webp,image/gif"
             className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
             onChange={handleImageSelected}
           />
         </form>
