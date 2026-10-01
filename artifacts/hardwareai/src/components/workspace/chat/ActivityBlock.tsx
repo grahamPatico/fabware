@@ -40,10 +40,12 @@ function readableToolName(toolName: string | undefined): string {
 function ActivityRow({ msg }: { msg: Message }) {
   const [open, setOpen] = useState(false);
   const text = msg.content.trim();
+  // The row already carries an icon, and results are written as light
+  // markdown for the model: drop the leading emoji and the bold markers.
   const firstLine =
     text
       .split("\n")
-      .map((line) => line.trim())
+      .map((line) => line.replace(/^[^\p{L}\p{N}"'(]+/u, "").replace(/\*\*/g, "").trim())
       .find((line) => line !== "") ?? readableToolName(msg.toolName);
   const expandable = text.includes("\n");
   const failed = msg.isError === true;

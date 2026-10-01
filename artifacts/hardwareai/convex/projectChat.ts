@@ -588,10 +588,16 @@ async function applyToolCall(
           .map((s: any) => `${s.label} (${s.failures}F/${s.warnings}W)`)
           .join(", ");
         lines.push(`  • ${p.label} (${p.role}): ${p.failures}F / ${p.warnings}W` + (stepBits ? ` — ${stepBits}` : ""));
-        const top = (p.rules ?? []).filter((r: any) => r.status === "fail").slice(0, 2);
+        // Failures first, then warnings: the agent can only act on findings it
+        // is shown, and a bare "4 warn" count gives it nothing to fix.
+        const flagged = (p.rules ?? []).filter((r: any) => r.status === "fail" || r.status === "warn");
+        const top = [
+          ...flagged.filter((r: any) => r.status === "fail"),
+          ...flagged.filter((r: any) => r.status === "warn"),
+        ].slice(0, 5);
         for (const r of top) {
           const suggestion = r.suggestion ? ` → ${r.suggestion}` : "";
-          lines.push(`    - ${r.label}: ${r.message}${suggestion}`);
+          lines.push(`    - [${String(r.status).toUpperCase()}] ${r.label}: ${r.message}${suggestion}`);
         }
       }
       if (failedParts.length === 0) {
