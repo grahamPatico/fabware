@@ -77,12 +77,60 @@ export default defineSchema({
       error: v.optional(v.string()),
       cancelRequested: v.optional(v.boolean()),
     })),
+    // The production journey (convex/journey.ts): which path this project
+    // walks from idea to parts in hand. Absent = no plan started yet.
+    journey: v.optional(v.object({
+      track: v.union(v.literal("hobby"), v.literal("product")),
+      needsElectronics: v.boolean(),
+      // True once the user set needsElectronics by hand; the idea stage then
+      // stops overwriting it.
+      electronicsLocked: v.optional(v.boolean()),
+      startedAt: v.number(),
+    })),
+    // The concept picture shown at the top of the plan: a stored PNG, or a
+    // sanitized inline SVG when no image model is configured.
+    concept: v.optional(v.object({
+      status: v.union(v.literal("generating"), v.literal("ready"), v.literal("error")),
+      kind: v.optional(v.union(v.literal("image"), v.literal("svg"))),
+      storageId: v.optional(v.id("_storage")),
+      svg: v.optional(v.string()),
+      prompt: v.optional(v.string()),
+      error: v.optional(v.string()),
+      generations: v.number(),
+      startedAt: v.optional(v.number()),
+    })),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_updated", ["updatedAt"])
     .index("by_owner_updated", ["ownerKey", "updatedAt"])
     .index("by_share_slug", ["shareSlug"]),
+
+  // --- Production journey: one row per stage of a project's plan ---
+  // `content` is the stage's shape from lib/journey.ts (StageContentMap),
+  // stored untyped so the shapes can evolve without a schema migration.
+  journeyStages: defineTable({
+    projectId: v.id("projects"),
+    stage: v.string(),
+    status: v.union(
+      v.literal("todo"),
+      v.literal("generating"),
+      v.literal("ready"),
+      v.literal("done"),
+      v.literal("error"),
+    ),
+    content: v.optional(v.any()),
+    // The user's steering notes from the last generate.
+    notes: v.optional(v.string()),
+    error: v.optional(v.string()),
+    generatedAt: v.optional(v.number()),
+    startedAt: v.optional(v.number()),
+    // Identifies the generation that owns the row; a stale run never saves.
+    runId: v.optional(v.string()),
+    model: v.optional(v.string()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_stage", ["projectId", "stage"]),
 
   // --- Assembly snapshots (project-level undo/redo history) ---
   assemblySnapshots: defineTable({

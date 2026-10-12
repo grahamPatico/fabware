@@ -10,6 +10,7 @@ import {
   Download,
   History,
   Layers,
+  ListChecks,
   MessageSquare,
   Package,
   Sliders,
@@ -425,6 +426,12 @@ export default function Workspace({
                 </span>
               )}
               <div className="hidden md:block w-px h-6 bg-border mx-2" />
+              <Button asChild variant="outline" size="sm" className={HEADER_ACTION}>
+                <Link href={`/project/${projectId}/plan`} title="Plan" aria-label="Plan">
+                  <ListChecks className="w-3.5 h-3.5" />
+                  <span className="hidden lg:inline">Plan</span>
+                </Link>
+              </Button>
               <Button
                 variant="outline"
                 size="sm"

@@ -15,8 +15,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { readChatPrefs } from "@/lib/chatPrefs";
+import { journeyApi } from "@/lib/journeyApi";
 import { getOwnerKey } from "@/lib/owner";
 import { cn } from "@/lib/utils";
+import { Segmented, type SegmentedOption } from "@/components/plan/parts";
+import type { Track } from "../../convex/lib/journey";
 
 type Tier = "jerry-rigged" | "mvp" | "commercial";
 
@@ -32,6 +35,29 @@ const EXAMPLES = [
   "3 x 5 in L-bracket, 14 ga steel, four 1/4-20 holes",
   "24 in wall shelf with two support brackets",
 ];
+
+/** "plan" walks the idea through the plan first; "cad" goes straight to the design agent. */
+type Path = "plan" | "cad";
+
+const PATHS: ReadonlyArray<SegmentedOption<Path>> = [
+  { value: "plan", label: "Plan it with me" },
+  { value: "cad", label: "Go straight to CAD" },
+];
+
+const PLAN_EXAMPLES = [
+  "A bike tail light that also tracks the bike",
+  "A wall-mounted rack for 6 fishing rods",
+  "An outdoor box that holds a sensor and a battery for a year",
+  "A desk lamp with a wireless phone charger in the base",
+];
+
+const TRACKS: ReadonlyArray<{ value: Track; label: string; help: string }> = [
+  { value: "hobby", label: "Just for me", help: "Skips market research." },
+  { value: "product", label: "A product to sell", help: "Adds a market check before you spend money." },
+];
+
+const CAD_PLACEHOLDER = "A wall-mounted steel bracket for a 2 in pipe, powder coated black";
+const PLAN_PLACEHOLDER = "A solar powered gate opener I can control from my phone";
 
 const MIN_PROMPT_CHARS = 3;
 const NAME_MAX_CHARS = 48;
@@ -75,7 +101,10 @@ export const NewProjectComposer = React.forwardRef<
   const createProject = useMutation(api.projects.create);
   const updateScope = useMutation(api.projects.updateScope);
   const start = useMutation(api.agentRuns.start);
+  const beginPlan = useMutation(journeyApi.begin);
 
+  const [path, setPath] = React.useState<Path>("plan");
+  const [track, setTrack] = React.useState<Track>("hobby");
   const [prompt, setPrompt] = React.useState(initialPrompt ?? "");
   const [name, setName] = React.useState("");
   const [tier, setTier] = React.useState<Tier>("mvp");
@@ -132,8 +161,28 @@ export const NewProjectComposer = React.forwardRef<
       return;
     }
 
-    // The project exists from here on, so the user always lands in it. If the
-    // scope or the first turn fails they can resend from the chat.
+    // The project exists from here on, so the user always lands in it.
+    if (path === "plan") {
+      // If the plan fails to start, the plan page offers "Start the plan".
+      try {
+        const { model, effort } = readChatPrefs();
+        await beginPlan({ projectId, track, model, effort });
+      } catch (err) {
+        console.error("Plan failed to start", err);
+        toast({
+          variant: "destructive",
+          title: "The plan didn't start",
+          description:
+            err instanceof ConvexError
+              ? `${String(err.data)} Start it from the plan page.`
+              : "The project was created. Start the plan from the plan page.",
+        });
+      }
+      navigate(`/project/${projectId}/plan`);
+      return;
+    }
+
+    // If the scope or the first turn fails they can resend from the chat.
     try {
       const scale = referenceScale.trim();
       await updateScope({
@@ -177,6 +226,9 @@ export const NewProjectComposer = React.forwardRef<
     }
   };
 
+  const planning = path === "plan";
+  const examples = planning ? PLAN_EXAMPLES : EXAMPLES;
+
   const fillExample = (example: string) => {
     setPrompt(example);
     setError(null);
@@ -198,6 +250,15 @@ export const NewProjectComposer = React.forwardRef<
         <label htmlFor={`${id}-prompt`}>What do you want to build?</label>
       </h2>
 
+      <Segmented
+        label="How to start"
+        className="mt-4"
+        value={path}
+        options={PATHS}
+        onChange={(next) => setPath(next)}
+        disabled={busy}
+      />
+
       <Textarea
         id={`${id}-prompt`}
         ref={textareaRef}
@@ -209,7 +270,7 @@ export const NewProjectComposer = React.forwardRef<
         autoFocus
         rows={4}
         disabled={busy}
-        placeholder="A wall-mounted steel bracket for a 2 in pipe, powder coated black"
+        placeholder={planning ? PLAN_PLACEHOLDER : CAD_PLACEHOLDER}
         className="mt-4 min-h-[120px] resize-y bg-background border-border font-mono text-base md:text-sm leading-relaxed focus-visible:ring-primary"
       />
 
@@ -218,7 +279,7 @@ export const NewProjectComposer = React.forwardRef<
           Or start from an example
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
-          {EXAMPLES.map((example) => (
+          {examples.map((example) => (
             <Button
               key={example}
               type="button"
@@ -233,6 +294,41 @@ export const NewProjectComposer = React.forwardRef<
           ))}
         </div>
       </div>
+
+      {planning && (
+        <div className="mt-5">
+          <span
+            id={`${id}-track`}
+            className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground"
+          >
+            Who is it for?
+          </span>
+          <RadioGroup
+            aria-labelledby={`${id}-track`}
+            value={track}
+            onValueChange={(value) => setTrack(value as Track)}
+            disabled={busy}
+            className="mt-2 grid gap-2 sm:grid-cols-2"
+          >
+            {TRACKS.map((t) => (
+              <Label
+                key={t.value}
+                htmlFor={`${id}-track-${t.value}`}
+                className={cn(
+                  "flex cursor-pointer items-start gap-3 rounded-md border p-3 font-normal transition-colors",
+                  track === t.value ? "border-primary bg-primary/10" : "border-border bg-background/40 hover:border-primary/50",
+                )}
+              >
+                <RadioGroupItem value={t.value} id={`${id}-track-${t.value}`} className="mt-0.5" />
+                <span className="min-w-0">
+                  <span className="block text-sm leading-tight">{t.label}</span>
+                  <span className="mt-1 block text-xs leading-snug text-muted-foreground">{t.help}</span>
+                </span>
+              </Label>
+            ))}
+          </RadioGroup>
+        </div>
+      )}
 
       <Collapsible open={optionsOpen} onOpenChange={setOptionsOpen} className="mt-5">
         <CollapsibleTrigger asChild>
@@ -268,6 +364,8 @@ export const NewProjectComposer = React.forwardRef<
               />
             </div>
 
+            {!planning && (
+            <>
             <div className="grid content-start gap-2">
               <Label
                 htmlFor={`${id}-scale`}
@@ -338,6 +436,8 @@ export const NewProjectComposer = React.forwardRef<
                 </div>
               )}
             </div>
+            </>
+            )}
           </div>
         </CollapsibleContent>
       </Collapsible>
@@ -356,7 +456,7 @@ export const NewProjectComposer = React.forwardRef<
             </>
           ) : (
             <>
-              Start designing
+              {planning ? "Start the plan" : "Start designing"}
               <ArrowRight />
             </>
           )}

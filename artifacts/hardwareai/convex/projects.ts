@@ -7,8 +7,12 @@ import { internal } from "./_generated/api";
  * owner's whole project list, and anyone holding a project id (a share-link
  * viewer, say) can call these functions — so it never leaves the server.
  */
-function withoutOwnerKey<T extends { ownerKey?: string }>(project: T): Omit<T, "ownerKey"> {
-  const { ownerKey: _ownerKey, ...rest } = project;
+function withoutOwnerKey<T extends { ownerKey?: string; concept?: unknown }>(
+  project: T,
+): Omit<T, "ownerKey" | "concept"> {
+  // The concept picture can be a 60 KB SVG; the plan page reads it through
+  // `journey.get`, so it stays off every other project payload.
+  const { ownerKey: _ownerKey, concept: _concept, ...rest } = project;
   return rest;
 }
 
@@ -260,6 +264,16 @@ export const remove = mutation({
     const snapshotsToDelete = await ctx.db.query("assemblySnapshots")
       .withIndex("by_project_seq", q => q.eq("projectId", projectId)).collect();
     for (const s of snapshotsToDelete) await ctx.db.delete(s._id);
+
+    // Production journey: the stage rows and the concept picture's blob.
+    const journeyStages = await ctx.db
+      .query("journeyStages")
+      .withIndex("by_project", (q) => q.eq("projectId", projectId))
+      .collect();
+    for (const s of journeyStages) await ctx.db.delete(s._id);
+
+    const project = await ctx.db.get(projectId);
+    if (project?.concept?.storageId) await ctx.storage.delete(project.concept.storageId);
 
     await ctx.db.delete(projectId);
   },

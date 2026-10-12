@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import ExampleCarousel from "@/components/ExampleCarousel";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { STAGES } from "../../convex/lib/journey";
 
 
 function WaitlistForm({ source = "landing" }: { source?: string }) {
@@ -251,6 +252,30 @@ export default function Landing() {
             </p>
           </div>
           <ExampleCarousel />
+        </div>
+      </section>
+
+      {/* The plan: idea to parts */}
+      <section className="border-t border-border/60">
+        <div className="max-w-6xl mx-auto px-6 py-16">
+          <div className="max-w-xl mb-12">
+            <h2 className="font-mono uppercase tracking-widest text-xs text-primary mb-3">
+              The plan
+            </h2>
+            <p className="text-2xl md:text-3xl font-bold tracking-tight leading-tight">
+              From idea to parts in hand
+            </p>
+          </div>
+          <ol className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-8">
+            {STAGES.map((stage, i) => (
+              <li key={stage.id}>
+                <Step n={String(i + 1).padStart(2, "0")} title={stage.label} body={stage.blurb} />
+              </li>
+            ))}
+          </ol>
+          <p className="mt-10 text-sm text-muted-foreground">
+            Building one for yourself? Skip the market check. No electronics? Skip the board.
+          </p>
         </div>
       </section>
 
