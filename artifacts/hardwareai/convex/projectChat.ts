@@ -9,6 +9,7 @@ import { getArchetype } from "./archetypes";
 import { summarizeStepPartForAgent } from "./lib/stepParts";
 import { TOOLS, buildInstructions, buildProjectContext } from "./assemblyDesigner";
 import { getModel, resolveEffort } from "./lib/models";
+import { DAILY_BUDGET_MESSAGE, isOverDailyBudget, utcDayStartMs } from "./lib/spendCap";
 import {
   describeToolCall, formatValidatorNote, isFailureResult, priorTurns, type Violation,
 } from "./lib/agentLoop";
@@ -27,9 +28,6 @@ export const MAX_ITERATIONS = 14;
 const RUN_DEADLINE_MS = 6.5 * 60 * 1000;
 const RUN_HARD_LIMIT_MS = 9 * 60 * 1000;
 const MAX_OUTPUT_TOKENS = 32_000;
-// Spend guard for a public, unauthenticated studio: once the day's model
-// spend across all projects passes this, new turns are refused until 00:00 UTC.
-const DEFAULT_DAILY_USD_CAP = 25;
 
 const STATE_CHANGING_TOOLS = new Set([
   "select_archetype", "update_archetype_params",
@@ -147,12 +145,8 @@ export async function runAgentLoop(
   const spec = getModel(a.model);
   if (!spec) throw new UserFacingError(`Unsupported model: ${a.model}`);
 
-  const cap = Number(process.env.FABWARE_DAILY_USD_CAP ?? DEFAULT_DAILY_USD_CAP);
-  const dayStart = new Date().setUTCHours(0, 0, 0, 0);
-  const spentToday: number = await ctx.runQuery(internal.tokenUsage.spendSince, { sinceMs: dayStart });
-  if (Number.isFinite(cap) && spentToday >= cap) {
-    throw new UserFacingError("Fabware has reached its AI budget for today. It resets at midnight UTC.");
-  }
+  const spentToday: number = await ctx.runQuery(internal.tokenUsage.spendSince, { sinceMs: utcDayStartMs() });
+  if (isOverDailyBudget(spentToday)) throw new UserFacingError(DAILY_BUDGET_MESSAGE);
 
   const project = await ctx.runQuery(api.projects.get, { projectId: a.projectId });
   if (!project) throw new UserFacingError("This project no longer exists.");

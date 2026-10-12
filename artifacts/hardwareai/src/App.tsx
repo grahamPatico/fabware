@@ -15,6 +15,9 @@ const Workspace = React.lazy(() => import("@/pages/Workspace"));
 const Shared = React.lazy(() => import("@/pages/Shared"));
 const Export = React.lazy(() => import("@/pages/Export"));
 const Chat = React.lazy(() => import("@/pages/Chat"));
+const Plan = React.lazy(() => import("@/pages/Plan"));
+// Fixture preview of the plan page. Dev only: the build drops the import.
+const PlanPreview = import.meta.env.DEV ? React.lazy(() => import("@/pages/PlanPreview")) : null;
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
 const convexClient = convexUrl ? new ConvexReactClient(convexUrl) : null;
@@ -85,6 +88,20 @@ function Router() {
           </LazyStudio>
         </StudioGuard>
       </Route>
+      <Route path="/project/:id/plan">
+        <StudioGuard>
+          <LazyStudio>
+            <Plan />
+          </LazyStudio>
+        </StudioGuard>
+      </Route>
+      {PlanPreview && (
+        <Route path="/dev/plan-preview">
+          <LazyStudio>
+            <PlanPreview />
+          </LazyStudio>
+        </Route>
+      )}
       <Route path="/chat">
         <StudioGuard>
           <LazyStudio>

@@ -27,8 +27,12 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { consumeOwnerParam, deviceLink, getOwnerKey } from "@/lib/owner";
 import { api } from "../../convex/_generated/api";
+import type { JourneyState } from "../../convex/lib/journey";
 
-type ProjectRow = FunctionReturnType<typeof api.projects.list>[number];
+// `journey` is set on a row once the project has a plan.
+type ProjectRow = FunctionReturnType<typeof api.projects.list>[number] & {
+  journey?: JourneyState | null;
+};
 
 // Matches the backend's stale-run cutoff: a run still marked "running" after
 // this long has no live action behind it.
@@ -67,6 +71,11 @@ function statusColor(status: string): string {
   }
 }
 
+/** A project with a plan and no parts yet opens on its plan, not the empty workspace. */
+function opensOnPlan(project: ProjectRow): boolean {
+  return project.journey != null && project.partCount === 0;
+}
+
 function isDesigning(project: ProjectRow, now: number): boolean {
   const run = project.agentRun;
   return run?.status === "running" && now - run.startedAt < RUN_FRESH_MS;
@@ -80,7 +89,7 @@ export default function Home() {
     return getOwnerKey();
   });
 
-  const projects = useQuery(api.projects.list, { ownerKey });
+  const projects: ProjectRow[] | undefined = useQuery(api.projects.list, { ownerKey });
   const removeProject = useMutation(api.projects.remove);
 
   const composerRef = React.useRef<NewProjectComposerHandle>(null);
@@ -217,10 +226,11 @@ export default function Home() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {visible.map((project) => {
                     const designing = isDesigning(project, now);
+                    const onPlan = opensOnPlan(project);
                     return (
                       <div key={project._id} className="group relative min-w-0">
                         <Link
-                          href={`/project/${project._id}`}
+                          href={onPlan ? `/project/${project._id}/plan` : `/project/${project._id}`}
                           className="block h-full rounded-xl focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                         >
                           <Card className="h-full flex flex-col bg-card border-border transition-colors group-hover:border-primary">
@@ -229,6 +239,11 @@ export default function Home() {
                                 <CardTitle className="min-w-0 flex-1 truncate font-mono text-lg leading-tight">
                                   {project.name}
                                 </CardTitle>
+                                {onPlan && (
+                                  <Badge className="shrink-0 border-border bg-transparent font-mono text-[10px] uppercase tracking-wider text-muted-foreground shadow-none">
+                                    Plan
+                                  </Badge>
+                                )}
                                 {designing ? (
                                   <Badge className="shrink-0 gap-1.5 border-primary/40 bg-primary/10 font-mono text-[10px] uppercase tracking-wider text-primary shadow-none">
                                     <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
